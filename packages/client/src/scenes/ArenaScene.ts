@@ -17,6 +17,7 @@ import { getOverlayOptions, SAFE } from '../overlayConfig';
 interface BallView {
   container: Phaser.GameObjects.Container;
   circle: Phaser.GameObjects.Arc;
+  ring: Phaser.GameObjects.Arc;
   aura: Phaser.GameObjects.Arc;
   shieldRing: Phaser.GameObjects.Arc;
   initials: Phaser.GameObjects.Text;
@@ -27,19 +28,26 @@ interface BallView {
   revengeMark: Phaser.GameObjects.Text;
   crown: Phaser.GameObjects.Text;
   buffIcon: Phaser.GameObjects.Text;
+  strengthMark: Phaser.GameObjects.Text;
   lastHp: number;
   lastHealFlash: boolean;
+  lastStrengthTier: number;
 }
 
 interface FeedItem {
+  row: Phaser.GameObjects.Container;
   text: Phaser.GameObjects.Text;
   born: number;
 }
 
 export class ArenaScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
+  private timerGlow!: Phaser.GameObjects.Text;
   private playersText!: Phaser.GameObjects.Text;
+  private top5Panel!: Phaser.GameObjects.Container;
+  private top5Bg!: Phaser.GameObjects.Graphics;
   private top5Text!: Phaser.GameObjects.Text;
+  private titleText!: Phaser.GameObjects.Text;
   private feedText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private bigCountdown!: Phaser.GameObjects.Text;
@@ -76,70 +84,108 @@ export class ArenaScene extends Phaser.Scene {
     const side = SAFE.side;
     const bottom = SAFE.bottom;
 
-    // Solid preview bg; skip fill in OBS transparent mode (keep thin stroke frame)
+    // Subtle arena backdrop (skip solid fills in OBS transparent mode)
     if (!opts.transparent) {
-      this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x0a0e18);
+      // Base
+      this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x070b14);
+      // Soft vertical gradient bands (cheap, no filters)
+      const g = this.add.graphics().setDepth(0);
+      g.fillStyle(0x121a2e, 0.55);
+      g.fillRect(0, 0, CANVAS_WIDTH, 420);
+      g.fillStyle(0xfe2c55, 0.06);
+      g.fillRect(0, 0, CANVAS_WIDTH, 180);
+      g.fillStyle(0x25f4ee, 0.04);
+      g.fillRect(0, CANVAS_HEIGHT - 480, CANVAS_WIDTH, 480);
+      // Vignette rings
+      g.lineStyle(90, 0x000000, 0.35);
+      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 980);
+      g.lineStyle(140, 0x000000, 0.28);
+      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 1100);
     }
     this.border = this.add
-      .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, 0x10162a, opts.transparent ? 0 : 0.35)
-      .setStrokeStyle(6, 0xfe2c55);
+      .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, 0x10162a, opts.transparent ? 0 : 0.12)
+      .setStrokeStyle(5, 0xfe2c55, 0.85)
+      .setDepth(2);
 
-    // Title / timer / vivos — below TikTok top chrome (~140px)
-    this.add
-      .text(CANVAS_WIDTH / 2, top + 12, 'BALL ARENA', {
+    // Title
+    this.titleText = this.add
+      .text(CANVAS_WIDTH / 2, top + 8, 'BALL ARENA', {
         fontFamily: 'Arial Black, Arial',
-        fontSize: '44px',
+        fontSize: '42px',
         color: '#ffffff',
+        stroke: '#fe2c55',
+        strokeThickness: 6,
       })
       .setOrigin(0.5)
       .setDepth(100);
 
+    // Timer glow (behind) + main timer
+    this.timerGlow = this.add
+      .text(CANVAS_WIDTH / 2, top + 72, this.formatTime(data?.round?.remainingSec ?? 300), {
+        fontFamily: 'Arial Black, monospace',
+        fontSize: '64px',
+        color: '#20d68a',
+      })
+      .setOrigin(0.5)
+      .setDepth(99)
+      .setAlpha(0.25);
     this.timerText = this.add
       .text(CANVAS_WIDTH / 2, top + 72, this.formatTime(data?.round?.remainingSec ?? 300), {
-        fontFamily: 'monospace',
-        fontSize: '56px',
+        fontFamily: 'Arial Black, monospace',
+        fontSize: '58px',
         color: '#20d68a',
+        stroke: '#000000',
+        strokeThickness: 8,
       })
       .setOrigin(0.5)
       .setDepth(100);
 
     this.playersText = this.add
-      .text(CANVAS_WIDTH / 2, top + 128, `Vivos: ${data?.round?.playerCount ?? 0}`, {
-        fontFamily: 'Arial',
-        fontSize: '26px',
-        color: '#aaaaaa',
+      .text(CANVAS_WIDTH / 2, top + 128, `● VIVOS  ${data?.round?.playerCount ?? 0}`, {
+        fontFamily: 'Arial Black, Arial',
+        fontSize: '24px',
+        color: '#c5c9d1',
+        stroke: '#000000',
+        strokeThickness: 4,
       })
       .setOrigin(0.5)
       .setDepth(100);
 
-    // Likes meter — upper-left inside safe area
+    // Likes meter — pill
     this.likesText = this.add
-      .text(side, top + 20, '❤️ 0/100', {
-        fontFamily: 'Arial',
+      .text(side, top + 16, '❤️  0 / 100', {
+        fontFamily: 'Arial Black, Arial',
         fontSize: '22px',
         color: '#ff8fab',
+        backgroundColor: '#00000099',
+        padding: { x: 12, y: 6 },
       })
       .setDepth(200)
       .setScrollFactor(0);
 
-    // Permanent TOP 5 — upper-left below likes
+    // TOP 5 glass card
+    this.top5Panel = this.add.container(side, top + 150).setDepth(100);
+    this.top5Bg = this.add.graphics();
+    this.drawTop5Bg(280, 220);
     this.top5Text = this.add
-      .text(side, top + 160, 'TOP 5\n—', {
-        fontFamily: 'monospace',
-        fontSize: '22px',
+      .text(14, 12, 'TOP 5\n—', {
+        fontFamily: 'Arial Black, Arial',
+        fontSize: '20px',
         color: '#e8eaed',
-        lineSpacing: 6,
-      })
-      .setDepth(100);
+        lineSpacing: 4,
+      });
+    this.top5Panel.add([this.top5Bg, this.top5Text]);
 
     this.toastText = this.add
-      .text(CANVAS_WIDTH / 2, top + 200, '', {
+      .text(CANVAS_WIDTH / 2, top + 210, '', {
         fontFamily: 'Arial Black, Arial',
-        fontSize: '30px',
+        fontSize: '32px',
         color: '#ffd60a',
-        backgroundColor: '#000000cc',
-        padding: { x: 16, y: 10 },
+        backgroundColor: '#000000dd',
+        padding: { x: 20, y: 12 },
         align: 'center',
+        stroke: '#000000',
+        strokeThickness: 2,
       })
       .setOrigin(0.5)
       .setDepth(300)
@@ -148,8 +194,10 @@ export class ArenaScene extends Phaser.Scene {
     this.bigCountdown = this.add
       .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, '', {
         fontFamily: 'Arial Black, Arial',
-        fontSize: '220px',
+        fontSize: '260px',
         color: '#fe2c55',
+        stroke: '#ffffff',
+        strokeThickness: 14,
       })
       .setOrigin(0.5)
       .setDepth(250)
@@ -158,43 +206,49 @@ export class ArenaScene extends Phaser.Scene {
     this.ballsLayer = this.add.container(0, 0).setDepth(10);
     this.killFeedLayer = this.add.container(0, 0).setDepth(200);
 
-    // Event feed — above TikTok bottom chrome (~320px)
+    // Event feed — above TikTok bottom chrome
     this.feedText = this.add
-      .text(side, CANVAS_HEIGHT - bottom - 100, '', {
-        fontFamily: 'monospace',
+      .text(side, CANVAS_HEIGHT - bottom - 110, '', {
+        fontFamily: 'Arial',
         fontSize: '18px',
-        color: '#999999',
-        wordWrap: { width: CANVAS_WIDTH - side * 2 },
+        color: '#aab0b8',
+        backgroundColor: '#00000066',
+        padding: { x: 8, y: 6 },
+        wordWrap: { width: CANVAS_WIDTH - side * 2 - 40 },
       })
       .setDepth(100);
 
-    // Winner panel (hidden)
+    // Winner panel (hidden) — celebratory card
     this.winnerPanel = this.add.container(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2).setDepth(400).setAlpha(0);
-    const panelBg = this.add.rectangle(0, 0, 820, 620, 0x0d1117, 0.94).setStrokeStyle(4, 0xffd60a);
+    const panelBg = this.add.rectangle(0, 0, 860, 680, 0x0a0e18, 0.96).setStrokeStyle(6, 0xffd60a);
+    const panelAccent = this.add.rectangle(0, -320, 860, 12, 0xfe2c55, 1);
+    const panelAccent2 = this.add.rectangle(0, 320, 860, 12, 0x25f4ee, 1);
     this.winnerTitle = this.add
-      .text(0, -240, '🏆 VENCEDOR', {
+      .text(0, -250, '🏆 REI DA ARENA', {
         fontFamily: 'Arial Black, Arial',
-        fontSize: '48px',
+        fontSize: '52px',
         color: '#ffd60a',
+        stroke: '#000000',
+        strokeThickness: 8,
       })
       .setOrigin(0.5);
     this.winnerBody = this.add
-      .text(0, -40, '', {
+      .text(0, -20, '', {
         fontFamily: 'Arial',
-        fontSize: '32px',
+        fontSize: '30px',
         color: '#ffffff',
         align: 'center',
-        lineSpacing: 12,
+        lineSpacing: 10,
       })
       .setOrigin(0.5);
     this.resultsHint = this.add
-      .text(0, 240, 'Próxima rodada em …', {
-        fontFamily: 'monospace',
-        fontSize: '28px',
+      .text(0, 270, 'Próxima rodada em …', {
+        fontFamily: 'Arial Black, monospace',
+        fontSize: '26px',
         color: '#25f4ee',
       })
       .setOrigin(0.5);
-    this.winnerPanel.add([panelBg, this.winnerTitle, this.winnerBody, this.resultsHint]);
+    this.winnerPanel.add([panelBg, panelAccent, panelAccent2, this.winnerTitle, this.winnerBody, this.resultsHint]);
 
     // FPS only in ?debug=1
     this.fpsText = this.add
@@ -275,11 +329,11 @@ export class ArenaScene extends Phaser.Scene {
     this.killFeed = this.killFeed.filter((item) => {
       const age = now - item.born;
       if (age > this.killFeedTtl) {
-        item.text.destroy();
+        item.row.destroy(true);
         return false;
       }
-      const fade = age > this.killFeedTtl - 800 ? 1 - (age - (this.killFeedTtl - 800)) / 800 : 1;
-      item.text.setAlpha(fade);
+      const fade = age > this.killFeedTtl - 900 ? 1 - (age - (this.killFeedTtl - 900)) / 900 : 1;
+      item.row.setAlpha(fade);
       return true;
     });
     this.layoutKillFeed();
@@ -297,7 +351,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private onRound = (state: RoundState) => {
     this.applyTimerVisuals(state.remainingSec, state.phase);
-    this.playersText.setText(`Vivos: ${state.playerCount ?? 0}`);
+    this.playersText.setText(`● VIVOS  ${state.playerCount ?? 0}`);
     if (state.phase === 'results') {
       this.resultsHint.setText(`Próxima rodada em ${state.resultsRemainingSec ?? 0}s`);
     }
@@ -315,11 +369,11 @@ export class ArenaScene extends Phaser.Scene {
 
   private onSnapshot = (snap: GameSnapshot) => {
     this.applyTimerVisuals(snap.remainingSec, snap.phase);
-    this.playersText.setText(`Vivos: ${snap.playerCount}`);
+    this.playersText.setText(`● VIVOS  ${snap.playerCount}`);
     this.syncBalls(snap.balls);
     if (snap.global && this.likesText) {
       const g = snap.global;
-      this.likesText.setText(`❤️ ${g.likesAccumulated}/${g.likesThreshold}` + (g.activeEffect ? ` · ${g.activeEffect}` : ''));
+      this.likesText.setText(`❤️  ${g.likesAccumulated} / ${g.likesThreshold}` + (g.activeEffect ? `  ·  ${g.activeEffect}` : ''));
     }
     this.renderTop5(snap.top5 || snap.stats.slice(0, 5));
 
@@ -376,6 +430,9 @@ export class ArenaScene extends Phaser.Scene {
         if (event.kind === 'speed_storm') audio.play('speed_storm');
         else if (event.kind === 'share_boost') audio.play('share');
         else audio.play('heal_rain');
+      } else if (event.kind === 'strength_up') {
+        this.showToast(event.message);
+        this.pushKillFeed(event.message, '#ffd60a', '#3d2a00ee');
       } else {
         this.pushKillFeed(event.message, '#ffd60a', '#000000aa');
         if (event.kind === 'respawn' || event.kind === 'revenge_respawn' || event.kind === 'eliminated') {
@@ -388,78 +445,110 @@ export class ArenaScene extends Phaser.Scene {
   };
 
   private applyTimerVisuals(remaining: number, phase: string): void {
-    this.timerText.setText(this.formatTime(remaining));
+    const label = this.formatTime(remaining);
+    this.timerText.setText(label);
+    if (this.timerGlow) this.timerGlow.setText(label);
     if (phase === 'results') {
-      this.timerText.setColor('#ffd60a');
+      this.timerText.setColor('#ffd60a').setFontSize('64px');
       this.timerText.setText('FIM');
+      if (this.timerGlow) {
+        this.timerGlow.setText('FIM').setColor('#ffd60a').setFontSize('70px');
+      }
       this.intensity = false;
       return;
     }
     if (remaining <= 30) {
       this.intensity = true;
-      this.timerText.setColor('#fe2c55');
-      this.timerText.setFontSize(remaining <= 10 ? '72px' : '60px');
+      const size = remaining <= 10 ? '78px' : '66px';
+      this.timerText.setColor('#fe2c55').setFontSize(size);
+      if (this.timerGlow) this.timerGlow.setColor('#fe2c55').setFontSize(size).setAlpha(0.4);
+      if (remaining <= 10 && this.titleText) this.titleText.setColor('#fe2c55');
     } else if (remaining <= 60) {
       this.intensity = false;
-      this.timerText.setColor('#ffd60a');
-      this.timerText.setFontSize('56px');
+      this.timerText.setColor('#ffd60a').setFontSize('60px');
+      if (this.timerGlow) this.timerGlow.setColor('#ffd60a').setFontSize('66px').setAlpha(0.3);
+      if (this.titleText) this.titleText.setColor('#ffffff');
     } else {
       this.intensity = false;
-      this.timerText.setColor('#20d68a');
-      this.timerText.setFontSize('56px');
-      this.border.setStrokeStyle(6, 0xfe2c55);
+      this.timerText.setColor('#20d68a').setFontSize('58px');
+      if (this.timerGlow) this.timerGlow.setColor('#20d68a').setFontSize('64px').setAlpha(0.22);
+      this.border.setStrokeStyle(5, 0xfe2c55, 0.85);
+      if (this.titleText) this.titleText.setColor('#ffffff');
     }
     this.lastRemaining = remaining;
   }
 
   private showBigCountdown(n: number): void {
     this.bigCountdown.setText(String(n));
-    this.bigCountdown.setAlpha(1).setScale(0.4);
+    this.bigCountdown.setColor(n <= 3 ? '#fe2c55' : '#ffffff');
+    this.bigCountdown.setAlpha(1).setScale(0.35);
     this.tweens.add({
       targets: this.bigCountdown,
-      scale: 1.2,
+      scale: 1.35,
       alpha: 0,
-      duration: 850,
+      duration: 900,
       ease: 'Cubic.easeOut',
     });
   }
 
+  private drawTop5Bg(w: number, h: number): void {
+    const g = this.top5Bg;
+    g.clear();
+    g.fillStyle(0x0a0e18, 0.72);
+    g.fillRoundedRect(0, 0, w, h, 16);
+    g.lineStyle(2, 0xffffff, 0.18);
+    g.strokeRoundedRect(0, 0, w, h, 16);
+    g.lineStyle(3, 0xfe2c55, 0.75);
+    g.lineBetween(0, 8, 0, h - 8);
+  }
+
   private renderTop5(top5: PlayerStats[]): void {
     if (!top5.length) {
-      this.top5Text.setText('TOP 5\n— aguardando —');
+      this.top5Text.setText('◆ TOP 5\n— aguardando —');
+      this.drawTop5Bg(280, 72);
       return;
     }
-    const lines = ['TOP 5'];
+    const lines = ['◆ TOP 5'];
     top5.forEach((s, i) => {
-      const crown = i === 0 ? '👑 ' : `${i + 1}. `;
-      lines.push(`${crown}${s.username.slice(0, 12)}`);
-      lines.push(`   ☠${s.kills}  💀${s.deaths}`);
+      const name = s.username.slice(0, 11);
+      if (i === 0) {
+        lines.push(`👑 ${name}`);
+        lines.push(`    ☠${s.kills}   💀${s.deaths}`);
+      } else {
+        lines.push(`${i + 1}. ${name}`);
+        lines.push(`    ☠${s.kills}   💀${s.deaths}`);
+      }
     });
     this.top5Text.setText(lines.join('\n'));
+    // Resize glass card to content
+    const h = Math.min(320, 36 + top5.length * 48);
+    this.drawTop5Bg(300, h);
   }
 
   private showWinner(winner: WinnerInfo | null, resultsLeft: number, top5: PlayerStats[]): void {
     this.winnerPanel.setAlpha(1);
     if (winner) {
-      this.winnerTitle.setText('🏆 VENCEDOR');
+      this.winnerTitle.setText('🏆 REI DA ARENA');
       this.winnerBody.setText(
         [
           `@${winner.nickname || winner.username}`,
           '',
-          `☠ Kills: ${winner.kills}`,
-          `💀 Deaths: ${winner.deaths}`,
-          `💥 Dano: ${winner.damageDealt}`,
-          `⚡ Vel. máx: ${Math.round(winner.highestSpeed)}`,
+          `☠  ${winner.kills} kills`,
+          `💀  ${winner.deaths} deaths`,
+          `💥  ${winner.damageDealt} dano`,
+          `⚡  vel ${Math.round(winner.highestSpeed)}`,
           '',
-          '— Ranking final —',
-          ...top5.slice(0, 5).map((s, i) => `#${i + 1} ${s.username} ☠${s.kills} 💀${s.deaths}`),
+          '— RANKING —',
+          ...top5.slice(0, 5).map((s, i) =>
+            `${i === 0 ? '👑' : '#' + (i + 1)}  ${s.username}   ☠${s.kills}  💀${s.deaths}`
+          ),
         ].join('\n')
       );
     } else {
       this.winnerTitle.setText('FIM DA RODADA');
       this.winnerBody.setText('Nenhum vencedor');
     }
-    this.resultsHint.setText(`Próxima rodada em ${resultsLeft}s`);
+    this.resultsHint.setText(`▶  Próxima rodada em ${resultsLeft}s`);
   }
 
   private hideWinner(): void {
@@ -473,30 +562,35 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private pushKillFeed(message: string, color = '#ffffff', bg = '#fe2c55cc'): void {
+    const row = this.add.container(0, 0);
     const text = this.add
-      .text(CANVAS_WIDTH - SAFE.side, CANVAS_HEIGHT - SAFE.bottom - 80, message, {
-        fontFamily: 'Arial',
-        fontSize: '24px',
+      .text(0, 0, message, {
+        fontFamily: 'Arial Black, Arial',
+        fontSize: '22px',
         color,
         backgroundColor: bg,
-        padding: { x: 12, y: 8 },
-        wordWrap: { width: 520 },
+        padding: { x: 14, y: 9 },
+        wordWrap: { width: 500 },
       })
       .setOrigin(1, 0);
-    this.killFeedLayer.add(text);
-    this.killFeed.unshift({ text, born: Date.now() });
-    this.killFeed = this.killFeed.slice(0, 7);
+    row.add(text);
+    this.killFeedLayer.add(row);
+    this.killFeed.unshift({ row, text, born: Date.now() });
+    // Cap; destroy overflow
+    while (this.killFeed.length > 6) {
+      const old = this.killFeed.pop();
+      old?.row.destroy(true);
+    }
     this.layoutKillFeed();
   }
 
   private layoutKillFeed(): void {
-    // Stack upward from just above TikTok bottom chrome
     const x = CANVAS_WIDTH - SAFE.side;
-    let y = CANVAS_HEIGHT - SAFE.bottom - 24;
+    let y = CANVAS_HEIGHT - SAFE.bottom - 20;
     for (const item of this.killFeed) {
       y -= item.text.height;
-      item.text.setPosition(x, y);
-      y -= 8;
+      item.row.setPosition(x, y);
+      y -= 10;
     }
   }
 
@@ -550,62 +644,77 @@ export class ArenaScene extends Phaser.Scene {
 
   private createBallView(b: BallState): BallView {
     const container = this.add.container(b.x, b.y);
-    const aura = this.add.circle(0, 0, b.radius + 10, 0x7cfc00, 0).setStrokeStyle(4, 0x7cfc00, 0);
-    const shieldRing = this.add.circle(0, 0, b.radius + 6, 0xff9f1c, 0).setStrokeStyle(3, 0xff9f1c, 0);
+    const aura = this.add.circle(0, 0, b.radius + 14, 0x7cfc00, 0).setStrokeStyle(5, 0x7cfc00, 0);
+    const shieldRing = this.add.circle(0, 0, b.radius + 8, 0xff9f1c, 0).setStrokeStyle(3, 0xff9f1c, 0);
+    const ring = this.add.circle(0, 0, b.radius + 3, 0xffffff, 0).setStrokeStyle(4, 0xffffff, 0.55);
     const circle = this.add.circle(0, 0, b.radius, b.color, 1);
-    circle.setStrokeStyle(3, 0xffffff, 0.85);
+    circle.setStrokeStyle(3, 0xffffff, 0.9);
 
     const initials = this.add
       .text(0, 0, this.getInitials(b.label), {
         fontFamily: 'Arial Black, Arial',
-        fontSize: `${Math.floor(b.radius * 0.7)}px`,
+        fontSize: `${Math.floor(b.radius * 0.72)}px`,
         color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 4,
       })
       .setOrigin(0.5);
 
     const label = this.add
-      .text(0, b.radius + 14, this.truncate(b.label, 14), {
-        fontFamily: 'Arial',
-        fontSize: '18px',
+      .text(0, b.radius + 16, this.truncate(b.label, 14), {
+        fontFamily: 'Arial Black, Arial',
+        fontSize: '17px',
         color: '#ffffff',
-        backgroundColor: '#000000aa',
-        padding: { x: 6, y: 2 },
+        backgroundColor: '#000000cc',
+        padding: { x: 8, y: 3 },
       })
       .setOrigin(0.5, 0);
 
-    const barW = b.radius * 2;
-    const hpBg = this.add.rectangle(0, -b.radius - 12, barW, 8, 0x333333).setOrigin(0.5);
-    const hpFg = this.add.rectangle(-barW / 2, -b.radius - 12, barW, 8, 0x20d68a).setOrigin(0, 0.5);
-    const shieldFg = this.add.rectangle(-barW / 2, -b.radius - 22, 0, 5, 0xff9f1c).setOrigin(0, 0.5);
+    const barW = Math.max(40, b.radius * 2.1);
+    const hpBg = this.add.rectangle(0, -b.radius - 14, barW, 10, 0x1a1a1a).setOrigin(0.5).setStrokeStyle(1, 0xffffff, 0.35);
+    const hpFg = this.add.rectangle(-barW / 2, -b.radius - 14, barW, 10, 0x20d68a).setOrigin(0, 0.5);
+    const shieldFg = this.add.rectangle(-barW / 2, -b.radius - 26, 0, 5, 0xff9f1c).setOrigin(0, 0.5);
 
     const revengeMark = this.add
-      .text(b.radius * 0.6, -b.radius - 8, '🎯', { fontSize: '26px' })
+      .text(b.radius * 0.65, -b.radius - 8, '🎯', { fontSize: '26px' })
       .setOrigin(0.5)
       .setVisible(false);
 
     const crown = this.add
-      .text(0, -b.radius - 30, '👑', { fontSize: '32px' })
+      .text(0, -b.radius - 36, '👑', { fontSize: '34px' })
       .setOrigin(0.5)
       .setVisible(false);
 
     const buffIcon = this.add
-      .text(0, b.radius + 36, '', { fontSize: '22px' })
+      .text(0, b.radius + 40, '', { fontSize: '20px' })
       .setOrigin(0.5, 0);
 
-    container.add([aura, shieldRing, circle, initials, hpBg, hpFg, shieldFg, label, revengeMark, crown, buffIcon]);
+    const strengthMark = this.add
+      .text(0, -b.radius - 28, '', {
+        fontFamily: 'Arial Black, Arial',
+        fontSize: '14px',
+        color: '#ffd60a',
+        backgroundColor: '#000000aa',
+        padding: { x: 4, y: 1 },
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
+
+    container.add([aura, shieldRing, ring, circle, initials, hpBg, hpFg, shieldFg, label, revengeMark, crown, buffIcon, strengthMark]);
     if (b.avatarUrl) this.tryLoadAvatar(b, circle, initials, container);
 
     return {
-      container, circle, aura, shieldRing, initials, label, hpBg, hpFg, shieldFg,
-      revengeMark, crown, buffIcon, lastHp: b.hp, lastHealFlash: false,
+      container, circle, ring, aura, shieldRing, initials, label, hpBg, hpFg, shieldFg,
+      revengeMark, crown, buffIcon, strengthMark, lastHp: b.hp, lastHealFlash: false, lastStrengthTier: 0,
     };
   }
 
   private updateBallView(view: BallView, b: BallState): void {
     view.container.setPosition(b.x, b.y);
     view.circle.setRadius(b.radius);
-    view.aura.setRadius(b.radius + 12);
-    view.shieldRing.setRadius(b.radius + 7);
+    view.ring.setRadius(b.radius + 3);
+    view.aura.setRadius(b.radius + 14);
+    view.shieldRing.setRadius(b.radius + 8);
 
     const protected_ = !!b.spawnProtected;
     const flash = !!b.hitFlash;
@@ -630,6 +739,7 @@ export class ArenaScene extends Phaser.Scene {
     else if (isTitan) stroke = 0xc4a484;
     else if (isDonut) stroke = 0xff9f1c;
     view.circle.setStrokeStyle(strokeW, stroke, protected_ ? 0.5 : 0.95);
+    view.ring.setStrokeStyle(b.isKing ? 5 : 3, b.isKing ? 0xffd60a : stroke, protected_ ? 0.35 : 0.5);
     view.container.setAlpha(protected_ ? 0.55 : 1);
 
     // Aura
@@ -650,7 +760,30 @@ export class ArenaScene extends Phaser.Scene {
 
     view.revengeMark.setVisible(!!b.revengeMarked);
     view.crown.setVisible(!!b.isKing);
-    view.crown.setY(-b.radius - 34);
+    view.crown.setY(-b.radius - 38);
+
+    // Kill-strength cue (tier = floor(bonus% / 24) roughly every 3 kills)
+    const sm = b.strengthMult ?? 1;
+    const kills = b.kills ?? 0;
+    const tier = Math.floor(Math.max(0, sm - 1) / 0.24); // 0..4
+    if (kills >= 3 && sm > 1.01) {
+      view.strengthMark.setVisible(true);
+      view.strengthMark.setText(`💪×${sm.toFixed(2)}`);
+      view.strengthMark.setY(b.isKing ? -b.radius - 58 : -b.radius - 30);
+      if (tier > view.lastStrengthTier) {
+        view.lastStrengthTier = tier;
+        this.tweens.add({
+          targets: view.container,
+          scaleX: 1.25,
+          scaleY: 1.25,
+          duration: 120,
+          yoyo: true,
+        });
+      }
+    } else {
+      view.strengthMark.setVisible(false);
+      view.lastStrengthTier = tier;
+    }
 
     const icons: string[] = [];
     if (isGalaxy) icons.push('🌌');
@@ -659,26 +792,26 @@ export class ArenaScene extends Phaser.Scene {
     if (isDonut || sh > 0) icons.push('🍩');
     if (isSugar) icons.push('💥');
     view.buffIcon.setText(icons.join(''));
-    view.buffIcon.setY(b.radius + 36);
+    view.buffIcon.setY(b.radius + 40);
 
     view.label.setText(this.truncate(b.label, 14));
-    view.label.setY(b.radius + 14);
-    const barW = b.radius * 2;
-    view.hpBg.setPosition(0, -b.radius - 12);
-    view.hpBg.setSize(barW, 8);
+    view.label.setY(b.radius + 16);
+    const barW = Math.max(40, b.radius * 2.1);
+    view.hpBg.setPosition(0, -b.radius - 14);
+    view.hpBg.setSize(barW, 10);
     if (isGalaxy) {
-      view.hpFg.setPosition(-barW / 2, -b.radius - 12);
-      view.hpFg.setSize(barW, 8);
+      view.hpFg.setPosition(-barW / 2, -b.radius - 14);
+      view.hpFg.setSize(barW, 10);
       view.hpFg.setFillStyle(0xc77dff);
       view.label.setText(this.truncate(b.label, 10) + ' ∞');
     } else {
       const ratio = b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 0;
-      view.hpFg.setPosition(-barW / 2, -b.radius - 12);
-      view.hpFg.setSize(barW * ratio, 8);
-      view.hpFg.setFillStyle(ratio > 0.3 ? 0x20d68a : 0xfe2c55);
+      view.hpFg.setPosition(-barW / 2, -b.radius - 14);
+      view.hpFg.setSize(barW * ratio, 10);
+      view.hpFg.setFillStyle(ratio > 0.55 ? 0x20d68a : ratio > 0.25 ? 0xffd60a : 0xfe2c55);
     }
     const shieldRatio = Math.min(1, sh / 300);
-    view.shieldFg.setPosition(-barW / 2, -b.radius - 22);
+    view.shieldFg.setPosition(-barW / 2, -b.radius - 26);
     view.shieldFg.setSize(barW * shieldRatio, 5);
     view.shieldFg.setVisible(sh > 0);
 

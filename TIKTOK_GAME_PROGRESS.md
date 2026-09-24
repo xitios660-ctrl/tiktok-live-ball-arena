@@ -1,8 +1,53 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Mobile-friendly** (overlay FIT + admin touch)
+## Etapa atual: **Design polish + Kill → Força**
 
 Data: 2026-09-24 (America/Sao_Paulo)
+
+## Part A — Visual
+
+- Arena: vignette/gradient (skipped if `?transparent=1`), glass TOP 5 card with crown on #1, dramatic timer + glow, punchier kill feed rows, celebratory winner panel.
+- Balls: outer ring, clearer HP (green/yellow/red), stronger labels, buff auras, `💪×mult` when kills ≥ 3.
+- WaitingScene: TikTok-colored backdrop + pulsing CTA “COMENTE PARA JOGAR”.
+- Performance: no heavy filters; adaptive particles unchanged.
+
+## Part B — Kills → strength + ranking
+
+**Ranking (unchanged primary):** `kills → damageDealt → fewer deaths → highestSpeed` (`compareRanking`). King / TOP5 / winner all use this.
+
+**Strength formula (round-permanent until next round):**
+```
+strengthMult = 1 + min(kills * 0.08, 1.0)
+```
+- +8% collision damage power per kill; soft cap **+100%** (2.0×) at **12+** kills.
+- Applied in `PhysicsWorld.activeStrength` **before** gift mults (Dino/Titan/Galaxy still stack on top).
+- `DAMAGE_MAX` raised 28 → 36 so late-game strength can express.
+- Announce `💪 FORÇA +N%` every 3 kills (`strength_up`) — not per kill.
+- Survives death/respawn (`setKills` on respawn/spawn).
+
+## Como testar
+
+```bash
+TIKTOK_MODE=demo npm run build && npm start
+# Overlay: polish HUD; Admin: spawn bots, force kills
+# After 3 kills on same player → toast FORÇA +24% + 💪×1.24 on ball
+# TOP 5 / crown track kills; winner = most kills
+# Mobile: https://tiktok-live-ball-arena.onrender.com/overlay
+```
+
+## Arquivos
+
+- `packages/shared/src/index.ts` — `killStrengthMult`, constants, BallState fields
+- `packages/server/src/game/PhysicsWorld.ts` — `kills` + `setKills` + strength
+- `packages/server/src/game/GameLoop.ts` — sync kills, strength_up announce
+- `packages/client/src/scenes/ArenaScene.ts`, `WaitingScene.ts`
+- `packages/server/public/admin.html` (status fields via adminApi)
+
+## Public
+
+- Render auto-deploy: https://tiktok-live-ball-arena.onrender.com
+
+## Anterior (Mobile)
 
 ## Mobile
 

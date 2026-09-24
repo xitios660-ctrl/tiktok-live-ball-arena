@@ -12,6 +12,7 @@ import {
   DAMAGE_MAX,
   DAMAGE_IMPACT_THRESHOLD,
   SPAWN_PROTECTION_MS,
+  killStrengthMult,
   GIFT_SOFT_MAX_HP,
   DINO_STRENGTH_MULT,
   DINO_SPEED_MULT,
@@ -64,6 +65,8 @@ export interface BallBody {
   hp: number;
   maxHp: number;
   strength: number;
+  /** Round kill count — drives killStrengthMult in activeStrength */
+  kills: number;
   hitFlashTicks: number;
   lastHitterId: string | null;
   lastHitterName: string | null;
@@ -147,7 +150,7 @@ function activeSpeedMult(b: BallBody, now: number): number {
 }
 
 function activeStrength(b: BallBody, now: number): number {
-  let s = b.baseStrength;
+  let s = b.baseStrength * killStrengthMult(b.kills);
   if (now < b.dinoRageUntil) s *= DINO_STRENGTH_MULT;
   if (now < b.titanUntil) s *= TITAN_STRENGTH_MULT;
   if (b.galaxy) s *= GALAXY_STRENGTH_MULT;
@@ -260,6 +263,15 @@ export class PhysicsWorld {
 
   getAll(): BallBody[] {
     return [...this.balls.values()];
+  }
+
+
+  /** Sync round kills onto the live ball (strength scales with kills). */
+  setKills(userId: string, kills: number): void {
+    const b = this.balls.get(userId);
+    if (!b) return;
+    b.kills = Math.max(0, Math.floor(kills));
+    recomputeGeometry(b, Date.now());
   }
 
   removeBall(userId: string): BallBody | undefined {
@@ -460,6 +472,7 @@ export class PhysicsWorld {
       hp: DEFAULT_BALL_HP,
       maxHp: DEFAULT_BALL_HP,
       strength: 1,
+      kills: 0,
       hitFlashTicks: 0,
       lastHitterId: null,
       lastHitterName: null,
@@ -605,6 +618,8 @@ export class PhysicsWorld {
         sugarBurstFlash: b.sugarBurstFlashTicks > 0,
         stompFlash: b.stompFlashTicks > 0,
         galaxyImpactFlash: b.galaxyImpactFlashTicks > 0,
+        kills: b.kills,
+        strengthMult: killStrengthMult(b.kills),
       });
     }
     return out;

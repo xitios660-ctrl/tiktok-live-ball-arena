@@ -135,6 +135,10 @@ export interface BallState {
   sugarBurstFlash?: boolean;
   stompFlash?: boolean;
   galaxyImpactFlash?: boolean;
+  /** Round kills (for strength cue) */
+  kills?: number;
+  /** 1 + kill bonus (capped) — collision damage power */
+  strengthMult?: number;
 }
 
 export interface PlayerStats {
@@ -252,7 +256,8 @@ export interface AnnounceEvent {
     | 'speed_storm'
     | 'double_damage'
     | 'share_boost'
-    | 'likes_threshold';
+    | 'likes_threshold'
+    | 'strength_up';
   message: string;
   userId?: string;
   username?: string;
@@ -282,7 +287,7 @@ export const MAX_SPAWN_SPEED = 160;
 
 export const DAMAGE_SPEED_FACTOR = 0.085;
 export const DAMAGE_MIN = 2;
-export const DAMAGE_MAX = 28;
+export const DAMAGE_MAX = 36;
 export const DAMAGE_IMPACT_THRESHOLD = 40;
 
 export const SPAWN_PROTECTION_MS = 2000;
@@ -364,6 +369,21 @@ export const SHARE_COOLDOWN_MS = 30_000;
 /** Random event cadence during a running round */
 export const RANDOM_EVENT_INTERVAL_SEC = 45;
 export const RANDOM_EVENT_CHANCE = 0.35; // per tick check
+
+
+/** —— Kill → strength (round-permanent while alive/dead; resets next round) ——
+ * Mult = 1 + min(kills * KILL_STRENGTH_PER, KILL_STRENGTH_BONUS_CAP)
+ * e.g. 0.08/kill, cap +1.0 ⇒ 2.0× at 12+ kills. Free-to-play scale; gifts still stack on top.
+ */
+export const KILL_STRENGTH_PER = 0.08;
+export const KILL_STRENGTH_BONUS_CAP = 1.0;
+/** Announce FORÇA+ every N kills (not every kill) */
+export const KILL_STRENGTH_ANNOUNCE_EVERY = 3;
+
+export function killStrengthMult(kills: number): number {
+  const k = Math.max(0, Math.floor(kills || 0));
+  return 1 + Math.min(k * KILL_STRENGTH_PER, KILL_STRENGTH_BONUS_CAP);
+}
 
 export const SOCKET_EVENTS = {
   ROUND_STATE: 'round:state',

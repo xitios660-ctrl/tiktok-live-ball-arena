@@ -6,6 +6,8 @@ import {
   REVENGE_MARK_MS,
   KING_ANNOUNCE_COOLDOWN_MS,
   compareRanking,
+  KILL_STRENGTH_ANNOUNCE_EVERY,
+  killStrengthMult,
   resolveAbilityKey,
   type RoundState,
   type TikTokMode,
@@ -443,6 +445,7 @@ export class GameLoop {
     const rec = this.players.get(user.userId)!;
     rec.alive = true;
     rec.deadAt = null;
+    this.physics.setKills(user.userId, rec.kills);
     this.state = { ...this.state, playerCount: this.physics.count };
     this.ensurePhysicsRunning();
     this.emitRound();
@@ -477,6 +480,8 @@ export class GameLoop {
 
     // Never two balls — respawn replaces
     this.physics.respawn(user);
+    // Preserve round kills → strength on the new body
+    this.physics.setKills(user.userId, rec.kills);
 
     const emitted: CombatEvent[] = [];
 
@@ -716,6 +721,24 @@ export class GameLoop {
       const atk = this.ensurePlayerRecord(attackerId, attackerName || '???');
       atk.kills += 1;
       attackerName = atk.nickname || atk.username;
+      // Kill → strength (round-permanent); live ball picks it up immediately
+      this.physics.setKills(attackerId, atk.kills);
+      if (
+        atk.kills > 0 &&
+        atk.kills % KILL_STRENGTH_ANNOUNCE_EVERY === 0
+      ) {
+        const mult = killStrengthMult(atk.kills);
+        const pct = Math.round((mult - 1) * 100);
+        this.pushCombat({
+          type: 'announce',
+          kind: 'strength_up',
+          message: `💪 FORÇA +${pct}% — @${attackerName} (${atk.kills}☠)`,
+          userId: attackerId,
+          username: attackerName,
+          value: atk.kills,
+          timestamp: Date.now(),
+        });
+      }
 
       // Rivalry: A killed B
       const prev = atk.killsAgainst.get(d.victimId) || 0;
