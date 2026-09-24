@@ -88,17 +88,36 @@ interface BallView {
   shieldFg: Phaser.GameObjects.Rectangle;
   revengeMark: Phaser.GameObjects.Text;
   buffIcon: Phaser.GameObjects.Text;
+  /** Neon glass strength pill (Graphics + label) */
+  strengthHud: Phaser.GameObjects.Container;
+  strengthPill: Phaser.GameObjects.Graphics;
   strengthMark: Phaser.GameObjects.Text;
   lastHp: number;
   lastHealFlash: boolean;
   lastStrengthTier: number;
   lastStrengthScore: number;
+  lastStrengthRadius: number;
   prevX: number;
   prevY: number;
   lastBuffFxAt: number;
   hadFreeze: boolean;
   hadReflect: boolean;
   hadDash: boolean;
+}
+
+/** Tier 0..4 → neon accent (low cream/gold → mid ember → high lavender/cyan). */
+function strengthTierAccent(tier: number): number {
+  if (tier >= 4) return THEME.electricCyan;
+  if (tier >= 3) return THEME.lavender;
+  if (tier >= 2) return THEME.emberOrange;
+  return THEME.gold;
+}
+
+function strengthTierHex(tier: number): string {
+  if (tier >= 4) return THEME_HEX.electricCyan;
+  if (tier >= 3) return THEME_HEX.lavender;
+  if (tier >= 2) return THEME_HEX.emberOrange;
+  return THEME_HEX.gold;
 }
 
 export class ArenaScene extends Phaser.Scene {
@@ -842,16 +861,18 @@ export class ArenaScene extends Phaser.Scene {
       .text(0, b.radius + 40, '', { fontSize: '20px' })
       .setOrigin(0.5, 0);
 
+    const strengthPill = this.add.graphics();
     const strengthMark = this.add
-      .text(0, -b.radius - 36, '💪0', {
-        fontFamily: FONT_BLACK,
-        fontSize: '15px',
+      .text(0, 0, '💪0', {
+        fontFamily: FONT_ACCENT,
+        fontSize: '16px',
         color: THEME_HEX.gold,
-        backgroundColor: '#14110ecc',
-        padding: { x: 5, y: 2 },
+        stroke: '#0B0B0F',
+        strokeThickness: 3,
       })
-      .setOrigin(0.5)
-      .setVisible(true);
+      .setOrigin(0.5);
+    const strengthHud = this.add.container(0, -b.radius - 36, [strengthPill, strengthMark]);
+    this.drawStrengthPill(strengthPill, strengthMark, 0);
 
     // Order: shadow → aura/shield/ring → circle → gloss → avatar chrome → initials → HUD → crown
     container.add([
@@ -869,7 +890,7 @@ export class ArenaScene extends Phaser.Scene {
       label,
       revengeMark,
       buffIcon,
-      strengthMark,
+      strengthHud,
       glossParts.crownGfx,
     ]);
     this.drawNamePlate(namePlate, label, b.radius);
@@ -893,11 +914,14 @@ export class ArenaScene extends Phaser.Scene {
       shieldFg,
       revengeMark,
       buffIcon,
+      strengthHud,
+      strengthPill,
       strengthMark,
       lastHp: b.hp,
       lastHealFlash: false,
       lastStrengthTier: 0,
       lastStrengthScore: -1,
+      lastStrengthRadius: b.radius,
       prevX: b.x,
       prevY: b.y,
       lastBuffFxAt: 0,
@@ -1047,25 +1071,41 @@ export class ArenaScene extends Phaser.Scene {
       this.syncAvatarChrome(view, b.radius, stroke, !!b.isKing, isGalaxy, protected_);
     }
 
-    // Always-visible strength score above HP (kills*8 + hitPower)
+    // Always-visible cinematic strength pill above HP (kills*8 + hitPower)
     const sm = b.strengthMult ?? 1;
     const kills = b.kills ?? 0;
     const hitPower = b.hitPower ?? 0;
     const score = displayStrengthScore(kills, hitPower);
-    const tier = Math.floor(Math.max(0, sm - 1) / 0.24); // 0..4
+    const tier = Math.min(4, Math.floor(Math.max(0, sm - 1) / 0.24)); // 0..4
     const shHp = b.shieldHp ?? 0;
     const strY = b.isKing
       ? -b.radius - 56
       : shHp > 0
         ? -b.radius - 44
         : -b.radius - 36;
-    view.strengthMark.setVisible(true);
+    const accentHex = strengthTierHex(tier);
+    const needsPillRedraw =
+      score !== view.lastStrengthScore ||
+      tier !== view.lastStrengthTier ||
+      Math.abs(b.radius - view.lastStrengthRadius) > 0.5;
+
+    view.strengthHud.setVisible(true);
+    view.strengthHud.setY(strY);
     view.strengthMark.setText(`💪${score}`);
-    view.strengthMark.setY(strY);
+    view.strengthMark.setColor(accentHex);
+    if (needsPillRedraw) {
+      this.drawStrengthPill(view.strengthPill, view.strengthMark, tier);
+      view.lastStrengthRadius = b.radius;
+    }
+    // Soft sin pulse on pill alpha (cheap; reduced on phoneLite) — does not fight pop scale tween
+    {
+      const amp = this.phoneLite ? 0.04 : 0.12;
+      view.strengthPill.setAlpha(0.88 + Math.sin(this.time.now / 380) * amp);
+    }
     if (view.lastStrengthScore >= 0 && score > view.lastStrengthScore) {
       const delta = score - view.lastStrengthScore;
       this.tweens.add({
-        targets: view.strengthMark,
+        targets: view.strengthHud,
         scaleX: 1.45,
         scaleY: 1.45,
         duration: 110,
@@ -1086,7 +1126,7 @@ export class ArenaScene extends Phaser.Scene {
           .text(b.x, b.y - b.radius - 50, `+${delta}`, {
             fontFamily: FONT_BLACK,
             fontSize: '18px',
-            color: THEME_HEX.gold,
+            color: accentHex,
             stroke: '#14110e',
             strokeThickness: 4,
           })
@@ -1350,6 +1390,39 @@ export class ArenaScene extends Phaser.Scene {
       g.lineStyle(6, ringColor, protected_ ? 0.08 : 0.18);
       g.strokeCircle(0, 0, rr + 5);
     }
+  }
+
+  /** Neon glass strength pill — redraw only when score/tier/radius change. */
+  private drawStrengthPill(
+    g: Phaser.GameObjects.Graphics,
+    label: Phaser.GameObjects.Text,
+    tier: number
+  ): void {
+    g.clear();
+    const accent = strengthTierAccent(tier);
+    const tw = Math.max(42, label.width + 18);
+    const th = Math.max(18, label.height + 6);
+    const x = -tw / 2;
+    const y = -th / 2;
+    const r = th / 2;
+
+    // Soft outer glow halo
+    g.fillStyle(accent, 0.14);
+    g.fillRoundedRect(x - 5, y - 4, tw + 10, th + 8, r + 4);
+    // Glass dark fill
+    g.fillStyle(THEME.ink, 0.84);
+    g.fillRoundedRect(x, y, tw, th, r);
+    // Inner stone glass
+    g.fillStyle(THEME.stone, 0.36);
+    g.fillRoundedRect(x + 1.5, y + 1.5, tw - 3, th - 3, Math.max(2, r - 1.5));
+    // Top specular highlight
+    g.fillStyle(THEME.light, 0.08);
+    g.fillRoundedRect(x + 5, y + 2, tw - 10, Math.max(4, th * 0.32), 5);
+    // Soft double rim
+    g.lineStyle(1.75, accent, 0.62);
+    g.strokeRoundedRect(x, y, tw, th, r);
+    g.lineStyle(1, THEME.light, 0.3);
+    g.strokeRoundedRect(x + 1.5, y + 1.5, tw - 3, th - 3, Math.max(2, r - 1.5));
   }
 
   private drawNamePlate(
