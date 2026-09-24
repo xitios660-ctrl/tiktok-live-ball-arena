@@ -1154,7 +1154,15 @@ export class ArenaScene extends Phaser.Scene {
         skin: view.skin,
       },
       b,
-      { hitFlash: flash, spawnProtected: protected_ }
+      {
+        hitFlash: flash,
+        spawnProtected: protected_,
+        crownChrome: {
+          timeMs: this.time.now,
+          phoneLite: this.phoneLite,
+          budget: this.particleBudget ?? 1,
+        },
+      }
     );
     view.glossKey = view.gloss.texture.key;
     view.skin = skinFromBall(b);

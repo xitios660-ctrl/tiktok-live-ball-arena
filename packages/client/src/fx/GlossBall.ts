@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { BallState } from '@arena/shared';
 import { THEME } from '../theme';
+import { paintKingCrown, clearKingCrown } from './BallKingCrown';
 
 export type GlossSkin =
   | 'plain'
@@ -343,7 +344,12 @@ export function syncGlossParts(
   scene: Phaser.Scene,
   parts: GlossBallParts,
   b: BallState,
-  opts: { hitFlash?: boolean; spawnProtected?: boolean }
+  opts: {
+    hitFlash?: boolean;
+    spawnProtected?: boolean;
+    /** When set, king crown gets cinematic halo/pulse/sparks. */
+    crownChrome?: { timeMs: number; phoneLite?: boolean; budget?: number };
+  }
 ): void {
   const skin = skinFromBall(b);
   const key = ensureGlossTexture(scene, b.color, skin);
@@ -366,11 +372,22 @@ export function syncGlossParts(
   parts.shadow.setAlpha(opts.spawnProtected ? 0.2 : 0.35);
 
   if (b.isKing) {
-    parts.crownGfx.setVisible(true);
-    drawCrown(parts.crownGfx, 0, -b.radius - 18, Math.max(0.85, b.radius / 28));
+    const crownY = -b.radius - 18;
+    const crownScale = Math.max(0.85, b.radius / 28);
+    if (opts.crownChrome) {
+      paintKingCrown(parts.crownGfx, {
+        y: crownY,
+        scale: crownScale,
+        timeMs: opts.crownChrome.timeMs,
+        phoneLite: opts.crownChrome.phoneLite,
+        budget: opts.crownChrome.budget,
+      });
+    } else {
+      parts.crownGfx.setVisible(true);
+      drawCrown(parts.crownGfx, 0, crownY, crownScale);
+    }
   } else {
-    parts.crownGfx.clear();
-    parts.crownGfx.setVisible(false);
+    clearKingCrown(parts.crownGfx);
   }
 }
 
