@@ -2,18 +2,49 @@ import Phaser from 'phaser';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '@arena/shared';
 import { WaitingScene } from './scenes/WaitingScene';
 import { ArenaScene } from './scenes/ArenaScene';
+import { PhoneLandscapeWaitingScene } from './scenes/PhoneLandscapeWaitingScene';
+import { PhoneLandscapeArenaScene } from './scenes/PhoneLandscapeArenaScene';
 import { connectSocket } from './socket';
 import { applyOverlayDom, getOverlayOptions } from './overlayConfig';
 import { audio } from './audio/AudioManager';
 import { THEME_HEX } from './theme';
+import {
+  LANDSCAPE_HEIGHT,
+  landscapeGameWidth,
+  shouldUsePhoneLandscape,
+  viewportSize,
+} from './phoneLandscape';
 
 const opts = getOverlayOptions();
 applyOverlayDom(opts);
+const initialPhoneLandscape = shouldUsePhoneLandscape(opts);
+document.documentElement.classList.toggle('native-landscape', initialPhoneLandscape);
+document.documentElement.classList.remove('spin-landscape');
 // Phone screen-share: mild BGM trim immediately (mute still wins).
 if (opts.phoneLite) audio.setPhoneLite(true);
 
 /** Session flag — don't re-show unlock banner after first successful unlock. */
 let audioUnlockedThisSession = false;
+
+type FullscreenRoot = HTMLElement & {
+  webkitRequestFullscreen?: () => void | Promise<void>;
+};
+
+function tryEnterPhoneFullscreen(): void {
+  if (!opts.phoneLite || document.fullscreenElement) return;
+  const root = document.documentElement as FullscreenRoot;
+  try {
+    const result =
+      typeof root.requestFullscreen === 'function'
+        ? root.requestFullscreen()
+        : root.webkitRequestFullscreen?.();
+    if (result && typeof (result as Promise<void>).catch === 'function') {
+      void (result as Promise<void>).catch(() => undefined);
+    }
+  } catch {
+    // Some iOS/in-app browsers do not expose document fullscreen.
+  }
+}
 
 /** Brief toast when BGM fails to start — invite another tap. */
 function showAudioRetryToast(msg = 'toque de novo'): void {
@@ -64,6 +95,7 @@ function setupAudioUnlockGate(): void {
     // Fallback: invisible gesture unlock if DOM banner missing
     const unlock = async () => {
       if (audioUnlockedThisSession) return;
+      tryEnterPhoneFullscreen();
       const ok = await audio.unlock();
       if (ok) {
         audioUnlockedThisSession = true;
@@ -85,6 +117,7 @@ function setupAudioUnlockGate(): void {
 
   const doUnlock = async () => {
     if (audioUnlockedThisSession) return;
+    tryEnterPhoneFullscreen();
     const ok = await audio.unlock();
     if (ok) {
       audioUnlockedThisSession = true;
@@ -117,19 +150,25 @@ function setupAudioUnlockGate(): void {
 setupAudioUnlockGate();
 
 function boot(): void {
+  const initialWidth = initialPhoneLandscape ? landscapeGameWidth() : CANVAS_WIDTH;
+  const initialHeight = initialPhoneLandscape ? LANDSCAPE_HEIGHT : CANVAS_HEIGHT;
+  const scenes = initialPhoneLandscape
+    ? [PhoneLandscapeWaitingScene, PhoneLandscapeArenaScene]
+    : [WaitingScene, ArenaScene];
+
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
+    width: initialWidth,
+    height: initialHeight,
     parent: 'game-container',
     backgroundColor: opts.transparent ? undefined : THEME_HEX.charcoal,
     transparent: opts.transparent,
-    scene: [WaitingScene, ArenaScene],
+    scene: scenes,
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
+      width: initialWidth,
+      height: initialHeight,
     },
     input: {
       activePointers: 2,
@@ -139,11 +178,10 @@ function boot(): void {
   const game = new Phaser.Game(config);
   connectSocket(game);
 
-  /** Sync CSS vars to visualViewport (iOS Safari address bar) + spin-landscape class. */
+  /** Sync CSS vars to visualViewport and keep the native landscape canvas full-bleed. */
   function syncViewportLayout(): void {
     const vv = window.visualViewport;
-    const w = vv?.width ?? window.innerWidth;
-    const h = vv?.height ?? window.innerHeight;
+    const { width: w, height: h } = viewportSize();
     const left = vv?.offsetLeft ?? 0;
     const top = vv?.offsetTop ?? 0;
     const root = document.documentElement;
@@ -151,16 +189,17 @@ function boot(): void {
     root.style.setProperty('--vvh', `${Math.round(h)}px`);
     root.style.setProperty('--vv-left', `${Math.round(left)}px`);
     root.style.setProperty('--vv-top', `${Math.round(top)}px`);
+    root.classList.toggle('native-landscape', initialPhoneLandscape);
+    root.classList.remove('spin-landscape');
 
-    // Spin-fill only rotates when the phone is actually landscape.
-    if (opts.spinFill) {
-      const landscape = w > h;
-      root.classList.toggle('spin-landscape', landscape);
-    } else {
-      root.classList.remove('spin-landscape');
+    if (initialPhoneLandscape) {
+      const targetWidth = landscapeGameWidth();
+      const currentWidth = Number(game.scale.gameSize.width);
+      if (Math.abs(currentWidth - targetWidth) > 2) {
+        game.scale.setGameSize(targetWidth, LANDSCAPE_HEIGHT);
+      }
     }
 
-    // Force a layout unlock after orientation paint (iOS can stick old metrics).
     void document.body.offsetHeight;
   }
 
@@ -173,9 +212,18 @@ function boot(): void {
     }
   }
 
-  /** Debounced multi-tick refresh — orientationchange often reports mid-animation sizes. */
+  /** Debounced refresh. A real orientation switch reloads only the client renderer;
+   * server-authoritative round state is restored immediately by the socket snapshot. */
   const refreshTimers: number[] = [];
+  let orientationReloadTimer = 0;
   function scheduleRefresh(): void {
+    const wantsLandscape = shouldUsePhoneLandscape(opts);
+    if (wantsLandscape !== initialPhoneLandscape) {
+      window.clearTimeout(orientationReloadTimer);
+      orientationReloadTimer = window.setTimeout(() => window.location.reload(), 320);
+      return;
+    }
+
     refreshScale();
     for (const t of refreshTimers) window.clearTimeout(t);
     refreshTimers.length = 0;
