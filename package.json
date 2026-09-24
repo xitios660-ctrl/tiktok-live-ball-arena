@@ -2,7 +2,7 @@
   "name": "tiktok-live-ball-arena",
   "version": "0.1.0",
   "private": true,
-  "description": "TikTok Live Ball Arena \u2014 interactive live game overlay (OBS 1080x1920)",
+  "description": "TikTok Live Ball Arena — interactive live game overlay (OBS 1080x1920)",
   "workspaces": [
     "packages/shared",
     "packages/server",
@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "npm run build -w @arena/shared && concurrently -n server,client -c blue,magenta \"npm run dev -w @arena/server\" \"npm run dev -w @arena/client\"",
-    "build": "npm run build -w @arena/shared && npm run build -w @arena/server && npm run build -w @arena/client",
+    "build": "npm run build -w @arena/shared && npm run build -w @arena/server && npm run selftest -w @arena/server && npm run build -w @arena/client",
     "start": "npm run start -w @arena/server",
     "dev:server": "npm run build -w @arena/shared && npm run dev -w @arena/server",
     "dev:client": "npm run dev -w @arena/client"

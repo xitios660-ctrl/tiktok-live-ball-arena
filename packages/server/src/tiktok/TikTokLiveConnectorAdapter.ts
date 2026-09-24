@@ -74,6 +74,100 @@ function toUser(u: Record<string, unknown> | undefined): ArenaUser {
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function candidateScore(
+  candidate: Record<string, unknown>,
+  hostUsername?: string | null
+): number {
+  let score = 0;
+  const userId = String(candidate.userId || candidate.id || '');
+  const uniqueId = String(
+    candidate.uniqueId ||
+      candidate.unique_id ||
+      candidate.username ||
+      ''
+  );
+  const nickname = String(candidate.nickname || '');
+
+  if (userId) score += 6;
+  if (uniqueId) score += 5;
+  if (nickname) score += 2;
+  if (pickAvatar(candidate)) score += 2;
+
+  const host = (hostUsername || '').replace(/^@/, '').trim().toLowerCase();
+  if (host && uniqueId.toLowerCase() === host) score -= 30;
+
+  return score;
+}
+
+function extractCommentText(data: Record<string, unknown>): string {
+  const nested = [
+    data,
+    asRecord(data.data),
+    asRecord(data.chat),
+    asRecord(data.message),
+  ].filter(Boolean) as Record<string, unknown>[];
+
+  for (const container of nested) {
+    for (const key of ['comment', 'commentText', 'text', 'content', 'message']) {
+      const value = container[key];
+      if (typeof value === 'string' && value.trim()) return value;
+
+      const obj = asRecord(value);
+      if (obj) {
+        for (const subKey of ['text', 'content', 'comment']) {
+          const nestedValue = obj[subKey];
+          if (typeof nestedValue === 'string' && nestedValue.trim()) {
+            return nestedValue;
+          }
+        }
+      }
+    }
+  }
+  return '';
+}
+
+export function parseTikTokChatPayload(
+  raw: unknown,
+  hostUsername?: string | null
+): { user: ArenaUser; comment: string } {
+  const data = asRecord(raw) || {};
+  const nestedData = asRecord(data.data);
+
+  const candidates = [
+    data,
+    asRecord(data.user),
+    asRecord(data.userInfo),
+    asRecord(data.author),
+    asRecord(data.sender),
+    nestedData,
+    asRecord(nestedData?.user),
+    asRecord(nestedData?.userInfo),
+    asRecord(nestedData?.author),
+    asRecord(nestedData?.sender),
+    asRecord(asRecord(data.common)?.user),
+  ].filter(Boolean) as Record<string, unknown>[];
+
+  const ranked = candidates
+    .map((candidate, index) => ({
+      candidate,
+      index,
+      score: candidateScore(candidate, hostUsername),
+    }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  const best = ranked[0]?.candidate;
+  return {
+    user: toUser(best),
+    comment: extractCommentText(data),
+  };
+}
+
 /**
  * PRODUCTION adapter for `tiktok-live-connector` (unofficial Webcast WebSocket).
  * Maps chat/gift/like/share/member/follow → ArenaLiveEvent (same GameLoop path as DEMO).
@@ -367,13 +461,11 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   }
 
   private handleChat(raw: unknown): void {
-    const data = raw as { user?: Record<string, unknown>; comment?: string };
-    const user = toUser(data.user);
-    const comment = String(data.comment || '');
+    const { user, comment } = parseTikTokChatPayload(raw, this.username);
     this.push(
       { type: 'comment', user, comment, timestamp: Date.now() },
       '[COMMENT]',
-      `@${user.username}: ${comment.slice(0, 80)}`
+      `@${user.username} id=${user.userId}: ${comment.slice(0, 80)}`
     );
   }
 

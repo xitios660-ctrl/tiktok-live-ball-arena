@@ -648,6 +648,11 @@ export class GameLoop {
     this.state = { ...this.state, playerCount: this.physics.count };
     this.ensurePhysicsRunning();
     this.emitRound();
+    // Comment → character must be visible immediately, not only after the next physics tick.
+    this.emitSnapshot();
+    console.log(
+      `[SPAWN] @${user.username} id=${user.userId} avatar=${user.avatarUrl ? 'yes' : 'no'} players=${this.physics.count}`
+    );
   }
 
   private respawnPlayer(user: ArenaUser): CombatEvent[] {
