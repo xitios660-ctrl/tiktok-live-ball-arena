@@ -14,6 +14,14 @@ import {
 import { audio } from '../audio/AudioManager';
 import { getOverlayOptions, SAFE } from '../overlayConfig';
 import { THEME, THEME_HEX, FONT, FONT_BLACK } from '../theme';
+import {
+  playAbilityFx,
+  spawnStrengthSparkles,
+  spawnFreezeBurst,
+  spawnDashBurst,
+  spawnReflectActivate,
+  tickBuffParticles,
+} from '../fx/AbilityFx';
 
 interface BallView {
   container: Phaser.GameObjects.Container;
@@ -33,6 +41,12 @@ interface BallView {
   lastHp: number;
   lastHealFlash: boolean;
   lastStrengthTier: number;
+  prevX: number;
+  prevY: number;
+  lastBuffFxAt: number;
+  hadFreeze: boolean;
+  hadReflect: boolean;
+  hadDash: boolean;
 }
 
 interface FeedItem {
@@ -386,6 +400,10 @@ export class ArenaScene extends Phaser.Scene {
   };
 
   private onCombat = (event: CombatEvent) => {
+    if (event.type === 'ability_fx') {
+      playAbilityFx(this, event, this.particleBudget ?? 1);
+      return;
+    }
     if (event.type === 'hit') {
       this.spawnHitSparks(event.x, event.y, THEME.cream);
       audio.play('collision', { intensity: Math.min(1, (event.damage || 8) / 28) });
@@ -434,6 +452,12 @@ export class ArenaScene extends Phaser.Scene {
       } else if (event.kind === 'strength_up') {
         this.showToast(event.message);
         this.pushKillFeed(event.message, THEME_HEX.gold, '#3d2e10ee');
+        if (event.userId) {
+          const view = this.views.get(event.userId);
+          if (view) {
+            spawnStrengthSparkles(this, view.container.x, view.container.y, this.particleBudget ?? 1);
+          }
+        }
       } else {
         this.pushKillFeed(event.message, THEME_HEX.gold, '#1E1E1Ecc');
         if (event.kind === 'respawn' || event.kind === 'revenge_respawn' || event.kind === 'eliminated') {
@@ -707,6 +731,7 @@ export class ArenaScene extends Phaser.Scene {
     return {
       container, circle, ring, aura, shieldRing, initials, label, hpBg, hpFg, shieldFg,
       revengeMark, crown, buffIcon, strengthMark, lastHp: b.hp, lastHealFlash: false, lastStrengthTier: 0,
+      prevX: b.x, prevY: b.y, lastBuffFxAt: 0, hadFreeze: false, hadReflect: false, hadDash: false,
     };
   }
 
@@ -759,13 +784,19 @@ export class ArenaScene extends Phaser.Scene {
     else if (isSlowed) view.aura.setStrokeStyle(3, 0x38bdf8, 0.45);
     else view.aura.setStrokeStyle(0, 0x000000, 0);
 
-    // Donut shield ring
+    // Shield / reflect ring (donut orange wins over reflect silver)
     const sh = b.shieldHp || 0;
     if (sh > 0 || isDonut) {
       view.shieldRing.setStrokeStyle(4, 0xff9f1c, 0.85);
+      view.shieldRing.setRadius(b.radius + 8);
       view.shieldRing.rotation += 0.04;
+    } else if (isReflect) {
+      view.shieldRing.setStrokeStyle(5, 0xe0e7ff, 0.9);
+      view.shieldRing.setRadius(b.radius + 12);
+      view.shieldRing.rotation += 0.07;
     } else {
       view.shieldRing.setStrokeStyle(0, 0x000000, 0);
+      view.shieldRing.setRadius(b.radius + 8);
     }
 
     view.revengeMark.setVisible(!!b.revengeMarked);
@@ -854,6 +885,41 @@ export class ArenaScene extends Phaser.Scene {
         yoyo: true,
       });
     }
+
+    // Activate bursts once when buff appears (server also emits ability_fx; this covers late join)
+    if (isFreeze && !view.hadFreeze) {
+      spawnFreezeBurst(this, b.x, b.y, this.particleBudget ?? 1);
+    }
+    if (isReflect && !view.hadReflect) {
+      spawnReflectActivate(this, b.x, b.y);
+    }
+    if (isDash && !view.hadDash) {
+      spawnDashBurst(
+        this,
+        b.x,
+        b.y,
+        b.x + (b.x - view.prevX) * 4,
+        b.y + (b.y - view.prevY) * 4,
+        this.particleBudget ?? 1
+      );
+    }
+    view.lastBuffFxAt = tickBuffParticles(this, {
+      x: b.x,
+      y: b.y,
+      prevX: view.prevX,
+      prevY: view.prevY,
+      radius: b.radius,
+      isFreeze,
+      isDash,
+      isStrong: kills >= 3 && sm > 1.01,
+      lastBuffFxAt: view.lastBuffFxAt,
+      budget: this.particleBudget ?? 1,
+    });
+    view.hadFreeze = isFreeze;
+    view.hadReflect = isReflect;
+    view.hadDash = isDash;
+    view.prevX = b.x;
+    view.prevY = b.y;
     view.lastHp = b.hp;
   }
 

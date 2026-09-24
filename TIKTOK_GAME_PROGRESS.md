@@ -1,12 +1,54 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Ticulinho-inspired visual theme**
+## Etapa atual: **VFX polish (abilities + combat feedback)**
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
-Palette cream/teal/coral/gold/lavender/sage on charcoal chalkboard; Nunito HUD + admin.
-Tokens: `brand/THEME.md` + `packages/client/src/theme.ts`. Homage only — not official Ticulinho branding.
-Waiting: slogan “Jogos indie com alma ♡” + tiny eye doodle (not logo copy). OBS transparent still works.
+Lightweight ability FX on overlay (no heavy Phaser filters). Server emits `ability_fx` combat events; client draws bolts/rings/trails with adaptive particle budget.
+
+| ability | VFX |
+|---------|-----|
+| lightning_zap | jagged bolt caster→target + hit spark |
+| magnet_pulse | inward radial rings + pull lines |
+| freeze_aura | icy burst + soft flakes while aura active |
+| dash_burst | speed afterimage trail |
+| reflect_shield | silver rotating ring; flash + bounce line on reflect_hit |
+| strength_up / high kills | gold sparkles + existing 💪 mark (kept) |
+
+Shared: `AbilityFxEvent` on `CombatEvent`. DEMO admin gift buttons unchanged. Mobile 9:16 FIT unchanged. Postgres / production TikTok not touched.
+
+## Como testar
+
+```bash
+TIKTOK_MODE=demo npm run build && npm start
+# Overlay: http://localhost:PORT/overlay
+# Admin: spawn 2+ bots, fire raio / ima / gelo / foguete / espelho
+# Expect: bolt, pull rings, ice flakes, dash ghosts, shield ring + flash on hit
+# Low FPS: particleBudget drops (fewer particles)
+# Public: https://tiktok-live-ball-arena.onrender.com/overlay
+```
+
+## Arquivos
+
+- `packages/shared/src/index.ts` — `AbilityFxEvent`
+- `packages/server/src/game/GiftAbilities.ts` — emit fx per new gift
+- `packages/server/src/game/PhysicsWorld.ts` — richer ability returns + `reflected` on damage
+- `packages/server/src/game/GameLoop.ts` — push `ability_fx` / `reflect_hit`
+- `packages/client/src/fx/AbilityFx.ts` — one-shot + tick particles
+- `packages/client/src/scenes/ArenaScene.ts` — wire combat + buff tick
+
+## Próximo
+
+1. Optional Postgres / match history
+2. Production TikTok connector **only when asked**
+3. Optional: process lightning zap damages through kill/hit path (today FX-only; HP already applied)
+
+## Public
+
+- Render auto-deploy: https://tiktok-live-ball-arena.onrender.com
+
+
+## Anterior (theme + powers)
 
 ## Add-on: Mild attraction + new powers
 
