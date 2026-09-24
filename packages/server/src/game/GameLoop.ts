@@ -107,6 +107,8 @@ export class GameLoop {
   private readonly boss: ChatGPTBossController;
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
+  /** Per-user remainder for the 10 likes → +2 HP personal healing loop. */
+  private personalLikeProgress = new Map<string, number>();
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -370,9 +372,11 @@ export class GameLoop {
     }
   }
 
-  handleLikes(user: ArenaUser, count: number): void {
+  handleLikes(userOrCount: ArenaUser | number, maybeCount?: number): void {
     if (this.state.phase !== 'running') return;
 
+    const user = typeof userOrCount === 'number' ? null : userOrCount;
+    const count = typeof userOrCount === 'number' ? userOrCount : maybeCount ?? 1;
     const n = Math.max(0, Math.floor(count));
     if (n <= 0) return;
 
@@ -384,6 +388,7 @@ export class GameLoop {
     // Remainder is kept, so 7 likes now + 3 later still triggers the heal.
     let healed = 0;
     if (
+      user &&
       user.userId !== CHATGPT_BOSS_USER_ID &&
       this.physics.hasUser(user.userId)
     ) {
@@ -402,7 +407,7 @@ export class GameLoop {
     if (anns.length || healed > 0) this.emitSnapshot();
 
     console.log(
-      `[LIKE] @${user.username} +${n} personalHeal=+${healed} ` +
+      `[LIKE] @${user?.username || 'global'} +${n} personalHeal=+${healed} ` +
       `global=${this.globalEvents.likesAccumulated}/${this.globalEvents.likesThreshold}`
     );
   }
