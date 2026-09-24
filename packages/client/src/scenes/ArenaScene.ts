@@ -37,7 +37,11 @@ import {
   createAmbientTwinkles,
   createAoVivoPill,
   createBottomCtaStrip,
+  createTimerCapsule,
+  setTimerCapsule,
+  tickTimerCapsule,
   type CinematicHudHandles,
+  type TimerCapsuleHandles,
 } from '../ui/CinematicHud';
 import { fxScaleFromBudget, qualityFromBudget, budgetFromFps, type QualityTier } from '../fx/QualityTier';
 import { createGiftLegend, tickGiftLegend, type GiftLegendHandles } from '../ui/GiftLegend';
@@ -96,6 +100,7 @@ interface BallView {
 }
 
 export class ArenaScene extends Phaser.Scene {
+  private timerCapsule!: TimerCapsuleHandles;
   private timerText!: Phaser.GameObjects.Text;
   private timerGlow!: Phaser.GameObjects.Text;
   private playersText!: Phaser.GameObjects.Text;
@@ -185,26 +190,18 @@ export class ArenaScene extends Phaser.Scene {
     this.aoVivoPill = createAoVivoPill(this, side + 56, top + 20, 110);
     this.cinematicHud.livePill = this.aoVivoPill;
 
-    // Timer glow (behind) + main timer
-    this.timerGlow = this.add
-      .text(CANVAS_WIDTH / 2, top + 118, this.formatTime(data?.round?.remainingSec ?? 300), {
-        fontFamily: FONT_ACCENT,
-        fontSize: '72px',
-        color: THEME_HEX.electricCyan,
-      })
-      .setOrigin(0.5)
-      .setDepth(99)
-      .setAlpha(0.28);
-    this.timerText = this.add
-      .text(CANVAS_WIDTH / 2, top + 118, this.formatTime(data?.round?.remainingSec ?? 300), {
-        fontFamily: FONT_ACCENT,
-        fontSize: '66px',
-        color: THEME_HEX.electricCyan,
-        stroke: '#000000',
-        strokeThickness: 8,
-      })
-      .setOrigin(0.5)
-      .setDepth(100);
+    // Cinematic timer capsule (glass + neon rim + progress)
+    const initLabel = this.formatTime(data?.round?.remainingSec ?? 300);
+    this.timerCapsule = createTimerCapsule(this, CANVAS_WIDTH / 2, top + 118, initLabel, 100);
+    this.timerText = this.timerCapsule.label;
+    this.timerGlow = this.timerCapsule.glow;
+    setTimerCapsule(
+      this.timerCapsule,
+      initLabel,
+      data?.round?.remainingSec ?? 300,
+      data?.round?.phase ?? 'waiting',
+      data?.round?.durationSec
+    );
 
     this.playersText = this.add
       .text(CANVAS_WIDTH / 2, top + 178, `PLAYERS NA ARENA: ${data?.round?.playerCount ?? 0}`, {
@@ -417,6 +414,7 @@ export class ArenaScene extends Phaser.Scene {
     const now = Date.now();
     const t = this.time.now;
     if (this.cinematicHud) tickCinematicHud(this.cinematicHud, t);
+    if (this.timerCapsule) tickTimerCapsule(this.timerCapsule, t);
     if (this.bottomCta && this.bottomCta.root.visible) {
       const pulse = 0.5 + Math.sin(t / 350) * 0.5;
       this.bottomCta.root.setScale(1 + pulse * 0.02);
@@ -450,7 +448,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private onRound = (state: RoundState) => {
-    this.applyTimerVisuals(state.remainingSec, state.phase);
+    this.applyTimerVisuals(state.remainingSec, state.phase, state.durationSec);
     this.playersText.setText(`PLAYERS NA ARENA: ${state.playerCount ?? 0}`);
     if (state.phase === 'results') {
       this.resultsHint.setText(`Próxima rodada em ${state.resultsRemainingSec ?? 0}s`);
@@ -569,37 +567,24 @@ export class ArenaScene extends Phaser.Scene {
     }
   };
 
-  private applyTimerVisuals(remaining: number, phase: string): void {
+  private applyTimerVisuals(remaining: number, phase: string, durationSec?: number): void {
     const label = this.formatTime(remaining);
-    this.timerText.setText(label);
-    if (this.timerGlow) this.timerGlow.setText(label);
     this.lastPhase = phase;
     if (this.cinematicHud) setPhaseChrome(this.cinematicHud, phase, remaining, this);
     this.syncBottomCta(phase);
+    if (this.timerCapsule) {
+      setTimerCapsule(this.timerCapsule, label, remaining, phase, durationSec);
+    }
     if (phase === 'results') {
-      this.timerText.setColor(THEME_HEX.gold).setFontSize('68px');
-      this.timerText.setText('RESULTADOS');
-      if (this.timerGlow) {
-        this.timerGlow.setText('RESULTADOS').setColor(THEME_HEX.gold).setFontSize('74px');
-      }
       this.intensity = false;
+      this.lastRemaining = remaining;
       return;
     }
     if (remaining <= 30) {
       this.intensity = true;
-      const size = remaining <= 10 ? '88px' : '72px';
-      this.timerText.setColor(THEME_HEX.arenaRed).setFontSize(size);
-      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.arenaRed).setFontSize(size).setAlpha(0.45);
       if (remaining <= 10 && this.titleText) this.titleText.setColor(THEME_HEX.arenaRed);
-    } else if (remaining <= 60) {
-      this.intensity = false;
-      this.timerText.setColor(THEME_HEX.gold).setFontSize('68px');
-      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.gold).setFontSize('74px').setAlpha(0.3);
-      if (this.titleText) this.titleText.setColor(THEME_HEX.light);
     } else {
       this.intensity = false;
-      this.timerText.setColor(THEME_HEX.electricCyan).setFontSize('66px');
-      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.electricCyan).setFontSize('72px').setAlpha(0.25);
       if (this.border) this.border.setStrokeStyle(0);
       if (this.titleText) this.titleText.setColor(THEME_HEX.light);
     }

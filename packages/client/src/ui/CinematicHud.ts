@@ -3,7 +3,7 @@
  * Reuses BallArenaLogo (crown + stars + rings) — not plain text only.
  */
 import Phaser from 'phaser';
-import { CANVAS_WIDTH } from '@arena/shared';
+import { CANVAS_WIDTH, DEFAULT_ROUND_DURATION_SEC } from '@arena/shared';
 import { THEME, THEME_HEX, FONT_BLACK, FONT_ACCENT } from '../theme';
 import {
   createBallArenaLogo,
@@ -329,4 +329,203 @@ export function createAmbientTwinkles(
       root.destroy(true);
     },
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Cinematic timer capsule — glass pill + neon rim + progress bar      */
+/* ------------------------------------------------------------------ */
+
+const CAPSULE_W = 280;
+const CAPSULE_H = 78;
+const CAPSULE_R = 22;
+
+export interface TimerCapsuleHandles {
+  root: Phaser.GameObjects.Container;
+  glass: Phaser.GameObjects.Graphics;
+  neon: Phaser.GameObjects.Graphics;
+  progress: Phaser.GameObjects.Graphics;
+  glow: Phaser.GameObjects.Text;
+  label: Phaser.GameObjects.Text;
+  born: number;
+  durationSec: number;
+  remaining: number;
+  phase: string;
+  accent: number;
+}
+
+/** Build glass/neon timer capsule (centered at x,y). */
+export function createTimerCapsule(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  initialLabel: string,
+  depth = 100
+): TimerCapsuleHandles {
+  const root = scene.add.container(x, y).setDepth(depth);
+  const glass = scene.add.graphics();
+  const neon = scene.add.graphics();
+  const progress = scene.add.graphics();
+
+  const glow = scene.add
+    .text(0, -2, initialLabel, {
+      fontFamily: FONT_ACCENT,
+      fontSize: '72px',
+      color: THEME_HEX.electricCyan,
+    })
+    .setOrigin(0.5)
+    .setAlpha(0.28);
+
+  const label = scene.add
+    .text(0, -2, initialLabel, {
+      fontFamily: FONT_ACCENT,
+      fontSize: '66px',
+      color: THEME_HEX.electricCyan,
+      stroke: '#000000',
+      strokeThickness: 8,
+    })
+    .setOrigin(0.5);
+
+  root.add([glass, neon, progress, glow, label]);
+  drawTimerCapsule(glass, neon, progress, THEME.electricCyan, 1, 0.5);
+
+  return {
+    root,
+    glass,
+    neon,
+    progress,
+    glow,
+    label,
+    born: scene.time.now,
+    durationSec: DEFAULT_ROUND_DURATION_SEC,
+    remaining: DEFAULT_ROUND_DURATION_SEC,
+    phase: 'waiting',
+    accent: THEME.electricCyan,
+  };
+}
+
+function accentForTimer(remaining: number, phase: string): number {
+  if (phase === 'results' || phase === 'ended') return THEME.gold;
+  if (remaining <= 30) return THEME.arenaRed;
+  if (remaining <= 60) return THEME.gold;
+  return THEME.electricCyan;
+}
+
+function drawTimerCapsule(
+  glass: Phaser.GameObjects.Graphics,
+  neon: Phaser.GameObjects.Graphics,
+  progress: Phaser.GameObjects.Graphics,
+  accent: number,
+  frac: number,
+  pulse: number
+): void {
+  const hw = CAPSULE_W / 2;
+  const hh = CAPSULE_H / 2;
+  const a = 0.45 + pulse * 0.4;
+
+  glass.clear();
+  glass.fillStyle(accent, 0.1 + pulse * 0.08);
+  glass.fillRoundedRect(-hw - 6, -hh - 4, CAPSULE_W + 12, CAPSULE_H + 8, CAPSULE_R + 4);
+  glass.fillStyle(THEME.ink, 0.72);
+  glass.fillRoundedRect(-hw, -hh, CAPSULE_W, CAPSULE_H, CAPSULE_R);
+  glass.fillStyle(THEME.stone, 0.38);
+  glass.fillRoundedRect(-hw + 3, -hh + 3, CAPSULE_W - 6, CAPSULE_H - 6, CAPSULE_R - 3);
+  glass.fillStyle(THEME.light, 0.06);
+  glass.fillRoundedRect(-hw + 10, -hh + 6, CAPSULE_W - 20, 14, 8);
+  glass.fillStyle(THEME.gold, 0.55 + pulse * 0.3);
+  glass.fillCircle(-hw + 16, 0, 2.2);
+  glass.fillCircle(hw - 16, 0, 2.2);
+
+  neon.clear();
+  neon.lineStyle(2.5, accent, a);
+  neon.strokeRoundedRect(-hw, -hh, CAPSULE_W, CAPSULE_H, CAPSULE_R);
+  neon.lineStyle(1.2, THEME.light, a * 0.35);
+  neon.strokeRoundedRect(-hw + 3, -hh + 3, CAPSULE_W - 6, CAPSULE_H - 6, CAPSULE_R - 3);
+  const tick = 14;
+  neon.lineStyle(2, accent, a * 0.9);
+  neon.lineBetween(-hw + 8, -hh + 2, -hw + 8 + tick, -hh + 2);
+  neon.lineBetween(-hw + 2, -hh + 8, -hw + 2, -hh + 8 + tick);
+  neon.lineBetween(hw - 8, -hh + 2, hw - 8 - tick, -hh + 2);
+  neon.lineBetween(hw - 2, -hh + 8, hw - 2, -hh + 8 + tick);
+  neon.lineBetween(-hw + 8, hh - 2, -hw + 8 + tick, hh - 2);
+  neon.lineBetween(-hw + 2, hh - 8, -hw + 2, hh - 8 - tick);
+  neon.lineBetween(hw - 8, hh - 2, hw - 8 - tick, hh - 2);
+  neon.lineBetween(hw - 2, hh - 8, hw - 2, hh - 8 - tick);
+
+  progress.clear();
+  const barW = CAPSULE_W - 36;
+  const barH = 5;
+  const barY = hh - 14;
+  const barX = -barW / 2;
+  progress.fillStyle(THEME.ink, 0.55);
+  progress.fillRoundedRect(barX, barY, barW, barH, 3);
+  const fill = Math.max(0, Math.min(1, frac));
+  if (fill > 0.01) {
+    progress.fillStyle(accent, 0.85 + pulse * 0.15);
+    progress.fillRoundedRect(barX, barY, barW * fill, barH, 3);
+    progress.fillStyle(THEME.light, 0.35);
+    progress.fillRoundedRect(barX, barY, barW * fill, 2, 1);
+  }
+}
+
+/** Apply remaining/phase visuals (call from round state updates). */
+export function setTimerCapsule(
+  cap: TimerCapsuleHandles,
+  label: string,
+  remaining: number,
+  phase: string,
+  durationSec?: number
+): void {
+  if (durationSec != null && durationSec > 0) cap.durationSec = durationSec;
+  cap.remaining = remaining;
+  cap.phase = phase;
+  const accent = accentForTimer(remaining, phase);
+  cap.accent = accent;
+
+  if (phase === 'results' || phase === 'ended') {
+    cap.label.setText('RESULTADOS').setColor(THEME_HEX.gold).setFontSize('52px');
+    cap.glow.setText('RESULTADOS').setColor(THEME_HEX.gold).setFontSize('56px').setAlpha(0.35);
+  } else if (remaining <= 10 && phase === 'running') {
+    cap.label.setText(label).setColor(THEME_HEX.arenaRed).setFontSize('78px');
+    cap.glow.setText(label).setColor(THEME_HEX.arenaRed).setFontSize('82px').setAlpha(0.5);
+  } else if (remaining <= 30) {
+    cap.label.setText(label).setColor(THEME_HEX.arenaRed).setFontSize('68px');
+    cap.glow.setText(label).setColor(THEME_HEX.arenaRed).setFontSize('72px').setAlpha(0.42);
+  } else if (remaining <= 60) {
+    cap.label.setText(label).setColor(THEME_HEX.gold).setFontSize('64px');
+    cap.glow.setText(label).setColor(THEME_HEX.gold).setFontSize('68px').setAlpha(0.32);
+  } else {
+    cap.label.setText(label).setColor(THEME_HEX.electricCyan).setFontSize('62px');
+    cap.glow.setText(label).setColor(THEME_HEX.electricCyan).setFontSize('66px').setAlpha(0.26);
+  }
+
+  const frac =
+    phase === 'results' || phase === 'ended'
+      ? 0
+      : Math.max(0, Math.min(1, remaining / Math.max(1, cap.durationSec)));
+  drawTimerCapsule(cap.glass, cap.neon, cap.progress, accent, frac, 0.5);
+}
+
+/** Soft pulse + urgency scale — call each frame (cheap). */
+export function tickTimerCapsule(cap: TimerCapsuleHandles, time: number): void {
+  const t = (time - cap.born) / 1000;
+  const urgent = cap.phase === 'running' && cap.remaining <= 10;
+  const midUrgent = cap.phase === 'running' && cap.remaining <= 30;
+  const speed = urgent ? 5.5 : midUrgent ? 3.2 : 2.2;
+  const pulse = 0.5 + Math.sin(t * speed) * 0.5;
+  const frac =
+    cap.phase === 'results' || cap.phase === 'ended'
+      ? 0
+      : Math.max(0, Math.min(1, cap.remaining / Math.max(1, cap.durationSec)));
+  drawTimerCapsule(cap.glass, cap.neon, cap.progress, cap.accent, frac, pulse);
+
+  if (urgent) {
+    const s = 1 + pulse * 0.045;
+    cap.root.setScale(s);
+    cap.glow.setAlpha(0.35 + pulse * 0.35);
+  } else if (midUrgent) {
+    cap.root.setScale(1 + pulse * 0.015);
+    cap.glow.setAlpha(0.28 + pulse * 0.18);
+  } else {
+    cap.root.setScale(1);
+  }
 }
