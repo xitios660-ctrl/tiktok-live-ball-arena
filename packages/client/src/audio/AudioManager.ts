@@ -37,6 +37,8 @@ export class AudioManager {
   // --- Ambient bed (procedural, looping) ---
   private ambientWanted = false;
   private ambientIntensity = 1;
+  /** Soften ambient gain ceiling on phone screen-share (?phone=1). Mute still wins. */
+  private phoneLite = false;
   private ambientNodes: {
     master: GainNode;
     drone: OscillatorNode;
@@ -134,13 +136,21 @@ export class AudioManager {
     this.applyAmbientGain(0.15);
   }
 
+  /** Lower ambient ceiling for phone screen-share; does not override mute. */
+  setPhoneLite(on: boolean): void {
+    this.phoneLite = !!on;
+    this.applyAmbientGain(0.08);
+  }
+
   private ambientTargetGain(): number {
     if (this.muted || !this.ambientWanted) return 0;
+    const phoneMul = this.phoneLite ? 0.55 : 1;
     return (
       this.volumes.master *
       this.volumes.music *
       AMBIENT_BASE *
-      this.ambientIntensity
+      this.ambientIntensity *
+      phoneMul
     );
   }
 

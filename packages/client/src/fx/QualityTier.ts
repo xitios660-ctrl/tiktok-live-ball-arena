@@ -11,8 +11,14 @@
  *
  * Optional ?quality=auto restores the older adaptive curve (40 / 28 fps).
  *
+ * Phone screen-share (?phone=1 / ?lite=1): prefer smooth FPS over max particles
+ *   default budget ~0.65; degrade earlier (45 / 32 / 22 fps).
+ *   High-tier FX slightly softened when phoneLite.
+ *
  * Physics / TikTok stay server-side — this only gates client VFX counts.
  */
+export type QualityMode = 'max' | 'auto' | 'phone';
+
 export type QualityTier = 'high' | 'medium' | 'low';
 
 export interface FxScale {
@@ -38,20 +44,19 @@ export function qualityFromBudget(budget: number): QualityTier {
   return 'low';
 }
 
-export function qualityFromFps(fps: number, mode: 'max' | 'auto' = 'max'): QualityTier {
-  if (mode === 'auto') {
-    if (fps >= 40) return 'high';
-    if (fps >= 28) return 'medium';
-    return 'low';
-  }
-  // Max-by-default: only degrade in emergency
-  if (fps < 12) return 'low';
-  if (fps < 18) return 'medium';
-  return 'high';
+export function qualityFromFps(fps: number, mode: QualityMode = 'max'): QualityTier {
+  return qualityFromBudget(budgetFromFps(fps, mode));
 }
 
 /** Budget for trackFps — max stays at 1 unless catastrophic FPS. */
-export function budgetFromFps(fps: number, mode: 'max' | 'auto' = 'max'): number {
+export function budgetFromFps(fps: number, mode: QualityMode = 'max'): number {
+  if (mode === 'phone') {
+    // Prefer medium-high smooth FPS over max particles on cellphone screen-share.
+    if (fps < 22) return 0.25;
+    if (fps < 32) return 0.35;
+    if (fps < 45) return 0.5;
+    return 0.65; // default target ~0.55–0.7
+  }
   if (mode === 'auto') {
     if (fps < 28) return 0.25;
     if (fps < 40) return 0.5;
@@ -99,7 +104,21 @@ export function fxScaleFor(tier: QualityTier): FxScale {
   }
 }
 
-/** Convenience: budget → scale in one call. */
-export function fxScaleFromBudget(budget: number): FxScale {
-  return fxScaleFor(qualityFromBudget(budget));
+/**
+ * Convenience: budget → scale in one call.
+ * When phoneLite, slightly lower FX (especially high-tier) for mobile GPU headroom.
+ */
+export function fxScaleFromBudget(budget: number, phoneLite = false): FxScale {
+  const scale = fxScaleFor(qualityFromBudget(budget));
+  if (!phoneLite) return scale;
+  return {
+    ...scale,
+    twinkles: scale.twinkles * 0.72,
+    sparks: scale.sparks * 0.78,
+    trails: scale.trails * 0.65,
+    dust: scale.dust * 0.7,
+    trailAlpha: scale.trailAlpha * 0.85,
+    sparkSize: scale.sparkSize * 0.92,
+    trailGhosts: Math.max(0, scale.trailGhosts - (scale.trailGhosts > 0 ? 1 : 0)),
+  };
 }

@@ -1,4 +1,12 @@
-/** OBS / overlay URL query helpers (client-only, no server coupling). */
+/** OBS / overlay URL query helpers (client-only, no server coupling).
+ *
+ * Recommended phone screen-share URL (opaque, not transparent):
+ *   /overlay?phone=1
+ * Also accepts ?lite=1. Keeps gameplay readable while cutting GPU load.
+ * Do not combine with ?transparent=1 for phone screen-share into TikTok Live.
+ */
+
+export type QualityMode = 'max' | 'auto' | 'phone';
 
 export interface OverlayOptions {
   /** Clear canvas + CSS so OBS Browser Source composites over the live. */
@@ -11,8 +19,14 @@ export interface OverlayOptions {
    * Visual quality mode.
    * - 'max' (default): stay high unless FPS is catastrophic (<18 / <12).
    * - 'auto': older adaptive curve (degrade below 40 / 28 fps). Pass ?quality=auto.
+   * - 'phone': mobile screen-share budget (forced by ?phone=1 or ?lite=1).
    */
-  qualityMode: 'max' | 'auto';
+  qualityMode: QualityMode;
+  /**
+   * Phone / lite overlay preset — fewer particles, earlier FPS degrade,
+   * softer ambient. From ?phone=1 or ?lite=1.
+   */
+  phoneLite: boolean;
 }
 
 /** TikTok Live chrome insets — keep HUD out of username/status and comments/gift bar. */
@@ -29,9 +43,12 @@ export function readOverlayOptions(): OverlayOptions {
     params.get('transparent') === '1' || bg === 'transparent' || bg === 'none';
   const debug = params.get('debug') === '1';
   const demoBadge = params.get('demo') === '1';
+  const phoneLite = params.get('phone') === '1' || params.get('lite') === '1';
   const q = (params.get('quality') || 'max').toLowerCase();
-  const qualityMode: 'max' | 'auto' = q === 'auto' ? 'auto' : 'max';
-  return { transparent, debug, demoBadge, qualityMode };
+  let qualityMode: QualityMode = q === 'auto' ? 'auto' : q === 'phone' ? 'phone' : 'max';
+  // Phone screen-share always uses the dedicated budget curve.
+  if (phoneLite) qualityMode = 'phone';
+  return { transparent, debug, demoBadge, qualityMode, phoneLite };
 }
 
 /** Apply transparent CSS class to html/body/#game-container. */

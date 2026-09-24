@@ -9,6 +9,8 @@ import { THEME_HEX } from './theme';
 
 const opts = getOverlayOptions();
 applyOverlayDom(opts);
+// Phone screen-share: lower ambient ceiling immediately (mute still wins).
+if (opts.phoneLite) audio.setPhoneLite(true);
 
 /** Unlock Web Audio on first user gesture (required on iOS/Android). */
 function bindAudioUnlock(): void {

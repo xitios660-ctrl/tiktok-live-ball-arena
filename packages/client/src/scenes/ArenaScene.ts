@@ -135,6 +135,7 @@ export class ArenaScene extends Phaser.Scene {
   private fps = 60;
   private particleBudget = 1;
   private qualityTier: QualityTier = 'high';
+  private phoneLite = false;
   private aoVivoPill: Phaser.GameObjects.Container | null = null;
   private bottomCta: { root: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics; setVisible: (v: boolean) => void } | null = null;
   private muteBtn!: Phaser.GameObjects.Text;
@@ -149,6 +150,12 @@ export class ArenaScene extends Phaser.Scene {
 
   create(data?: { round?: RoundState }): void {
     const opts = getOverlayOptions();
+    this.phoneLite = !!opts.phoneLite;
+    if (this.phoneLite) {
+      this.particleBudget = 0.65;
+      this.qualityTier = 'medium';
+      audio.setPhoneLite(true);
+    }
     const top = SAFE.top;
     const side = SAFE.side;
     const bottom = SAFE.bottom;
@@ -157,7 +164,8 @@ export class ArenaScene extends Phaser.Scene {
     this.overlayTransparent = !!opts.transparent;
     this.arenaFloor = this.add.graphics().setDepth(0);
     paintArenaFloor(this.arenaFloor, CANVAS_WIDTH, CANVAS_HEIGHT, this.overlayTransparent);
-    this.ambientTwinkles = createAmbientTwinkles(this, 16, 1);
+    // Phone lite: fewer ambient twinkles to cut GPU load on screen-share
+    this.ambientTwinkles = createAmbientTwinkles(this, this.phoneLite ? 7 : 16, 1);
     // Legacy border rect kept for layout hooks; stroke owned by arenaRim Graphics
     this.border = this.add
       .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, THEME.card, 0)
@@ -378,11 +386,13 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     // Unlock audio on first tap anywhere; start arena ambient bed
+    // Phone lite: lower ambient intensity (0.4) so device stays cooler during screen-share
+    const ambientIntensity = this.phoneLite ? 0.4 : 0.85;
     audio.ensure();
-    audio.startAmbient(0.85);
+    audio.startAmbient(ambientIntensity);
     this.input.once('pointerdown', () => {
       audio.ensure();
-      audio.startAmbient(0.85);
+      audio.startAmbient(ambientIntensity);
     });
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
@@ -716,7 +726,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private spawnHitSparks(x: number, y: number, color: number, n = 8): void {
-    const scale = fxScaleFromBudget(this.particleBudget ?? 1);
+    const scale = fxScaleFromBudget(this.particleBudget ?? 1, this.phoneLite);
     n = Math.max(1, Math.floor(n * scale.sparks));
     // Brighter ember/gold impacto burst (style-guide) — core flash + sparks
     const flash = this.add.circle(x, y, 10 * scale.sparkSize, THEME.light, 0.7).setDepth(51);
@@ -916,8 +926,9 @@ export class ArenaScene extends Phaser.Scene {
     const dx = b.x - view.prevX;
     const dy = b.y - view.prevY;
     const dist2 = dx * dx + dy * dy;
-    const trailScale = fxScaleFromBudget(this.particleBudget ?? 1);
-    if (dist2 > 18 * 18 && trailScale.trails > 0.15) {
+    const trailScale = fxScaleFromBudget(this.particleBudget ?? 1, this.phoneLite);
+    const trailSpeedMin = this.phoneLite ? 26 * 26 : 18 * 18;
+    if (dist2 > trailSpeedMin && trailScale.trails > 0.15) {
       const ghosts = 1 + trailScale.trailGhosts;
       for (let g = 0; g < ghosts; g++) {
         const t = (g + 1) / (ghosts + 1);
@@ -991,8 +1002,11 @@ export class ArenaScene extends Phaser.Scene {
     view.container.setAlpha(protected_ ? 0.55 : 1);
 
     // Aura — floor-pickup buffs get a cheap sin pulse on width/alpha
+    // Phone lite: skip aura sin pulses (still show static buff strokes)
     const canAuraPulse =
-      (isFreeze || isMagnet || isDash || isReflect) && (this.particleBudget ?? 1) >= 0.2;
+      !this.phoneLite &&
+      (isFreeze || isMagnet || isDash || isReflect) &&
+      (this.particleBudget ?? 1) >= 0.2;
     const pulse = canAuraPulse ? Math.sin(this.time.now / 280) : 0;
     const pW = pulse * 0.85;
     const pA = pulse * 0.12;
@@ -1289,8 +1303,9 @@ export class ArenaScene extends Phaser.Scene {
       if (isGalaxy) glowColor = THEME.lavender;
       else if (isKing) glowColor = THEME.gold;
       let glowA = protected_ ? 0.12 : 0.28;
-      // Gentle alpha pulse for king/galaxy only — skip on low quality
+      // Gentle alpha pulse for king/galaxy only — skip on low quality / phone lite
       const canPulse =
+        !this.phoneLite &&
         (isKing || isGalaxy) &&
         !protected_ &&
         this.qualityTier !== 'low' &&
@@ -1349,11 +1364,12 @@ export class ArenaScene extends Phaser.Scene {
       if (this.fpsText) this.fpsText.setText(`${this.fps} fps`);
       // Max quality by default: keep particleBudget=1 / high unless FPS is
       // catastrophic (<18 → medium, <12 → low). Pass ?quality=auto for the
-      // older adaptive curve (40/28). See fx/QualityTier.ts.
+      // older adaptive curve (40/28). ?phone=1 / ?lite=1 uses 'phone' budget
+      // (default ~0.65, degrade at 45/32/22). See fx/QualityTier.ts.
       const qMode = getOverlayOptions().qualityMode;
       this.particleBudget = budgetFromFps(this.fps, qMode);
       this.qualityTier = qualityFromBudget(this.particleBudget);
-      // Force rich audio when max quality; only throttle SFX under emergency tiers
+      // Force rich audio when max quality; phone/auto follow budget curve
       audio.setQuality(qMode === 'max' ? Math.max(this.particleBudget, 0.85) : this.particleBudget);
       this.pickupsLayer?.setBudget(this.particleBudget);
     }

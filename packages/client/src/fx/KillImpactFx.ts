@@ -6,6 +6,7 @@
 import Phaser from 'phaser';
 import { THEME, THEME_HEX, FONT_ACCENT } from '../theme';
 import { fxScaleFromBudget } from './QualityTier';
+import { getOverlayOptions } from '../overlayConfig';
 
 export interface KillImpactOpts {
   revenge?: boolean;
@@ -185,7 +186,7 @@ export function playKillImpact(
 ): void {
   const revenge = !!opts.revenge;
   const budget = opts.budget ?? 1;
-  const scale = fxScaleFromBudget(budget);
+  const scale = fxScaleFromBudget(budget, getOverlayOptions().phoneLite);
 
   // Smoke: 2–5 puffs (fewer on low budget)
   const smokeCount = Math.max(2, Math.min(5, Math.round(2 + 3 * scale.dust)));

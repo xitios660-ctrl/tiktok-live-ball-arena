@@ -39,6 +39,8 @@ export class WaitingScene extends Phaser.Scene {
   create(data?: { round?: RoundState }): void {
     const opts = getOverlayOptions();
     this.overlayTransparent = !!opts.transparent;
+    const phoneLite = !!opts.phoneLite;
+    if (phoneLite) audio.setPhoneLite(true);
     const cx = CANVAS_WIDTH / 2;
     const cy = CANVAS_HEIGHT / 2;
 
@@ -47,8 +49,8 @@ export class WaitingScene extends Phaser.Scene {
       this.paintStadiumWash(this.stadiumGfx);
     }
 
-    // Warm ember dust (gated)
-    const dustCount = this.overlayTransparent ? 6 : 24;
+    // Warm ember dust (gated) — fewer on phone lite / transparent
+    const dustCount = phoneLite ? 8 : this.overlayTransparent ? 6 : 24;
     for (let i = 0; i < dustCount; i++) {
       const color =
         i % 3 === 0 ? THEME.gold : i % 3 === 1 ? THEME.emberOrange : THEME.arenaRed;
@@ -64,14 +66,16 @@ export class WaitingScene extends Phaser.Scene {
       this.energyDust.push(d);
     }
 
-    this.twinkles = createAmbientTwinkles(this, this.overlayTransparent ? 8 : 18, 2);
+    const twinkleCount = phoneLite ? 6 : this.overlayTransparent ? 8 : 18;
+    this.twinkles = createAmbientTwinkles(this, twinkleCount, 2);
 
-    // Soft arena atmosphere (full intensity resumes in ArenaScene)
+    // Soft arena atmosphere (full intensity resumes in ArenaScene; phone stays softer)
+    const ambientIntensity = phoneLite ? 0.35 : 0.55;
     audio.ensure();
-    audio.startAmbient(0.55);
+    audio.startAmbient(ambientIntensity);
     this.input.once('pointerdown', () => {
       audio.ensure();
-      audio.startAmbient(0.55);
+      audio.startAmbient(ambientIntensity);
     });
 
     // Thin cream frame
