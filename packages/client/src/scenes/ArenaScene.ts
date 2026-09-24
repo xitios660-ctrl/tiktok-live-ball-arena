@@ -1209,7 +1209,8 @@ export class ArenaScene extends Phaser.Scene {
     if (view.avatar) {
       view.avatar.setTexture(roundKey);
       view.avatar.setDisplaySize(avSize, avSize);
-      this.syncAvatarChrome(view, radius, THEME.cream, false, false, false);
+      // Resize glow only — updateBallView owns king/galaxy/stroke chrome each tick
+      if (view.avatarGlow) view.avatarGlow.setRadius(avSize * 0.5 + 5);
       return;
     }
     const img = this.add.image(0, 0, roundKey);
@@ -1226,6 +1227,7 @@ export class ArenaScene extends Phaser.Scene {
     view.avatar = img;
     view.avatarRing = ringGfx;
     view.circle.setFillStyle(view.circle.fillColor, 0);
+    // Placeholder chrome until next updateBallView sync with real king/galaxy/stroke
     this.syncAvatarChrome(view, radius, THEME.cream, false, false, false);
   }
 
@@ -1267,18 +1269,29 @@ export class ArenaScene extends Phaser.Scene {
   ): void {
     const avSize = radius * 1.9;
     const rr = avSize * 0.5;
+    // Real lavender (THEME.lavender is aliased to cyan in tokens)
+    const galaxyLavender = 0xa78bfa;
     if (view.avatarGlow) {
       view.avatarGlow.setRadius(rr + 5);
-      let glowColor = THEME.electricCyan;
-      if (isGalaxy) glowColor = THEME.lavender;
+      let glowColor = stroke;
+      if (isGalaxy) glowColor = galaxyLavender;
       else if (isKing) glowColor = THEME.gold;
-      else glowColor = stroke;
-      view.avatarGlow.setFillStyle(glowColor, protected_ ? 0.12 : 0.28);
+      let glowA = protected_ ? 0.12 : 0.28;
+      // Gentle alpha pulse for king/galaxy only — skip on low quality
+      const canPulse =
+        (isKing || isGalaxy) &&
+        !protected_ &&
+        this.qualityTier !== 'low' &&
+        (this.particleBudget ?? 1) >= 0.35;
+      if (canPulse) {
+        glowA = 0.2 + Math.sin(this.time.now / 480) * 0.1;
+      }
+      view.avatarGlow.setFillStyle(glowColor, glowA);
     }
     if (view.avatarRing) {
       const g = view.avatarRing;
       g.clear();
-      const ringColor = isGalaxy ? THEME.lavender : isKing ? THEME.gold : stroke;
+      const ringColor = isGalaxy ? galaxyLavender : isKing ? THEME.gold : stroke;
       g.lineStyle(4.5, ringColor, protected_ ? 0.45 : 0.95);
       g.strokeCircle(0, 0, rr + 1);
       g.lineStyle(1.5, THEME.light, protected_ ? 0.2 : 0.45);
