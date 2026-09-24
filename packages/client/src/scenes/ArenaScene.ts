@@ -30,6 +30,12 @@ import {
   type CinematicHudHandles,
 } from '../ui/CinematicHud';
 import { createGiftLegend, tickGiftLegend, type GiftLegendHandles } from '../ui/GiftLegend';
+import {
+  createPremiumTop5,
+  updatePremiumTop5,
+  tickPremiumTop5,
+  type PremiumTop5Handles,
+} from '../ui/PremiumTop5';
 import { PickupsLayer } from '../ui/PickupsLayer';
 
 interface BallView {
@@ -68,20 +74,17 @@ export class ArenaScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private timerGlow!: Phaser.GameObjects.Text;
   private playersText!: Phaser.GameObjects.Text;
-  private top5Panel!: Phaser.GameObjects.Container;
-  private top5Bg!: Phaser.GameObjects.Graphics;
-  private top5Text!: Phaser.GameObjects.Text;
+  private premiumTop5!: PremiumTop5Handles;
   private titleText!: Phaser.GameObjects.Text;
   private cinematicHud!: CinematicHudHandles;
   private giftLegend!: GiftLegendHandles;
   private giftLegendBaseY = 0;
   private top5BaseY = 0;
-  private top5Neon!: Phaser.GameObjects.Graphics;
-  private top5CardW = 300;
-  private top5CardH = 220;
   private pickupsLayer!: PickupsLayer;
   private ambientTwinkles: { tick: (t: number) => void; destroy: () => void } | null = null;
   private feedText!: Phaser.GameObjects.Text;
+  private feedCard!: Phaser.GameObjects.Graphics;
+  private winnerFrame!: Phaser.GameObjects.Graphics;
   private toastText!: Phaser.GameObjects.Text;
   private bigCountdown!: Phaser.GameObjects.Text;
   private winnerPanel!: Phaser.GameObjects.Container;
@@ -119,26 +122,43 @@ export class ArenaScene extends Phaser.Scene {
 
     // Subtle arena backdrop (skip solid fills in OBS transparent mode)
     if (!opts.transparent) {
-      // Base
       this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, THEME.charcoal);
-      // Soft vertical gradient bands (cheap, no filters)
       const g = this.add.graphics().setDepth(0);
+      // Soft vertical gradient bands
       g.fillStyle(THEME.card, 0.45);
       g.fillRect(0, 0, CANVAS_WIDTH, 420);
-      g.fillStyle(THEME.coral, 0.06);
+      g.fillStyle(THEME.coral, 0.07);
       g.fillRect(0, 0, CANVAS_WIDTH, 180);
-      g.fillStyle(THEME.teal, 0.04);
+      g.fillStyle(THEME.teal, 0.05);
       g.fillRect(0, CANVAS_HEIGHT - 480, CANVAS_WIDTH, 480);
-      // Vignette rings
-      g.lineStyle(90, 0x000000, 0.35);
-      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 980);
-      g.lineStyle(140, 0x000000, 0.28);
-      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 1100);
+      // Faint hex / diamond grid (few lines — cheap)
+      g.lineStyle(1, THEME.teal, 0.05);
+      const step = 72;
+      for (let x = 0; x < CANVAS_WIDTH; x += step) {
+        g.lineBetween(x, 0, x, CANVAS_HEIGHT);
+      }
+      for (let y = 0; y < CANVAS_HEIGHT; y += step) {
+        g.lineBetween(0, y, CANVAS_WIDTH, y);
+      }
+      g.lineStyle(1, THEME.lavender, 0.04);
+      for (let x = -CANVAS_HEIGHT; x < CANVAS_WIDTH + CANVAS_HEIGHT; x += step * 2) {
+        g.lineBetween(x, 0, x + CANVAS_HEIGHT, CANVAS_HEIGHT);
+        g.lineBetween(x, CANVAS_HEIGHT, x + CANVAS_HEIGHT, 0);
+      }
+      // Richer vignette rings
+      g.lineStyle(110, 0x000000, 0.4);
+      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 920);
+      g.lineStyle(160, 0x000000, 0.32);
+      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 1080);
+      g.lineStyle(200, 0x000000, 0.22);
+      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 1240);
       // Soft neon edge wash
-      g.lineStyle(3, THEME.teal, 0.18);
+      g.lineStyle(3, THEME.teal, 0.2);
       g.strokeRect(10, 10, CANVAS_WIDTH - 20, CANVAS_HEIGHT - 20);
-      g.lineStyle(2, THEME.lavender, 0.12);
+      g.lineStyle(2, THEME.lavender, 0.14);
       g.strokeRect(18, 18, CANVAS_WIDTH - 36, CANVAS_HEIGHT - 36);
+      g.lineStyle(1.5, THEME.gold, 0.08);
+      g.strokeRect(26, 26, CANVAS_WIDTH - 52, CANVAS_HEIGHT - 52);
     }
     this.ambientTwinkles = createAmbientTwinkles(this, 16, 1);
     this.border = this.add
@@ -195,20 +215,9 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(200)
       .setScrollFactor(0);
 
-    // TOP 5 glass card (left)
+    // Premium TOP 5 leaderboard (left)
     this.top5BaseY = top + 200;
-    this.top5Panel = this.add.container(side, this.top5BaseY).setDepth(100);
-    this.top5Bg = this.add.graphics();
-    this.top5Neon = this.add.graphics();
-    this.drawTop5Bg(280, 220);
-    this.top5Text = this.add
-      .text(14, 12, 'TOP 5\n—', {
-        fontFamily: FONT_BLACK,
-        fontSize: '20px',
-        color: THEME_HEX.cream,
-        lineSpacing: 4,
-      });
-    this.top5Panel.add([this.top5Bg, this.top5Neon, this.top5Text]);
+    this.premiumTop5 = createPremiumTop5(this, side, this.top5BaseY, 100);
 
     // Gift gabarito — right side (opposite TOP5; kill feed stays bottom-right)
     const legendW = 292;
@@ -252,49 +261,50 @@ export class ArenaScene extends Phaser.Scene {
     this.ballsLayer = this.add.container(0, 0).setDepth(10);
     this.killFeedLayer = this.add.container(0, 0).setDepth(200);
 
-    // Event feed — above TikTok bottom chrome
+    // Event feed — glass card matching TOP5 language
+    this.feedCard = this.add.graphics().setDepth(99);
     this.feedText = this.add
-      .text(side, CANVAS_HEIGHT - bottom - 110, '', {
+      .text(side + 12, CANVAS_HEIGHT - bottom - 118, '', {
         fontFamily: FONT,
-        fontSize: '18px',
-        color: THEME_HEX.muted,
-        backgroundColor: '#1E1E1E88',
-        padding: { x: 8, y: 6 },
-        wordWrap: { width: CANVAS_WIDTH - side * 2 - 40 },
+        fontSize: '17px',
+        color: THEME_HEX.cream,
+        padding: { x: 4, y: 4 },
+        wordWrap: { width: CANVAS_WIDTH - side * 2 - 56 },
+        lineSpacing: 4,
       })
       .setDepth(100);
+    this.redrawFeedCard();
 
-    // Winner panel (hidden) — celebratory card
+    // Winner panel (hidden) — premium gold-framed glass card
     this.winnerPanel = this.add.container(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2).setDepth(400).setAlpha(0);
-    const panelBg = this.add.rectangle(0, 0, 860, 680, THEME.ink, 0.96).setStrokeStyle(6, THEME.gold);
-    const panelAccent = this.add.rectangle(0, -320, 860, 12, THEME.coral, 1);
-    const panelAccent2 = this.add.rectangle(0, 320, 860, 12, THEME.teal, 1);
+    this.winnerFrame = this.add.graphics();
+    this.drawWinnerFrame(this.winnerFrame, 860, 700);
     this.winnerTitle = this.add
-      .text(0, -250, '★ REI DA ARENA ★', {
+      .text(0, -268, '★ REI DA ARENA ★', {
         fontFamily: FONT_BLACK,
-        fontSize: '58px',
+        fontSize: '56px',
         color: THEME_HEX.gold,
         stroke: '#000000',
         strokeThickness: 10,
       })
       .setOrigin(0.5);
     this.winnerBody = this.add
-      .text(0, -20, '', {
+      .text(0, -10, '', {
         fontFamily: FONT,
-        fontSize: '32px',
+        fontSize: '30px',
         color: THEME_HEX.cream,
         align: 'center',
-        lineSpacing: 12,
+        lineSpacing: 10,
       })
       .setOrigin(0.5);
     this.resultsHint = this.add
-      .text(0, 270, 'Próxima rodada em …', {
+      .text(0, 292, 'Próxima rodada em …', {
         fontFamily: FONT_BLACK,
-        fontSize: '28px',
+        fontSize: '26px',
         color: THEME_HEX.teal,
       })
       .setOrigin(0.5);
-    this.winnerPanel.add([panelBg, panelAccent, panelAccent2, this.winnerTitle, this.winnerBody, this.resultsHint]);
+    this.winnerPanel.add([this.winnerFrame, this.winnerTitle, this.winnerBody, this.resultsHint]);
 
     // FPS only in ?debug=1
     this.fpsText = this.add
@@ -384,10 +394,10 @@ export class ArenaScene extends Phaser.Scene {
       const bob = Math.sin(t / 900) * 3;
       this.giftLegend.root.y = this.giftLegendBaseY + bob;
     }
-    if (this.top5Panel) {
+    if (this.premiumTop5) {
       const bob = Math.sin(t / 1100 + 1.2) * 2.5;
-      this.top5Panel.y = this.top5BaseY + bob;
-      this.pulseTop5Neon(t);
+      this.premiumTop5.root.y = this.top5BaseY + bob;
+      tickPremiumTop5(this.premiumTop5, t);
     }
     this.killFeed = this.killFeed.filter((item) => {
       const age = now - item.born;
@@ -428,6 +438,7 @@ export class ArenaScene extends Phaser.Scene {
     this.feed.unshift(line);
     this.feed = this.feed.slice(0, 5);
     this.feedText.setText(this.feed.join('\n'));
+    this.redrawFeedCard();
   };
 
   private onSnapshot = (snap: GameSnapshot) => {
@@ -439,7 +450,7 @@ export class ArenaScene extends Phaser.Scene {
       const g = snap.global;
       this.likesText.setText(`❤️  ${g.likesAccumulated} / ${g.likesThreshold}` + (g.activeEffect ? `  ·  ${g.activeEffect}` : ''));
     }
-    this.renderTop5(snap.top5 || snap.stats.slice(0, 5));
+    updatePremiumTop5(this, this.premiumTop5, snap.top5 || snap.stats.slice(0, 5));
 
     if (snap.phase === 'results') {
       this.showWinner(snap.winner, snap.resultsRemainingSec ?? 0, snap.top5);
@@ -579,52 +590,59 @@ export class ArenaScene extends Phaser.Scene {
     });
   }
 
-  private drawTop5Bg(w: number, h: number): void {
-    this.top5CardW = w;
-    this.top5CardH = h;
-    const g = this.top5Bg;
+  private redrawFeedCard(): void {
+    if (!this.feedCard || !this.feedText) return;
+    const pad = 10;
+    const tw = Math.max(180, this.feedText.width + pad * 2);
+    const th = Math.max(28, this.feedText.height + pad * 2);
+    const x = this.feedText.x - 8;
+    const y = this.feedText.y - 8;
+    const g = this.feedCard;
     g.clear();
+    if (!this.feed.length) return;
     g.fillStyle(THEME.ink, 0.78);
-    g.fillRoundedRect(0, 0, w, h, 18);
-    g.lineStyle(2, THEME.cream, 0.28);
-    g.strokeRoundedRect(0, 0, w, h, 18);
-    g.lineStyle(3, THEME.gold, 0.9);
-    g.lineBetween(0, 10, 0, h - 10);
-    this.pulseTop5Neon(this.time?.now ?? 0);
+    g.fillRoundedRect(x, y, tw, th, 12);
+    g.lineStyle(1.5, THEME.cream, 0.2);
+    g.strokeRoundedRect(x, y, tw, th, 12);
+    g.lineStyle(2.5, THEME.teal, 0.55);
+    g.lineBetween(x, y + 8, x, y + th - 8);
+    g.lineStyle(1, THEME.lavender, 0.35);
+    g.strokeRoundedRect(x + 2, y + 2, tw - 4, th - 4, 10);
   }
 
-  private pulseTop5Neon(time: number): void {
-    if (!this.top5Neon) return;
-    const pulse = 0.5 + Math.sin(time / 450) * 0.5;
-    const a = 0.28 + pulse * 0.4;
-    this.top5Neon.clear();
-    this.top5Neon.lineStyle(2, THEME.teal, a);
-    this.top5Neon.strokeRoundedRect(1, 1, this.top5CardW - 2, this.top5CardH - 2, 17);
-    this.top5Neon.lineStyle(1, THEME.lavender, a * 0.65);
-    this.top5Neon.strokeRoundedRect(4, 4, this.top5CardW - 8, this.top5CardH - 8, 14);
-  }
-
-  private renderTop5(top5: PlayerStats[]): void {
-    if (!top5.length) {
-      this.top5Text.setText('◆ TOP 5\n— aguardando —');
-      this.drawTop5Bg(280, 72);
-      return;
+  private drawWinnerFrame(g: Phaser.GameObjects.Graphics, w: number, h: number): void {
+    g.clear();
+    const hw = w / 2;
+    const hh = h / 2;
+    // Deep glass fill
+    g.fillStyle(THEME.ink, 0.96);
+    g.fillRoundedRect(-hw, -hh, w, h, 28);
+    g.fillStyle(THEME.card, 0.35);
+    g.fillRoundedRect(-hw + 8, -hh + 8, w - 16, 90, 20);
+    // Gold outer frame (layered)
+    g.lineStyle(8, THEME.gold, 0.95);
+    g.strokeRoundedRect(-hw, -hh, w, h, 28);
+    g.lineStyle(3, THEME.cream, 0.45);
+    g.strokeRoundedRect(-hw + 8, -hh + 8, w - 16, h - 16, 22);
+    g.lineStyle(2, THEME.lavender, 0.35);
+    g.strokeRoundedRect(-hw + 14, -hh + 14, w - 28, h - 28, 18);
+    // Coral / teal accent rails
+    g.fillStyle(THEME.coral, 1);
+    g.fillRoundedRect(-hw + 24, -hh + 4, w - 48, 10, 4);
+    g.fillStyle(THEME.teal, 1);
+    g.fillRoundedRect(-hw + 24, hh - 14, w - 48, 10, 4);
+    // Corner jewels
+    for (const [cx, cy] of [
+      [-hw + 28, -hh + 28],
+      [hw - 28, -hh + 28],
+      [-hw + 28, hh - 28],
+      [hw - 28, hh - 28],
+    ] as const) {
+      g.fillStyle(THEME.gold, 0.95);
+      g.fillCircle(cx, cy, 6);
+      g.fillStyle(THEME.cream, 0.7);
+      g.fillCircle(cx, cy, 2.5);
     }
-    const lines = ['◆ TOP 5'];
-    top5.forEach((s, i) => {
-      const name = s.username.slice(0, 11);
-      if (i === 0) {
-        lines.push(`👑 ${name}`);
-        lines.push(`    ☠${s.kills}   💀${s.deaths}`);
-      } else {
-        lines.push(`${i + 1}. ${name}`);
-        lines.push(`    ☠${s.kills}   💀${s.deaths}`);
-      }
-    });
-    this.top5Text.setText(lines.join('\n'));
-    // Resize glass card to content
-    const h = Math.min(320, 36 + top5.length * 48);
-    this.drawTop5Bg(300, h);
   }
 
   private showWinner(winner: WinnerInfo | null, resultsLeft: number, top5: PlayerStats[]): void {
@@ -780,7 +798,7 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5, 0);
 
     const barW = Math.max(40, b.radius * 2.1);
-    const hpBg = this.add.rectangle(0, -b.radius - 14, barW, 10, THEME.ink).setOrigin(0.5).setStrokeStyle(1, THEME.cream, 0.35);
+    const hpBg = this.add.rectangle(0, -b.radius - 14, barW, 12, THEME.ink).setOrigin(0.5).setStrokeStyle(1.5, THEME.cream, 0.4);
     const hpFg = this.add.rectangle(-barW / 2, -b.radius - 14, barW, 10, THEME.sage).setOrigin(0, 0.5);
     const shieldFg = this.add.rectangle(-barW / 2, -b.radius - 26, 0, 5, 0xff9f1c).setOrigin(0, 0.5);
 
@@ -861,7 +879,7 @@ export class ArenaScene extends Phaser.Scene {
       protected_ ? 0.35 : flash ? 0.9 : 1
     );
     let stroke = THEME.cream;
-    let strokeW = b.isKing ? 5 : 3;
+    let strokeW = b.isKing ? 7 : 3;
     if (isGalaxy) { stroke = THEME.lavender; strokeW = 6; }
     else if (b.isKing) stroke = THEME.gold;
     else if (protected_) stroke = THEME.teal;
@@ -870,7 +888,14 @@ export class ArenaScene extends Phaser.Scene {
     else if (isTitan) stroke = 0xc4a484;
     else if (isDonut) stroke = 0xff9f1c;
     view.circle.setStrokeStyle(strokeW, stroke, protected_ ? 0.5 : 0.95);
-    view.ring.setStrokeStyle(b.isKing ? 5 : 3, b.isKing ? THEME.gold : stroke, protected_ ? 0.35 : 0.5);
+    // Outer rim light — king gets thick gold double-ring glow
+    if (b.isKing && !isGalaxy) {
+      view.ring.setRadius(b.radius + 7);
+      view.ring.setStrokeStyle(6, THEME.gold, protected_ ? 0.4 : 0.72);
+    } else {
+      view.ring.setRadius(b.radius + 3);
+      view.ring.setStrokeStyle(3, stroke, protected_ ? 0.35 : 0.5);
+    }
     view.container.setAlpha(protected_ ? 0.55 : 1);
 
     // Aura
@@ -882,6 +907,7 @@ export class ArenaScene extends Phaser.Scene {
     else if (isMagnet) view.aura.setStrokeStyle(6, 0xf472b6, 0.75);
     else if (isDash || isSugar) view.aura.setStrokeStyle(4, 0xff66aa, 0.7);
     else if (isSlowed) view.aura.setStrokeStyle(3, 0x38bdf8, 0.45);
+    else if (b.isKing) view.aura.setStrokeStyle(7, THEME.gold, 0.35);
     else view.aura.setStrokeStyle(0, 0x000000, 0);
 
     // Shield / reflect ring (donut orange wins over reflect silver)
@@ -946,7 +972,7 @@ export class ArenaScene extends Phaser.Scene {
     view.label.setY(b.radius + 16);
     const barW = Math.max(40, b.radius * 2.1);
     view.hpBg.setPosition(0, -b.radius - 14);
-    view.hpBg.setSize(barW, 10);
+    view.hpBg.setSize(barW, 12);
     // Solo galaxy = immortal ∞ bar; Cosmic Duel uses real cosmic HP (lavender)
     const galaxyImmortal = isGalaxy && (b.maxHp ?? 0) >= 9000;
     const galaxyDuel = isGalaxy && !galaxyImmortal;

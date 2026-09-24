@@ -265,9 +265,9 @@ export function styleWinnerPanelDramatic(
   body: Phaser.GameObjects.Text,
   hint: Phaser.GameObjects.Text
 ): void {
-  title.setFontSize('58px').setColor(THEME_HEX.gold);
-  body.setFontSize('32px').setColor(THEME_HEX.cream);
-  hint.setFontSize('28px').setColor(THEME_HEX.teal);
+  title.setFontSize('56px').setColor(THEME_HEX.gold);
+  body.setFontSize('30px').setColor(THEME_HEX.cream);
+  hint.setFontSize('26px').setColor(THEME_HEX.teal);
   void scene;
   void panel;
 }

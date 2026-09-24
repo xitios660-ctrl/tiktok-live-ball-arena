@@ -1,6 +1,24 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Kill size/strength (cap) + gift stacking (Capivara x3)**
+## Etapa atual: **Premium TOP 5 + overlay graphics polish**
+
+Data: 2026-09-24 (America/Sao_Paulo)
+
+### Premium TOP 5
+Glass dark card (`PremiumTop5.ts`) com header ouro/creme “◆ TOP 5” + coroa; 5 rows medalha (🥇🥈🥉 + muted); colunas rank | nome | kills | HP pip; flash/slide ao mudar rank; neon pulse + bob.
+
+### Polish
+Vignette + grid diagonal; bola #1 rim light / anel ouro mais grosso; HP bar inset; winner frame ouro em camadas; feed card glass alinhado ao TOP5.
+
+### Arquivos
+- `packages/client/src/ui/PremiumTop5.ts` (novo)
+- `packages/client/src/scenes/ArenaScene.ts`
+- `packages/client/src/ui/CinematicHud.ts` (winner typography tweak)
+
+### Public
+- Render: https://tiktok-live-ball-arena.onrender.com/overlay
+
+## Anterior: **Kill size/strength (cap) + gift stacking (Capivara x3)**
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
