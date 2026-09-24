@@ -44,10 +44,18 @@ export class PickupsLayer {
   private views = new Map<string, PickupView>();
   private scene: Phaser.Scene;
   private budget = 1;
+  /** Counter-rotation used by phone landscape presentation. */
+  private presentationRotation = 0;
 
   constructor(scene: Phaser.Scene, depth = 8) {
     this.scene = scene;
     this.layer = scene.add.container(0, 0).setDepth(depth);
+  }
+
+  /** Keep pickup emoji/chrome upright when the whole canvas is CSS-rotated. */
+  setPresentationRotation(rotation: number): void {
+    this.presentationRotation = rotation;
+    for (const view of this.views.values()) view.root.setRotation(rotation);
   }
 
   /** Adaptive particle budget 0..1 from ArenaScene */
@@ -140,7 +148,7 @@ export class PickupsLayer {
   private createView(p: PickupState): PickupView {
     const color = GLOW[p.ability] ?? THEME.gold;
     const meta = PICKUP_META[p.ability];
-    const root = this.scene.add.container(p.x, p.y);
+    const root = this.scene.add.container(p.x, p.y).setRotation(this.presentationRotation);
 
     // Soft outer neon halo (larger, lower alpha) under glow
     const halo = this.scene.add.circle(0, 0, p.radius * 2.55, color, 0.16);
