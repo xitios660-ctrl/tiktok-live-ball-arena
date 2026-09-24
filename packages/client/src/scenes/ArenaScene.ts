@@ -396,10 +396,10 @@ export class ArenaScene extends Phaser.Scene {
     this.muteBtn.on('pointerdown', () => {
       const m = audio.toggleMute();
       this.muteBtn.setText(m ? '🔇' : '🔊');
-      // Unmute path: unlock AudioContext + restart ambient (autoplay-safe)
+      // Unmute path: unlock AudioContext + restart BGM (autoplay-safe)
       if (!m) {
-        audio.unlock();
-        audio.startAmbient(this.phoneLite ? 0.75 : 0.95);
+        void audio.unlock();
+        if (!this.phoneLite) audio.startAmbient(0.95);
       } else {
         audio.ensure();
       }
@@ -434,14 +434,14 @@ export class ArenaScene extends Phaser.Scene {
         .setAlpha(0.6);
     }
 
-    // Start arena ambient bed (AudioContext unlocks via banner / mute / tap)
-    // Phone lite: hearable but softer than desktop (~0.75 vs ~0.95)
+    // BGM + soft ambient (AudioContext unlocks via banner / mute / tap)
+    // Phone lite: BGM primary (*0.85); soft drone skipped inside AudioManager
     const ambientIntensity = this.phoneLite ? 0.75 : 0.95;
     audio.ensure();
-    audio.startAmbient(ambientIntensity);
+    if (!this.phoneLite) audio.startAmbient(ambientIntensity);
     this.input.once('pointerdown', () => {
-      audio.unlock();
-      audio.startAmbient(ambientIntensity);
+      void audio.unlock();
+      if (!this.phoneLite) audio.startAmbient(ambientIntensity);
     });
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);

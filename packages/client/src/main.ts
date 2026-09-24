@@ -9,15 +9,46 @@ import { THEME_HEX } from './theme';
 
 const opts = getOverlayOptions();
 applyOverlayDom(opts);
-// Phone screen-share: lower ambient ceiling immediately (mute still wins).
+// Phone screen-share: mild BGM trim immediately (mute still wins).
 if (opts.phoneLite) audio.setPhoneLite(true);
 
-/** Session flag — don't re-show unlock banner after first unlock. */
+/** Session flag — don't re-show unlock banner after first successful unlock. */
 let audioUnlockedThisSession = false;
+
+/** Brief toast when BGM fails to start — invite another tap. */
+function showAudioRetryToast(msg = 'toque de novo'): void {
+  const existing = document.getElementById('audio-retry-toast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'audio-retry-toast';
+  el.textContent = msg;
+  el.setAttribute('role', 'status');
+  Object.assign(el.style, {
+    position: 'fixed',
+    left: '50%',
+    bottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
+    transform: 'translateX(-50%)',
+    zIndex: '100000',
+    padding: '10px 18px',
+    borderRadius: '12px',
+    background: 'rgba(11,11,15,0.92)',
+    border: '1px solid rgba(255,209,102,0.65)',
+    color: '#FFD166',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    fontWeight: '700',
+    fontSize: '14px',
+    letterSpacing: '0.03em',
+    boxShadow: '0 0 20px rgba(34,211,238,0.35)',
+    pointerEvents: 'none',
+  });
+  document.body.appendChild(el);
+  window.setTimeout(() => el.remove(), 2800);
+}
 
 /**
  * Visible unlock gate for mobile autoplay policy.
  * ?mute=1 keeps silent (OBS) and skips the banner.
+ * Gate stays until BGM actually starts (or toast "toque de novo").
  */
 function setupAudioUnlockGate(): void {
   const gate = document.getElementById('audio-unlock-gate');
@@ -31,40 +62,56 @@ function setupAudioUnlockGate(): void {
 
   if (!gate) {
     // Fallback: invisible gesture unlock if DOM banner missing
-    const unlock = () => {
+    const unlock = async () => {
       if (audioUnlockedThisSession) return;
-      audioUnlockedThisSession = true;
-      audio.unlock();
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('touchstart', unlock);
-      window.removeEventListener('keydown', unlock);
+      const ok = await audio.unlock();
+      if (ok) {
+        audioUnlockedThisSession = true;
+        window.removeEventListener('pointerdown', unlock);
+        window.removeEventListener('touchstart', unlock);
+        window.removeEventListener('keydown', unlock);
+      } else {
+        showAudioRetryToast('toque de novo');
+      }
     };
-    window.addEventListener('pointerdown', unlock, { once: true, passive: true });
-    window.addEventListener('touchstart', unlock, { once: true, passive: true });
-    window.addEventListener('keydown', unlock, { once: true });
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('touchstart', unlock, { passive: true });
+    window.addEventListener('keydown', unlock);
     return;
   }
 
-  const doUnlock = () => {
+  const titleEl = gate.querySelector('.gate-title');
+  const subEl = gate.querySelector('.gate-sub');
+
+  const doUnlock = async () => {
     if (audioUnlockedThisSession) return;
-    audioUnlockedThisSession = true;
-    audio.unlock();
-    gate.classList.add('hidden');
-    gate.removeEventListener('pointerdown', onGateTap);
-    gate.removeEventListener('touchstart', onGateTap);
-    window.removeEventListener('keydown', onKey);
+    const ok = await audio.unlock();
+    if (ok) {
+      audioUnlockedThisSession = true;
+      gate.classList.add('hidden');
+      gate.removeEventListener('pointerdown', onGateTap);
+      gate.removeEventListener('touchstart', onGateTap);
+      window.removeEventListener('keydown', onKey);
+      document.getElementById('audio-retry-toast')?.remove();
+    } else {
+      if (titleEl) titleEl.textContent = '🔊 TOQUE DE NOVO';
+      if (subEl) subEl.textContent = 'áudio ainda não iniciou — toque outra vez';
+      showAudioRetryToast('toque de novo');
+    }
   };
 
   const onGateTap = (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
-    doUnlock();
+    void doUnlock();
   };
-  const onKey = () => doUnlock();
+  const onKey = () => {
+    void doUnlock();
+  };
 
   gate.addEventListener('pointerdown', onGateTap, { passive: false });
   gate.addEventListener('touchstart', onGateTap, { passive: false });
-  window.addEventListener('keydown', onKey, { once: true });
+  window.addEventListener('keydown', onKey);
 }
 
 setupAudioUnlockGate();

@@ -65,6 +65,8 @@ function isExempt(req: Request): boolean {
   if (p.startsWith('/socket.io')) return true;
   // Gate page brand art (bg + logo) must load before unlock
   if (p.startsWith('/assets/ball-arena/')) return true;
+  // BGM / SFX under client public (safe to serve without cookie)
+  if (p.startsWith('/assets/sfx/')) return true;
   return false;
 }
 

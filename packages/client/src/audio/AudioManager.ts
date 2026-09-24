@@ -1,8 +1,7 @@
 /**
- * Lightweight Web Audio synth SFX + procedural arena ambient.
- * Missing assets = silent (no crash). Mute toggle + volumes.
- *
- * To use real files later, place under /overlay/assets/sfx/ and set USE_FILES=true.
+ * Arena audio: looping BGM file + punchy procedural SFX.
+ * Soft procedural drone optional under music (dropped on phoneLite).
+ * Mute toggles BGM + SFX together. Missing assets = silent (no crash).
  */
 
 export type SfxKind =
@@ -19,25 +18,37 @@ export type SfxKind =
 
 type VolKey = 'master' | 'sfx' | 'music';
 
-const FILE_MAP: Partial<Record<SfxKind, string>> = {
-  // Optional — leave empty = synth only
-  // collision: '/assets/sfx/hit.mp3',
-};
+/** Soft drone under BGM — not the main "música de fundo". */
+const AMBIENT_BASE = 0.035;
+/** HTMLAudioElement target scale (master * music * this ≈ 0.35–0.5). */
+const BGM_BASE = 0.55;
+/** One-shot beep master scale — hits must be unmistakable on phone speakers. */
+const BEEP_SCALE = 0.62;
 
-/** Soft ceiling so ambient never drowns TikTok LIVE mic when screen-sharing. */
-const AMBIENT_BASE = 0.11;
+const BGM_CANDIDATES = ['/assets/sfx/arena-bgm.ogg', '/assets/sfx/arena-bgm.mp3'];
+
+const FILE_MAP: Partial<Record<SfxKind, string>> = {
+  // Optional file overrides — leave empty = synth only
+};
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private muted = false;
-  private volumes: Record<VolKey, number> = { master: 0.85, sfx: 1.0, music: 0.75 };
+  private volumes: Record<VolKey, number> = { master: 0.9, sfx: 1.0, music: 0.85 };
   private lastPlay = new Map<string, number>();
   private quality = 1; // 1 = full, 0.3 = reduced (fewer beeps)
 
-  // --- Ambient bed (procedural, looping) ---
+  // --- BGM (HTMLAudioElement loop) ---
+  private bgmWanted = false;
+  private bgmEl: HTMLAudioElement | null = null;
+  private bgmPlaying = false;
+  private bgmFadeTimer: number | null = null;
+  private bgmRetryBound = false;
+
+  // --- Soft ambient bed (procedural) ---
   private ambientWanted = false;
   private ambientIntensity = 1;
-  /** Soften ambient gain ceiling on phone screen-share (?phone=1). Mute still wins. */
+  /** Mild BGM trim on phone screen-share (?phone=1). Mute still wins. */
   private phoneLite = false;
   private ambientNodes: {
     master: GainNode;
@@ -47,6 +58,26 @@ export class AudioManager {
     noiseFilter: BiquadFilterNode;
     shimmerTimer: number | null;
   } | null = null;
+
+  constructor() {
+    this.exposeDebug();
+  }
+
+  private exposeDebug(): void {
+    try {
+      Object.defineProperty(window, '__arenaAudio', {
+        configurable: true,
+        get: () => ({
+          ctxState: this.ctx?.state ?? 'none',
+          muted: this.muted,
+          bgmPlaying: this.bgmPlaying && !!this.bgmEl && !this.bgmEl.paused,
+          bgmVol: this.bgmEl?.volume ?? 0,
+        }),
+      });
+    } catch {
+      /* ignore non-browser */
+    }
+  }
 
   ensure(): void {
     if (this.ctx) {
@@ -64,24 +95,39 @@ export class AudioManager {
     }
   }
 
-  /** Call from first touch/click — required for mobile autoplay policy. */
-  unlock(): void {
+  /** Resume AudioContext if suspended (call on unlock and every play/hit). */
+  private resumeCtx(): void {
+    if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume();
+  }
+
+  /**
+   * Call from first touch/click — required for mobile autoplay policy.
+   * Starts BGM + confirm blip. Resolves true if BGM started (or muted path ok).
+   */
+  async unlock(): Promise<boolean> {
     this.ensure();
-    if (this.ctx && this.ctx.state === 'suspended') {
-      void this.ctx.resume();
-    }
-    // Start arena atmosphere as soon as audio is allowed.
-    this.startAmbient();
+    this.resumeCtx();
+    this.bgmWanted = true;
+
+    // Soft drone under music (skip on phone to keep BGM clear)
+    if (!this.phoneLite) this.startAmbient();
+
+    this.playConfirmBlip();
+    const ok = await this.startBgm(true);
+    this.bindBgmRetry();
+    return ok;
   }
 
   setMuted(m: boolean): void {
     this.muted = m;
     this.applyAmbientMute();
+    this.applyBgmMute();
   }
 
   toggleMute(): boolean {
     this.muted = !this.muted;
     this.applyAmbientMute();
+    this.applyBgmMute();
     return this.muted;
   }
 
@@ -91,7 +137,10 @@ export class AudioManager {
 
   setVolume(key: VolKey, v: number): void {
     this.volumes[key] = Math.max(0, Math.min(1, v));
-    if (key === 'master' || key === 'music') this.applyAmbientGain(0.05);
+    if (key === 'master' || key === 'music') {
+      this.applyAmbientGain(0.05);
+      this.applyBgmVolume(true);
+    }
   }
 
   /** 0..1 adaptive quality — lower skips low-priority SFX */
@@ -100,13 +149,194 @@ export class AudioManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Ambient atmosphere
+  // BGM
   // ---------------------------------------------------------------------------
 
-  /** Soft dark pad + noise bed + occasional shimmer. Modest volume for LIVE overlays. */
+  private pickBgmUrl(): string {
+    try {
+      const probe = document.createElement('audio');
+      for (const url of BGM_CANDIDATES) {
+        const ext = url.endsWith('.ogg') ? 'audio/ogg; codecs="vorbis"' : 'audio/mpeg';
+        const can = probe.canPlayType(ext);
+        if (can === 'probably' || can === 'maybe') return url;
+      }
+    } catch {
+      /* fall through */
+    }
+    return BGM_CANDIDATES[1] || BGM_CANDIDATES[0];
+  }
+
+  private bgmTargetVolume(): number {
+    if (this.muted || !this.bgmWanted) return 0;
+    const phoneMul = this.phoneLite ? 0.85 : 1;
+    return Math.max(0, Math.min(1, this.volumes.master * this.volumes.music * BGM_BASE * phoneMul));
+  }
+
+  private applyBgmVolume(instant = false): void {
+    if (!this.bgmEl) return;
+    const target = this.bgmTargetVolume();
+    if (this.bgmFadeTimer != null) {
+      clearInterval(this.bgmFadeTimer);
+      this.bgmFadeTimer = null;
+    }
+    if (instant || target <= 0.0001) {
+      this.bgmEl.volume = target;
+      return;
+    }
+    // short ramp if already playing
+    const el = this.bgmEl;
+    const from = el.volume;
+    const steps = 8;
+    let i = 0;
+    this.bgmFadeTimer = window.setInterval(() => {
+      i++;
+      el.volume = from + (target - from) * (i / steps);
+      if (i >= steps) {
+        if (this.bgmFadeTimer != null) clearInterval(this.bgmFadeTimer);
+        this.bgmFadeTimer = null;
+        el.volume = target;
+      }
+    }, 40);
+  }
+
+  private applyBgmMute(): void {
+    if (this.muted) {
+      if (this.bgmEl) {
+        this.bgmEl.pause();
+        this.bgmEl.volume = 0;
+        this.bgmPlaying = false;
+      }
+      return;
+    }
+    if (this.bgmWanted) {
+      void this.startBgm(true);
+    }
+  }
+
+  /**
+   * Start / restart looping BGM. Fade in ~0.8s.
+   * Returns false if .play() rejected (autoplay / missing file).
+   */
+  async startBgm(fadeIn = true): Promise<boolean> {
+    this.bgmWanted = true;
+    if (this.muted) return true;
+    this.ensure();
+    this.resumeCtx();
+
+    if (!this.bgmEl) {
+      const el = new Audio();
+      el.loop = true;
+      el.preload = 'auto';
+      el.src = this.pickBgmUrl();
+      el.volume = 0;
+      this.bgmEl = el;
+    }
+
+    const el = this.bgmEl;
+    if (!el.paused && this.bgmPlaying) {
+      this.applyBgmVolume(false);
+      return true;
+    }
+
+    const target = this.bgmTargetVolume();
+    el.volume = fadeIn ? 0 : target;
+
+    try {
+      await el.play();
+      this.bgmPlaying = true;
+      if (fadeIn && target > 0) {
+        if (this.bgmFadeTimer != null) clearInterval(this.bgmFadeTimer);
+        const steps = 16; // ~0.8s at 50ms
+        let i = 0;
+        this.bgmFadeTimer = window.setInterval(() => {
+          i++;
+          const v = target * (i / steps);
+          el.volume = Math.min(target, v);
+          if (i >= steps) {
+            if (this.bgmFadeTimer != null) clearInterval(this.bgmFadeTimer);
+            this.bgmFadeTimer = null;
+            el.volume = target;
+          }
+        }, 50);
+      } else {
+        el.volume = target;
+      }
+      return true;
+    } catch {
+      this.bgmPlaying = false;
+      return false;
+    }
+  }
+
+  stopBgm(fadeSec = 0.4): void {
+    this.bgmWanted = false;
+    const el = this.bgmEl;
+    if (!el) return;
+    if (this.bgmFadeTimer != null) {
+      clearInterval(this.bgmFadeTimer);
+      this.bgmFadeTimer = null;
+    }
+    const from = el.volume;
+    const steps = Math.max(1, Math.round(fadeSec * 20));
+    let i = 0;
+    this.bgmFadeTimer = window.setInterval(() => {
+      i++;
+      el.volume = from * (1 - i / steps);
+      if (i >= steps) {
+        if (this.bgmFadeTimer != null) clearInterval(this.bgmFadeTimer);
+        this.bgmFadeTimer = null;
+        el.pause();
+        el.volume = 0;
+        this.bgmPlaying = false;
+      }
+    }, 50);
+  }
+
+  /** If BGM .play() was blocked, retry on next pointerdown. */
+  private bindBgmRetry(): void {
+    if (this.bgmRetryBound) return;
+    this.bgmRetryBound = true;
+    const retry = () => {
+      if (this.muted || !this.bgmWanted) return;
+      if (this.bgmPlaying && this.bgmEl && !this.bgmEl.paused) return;
+      void this.startBgm(true);
+    };
+    window.addEventListener('pointerdown', retry, { passive: true });
+    window.addEventListener('touchstart', retry, { passive: true });
+  }
+
+  /** Loud short confirmation so user knows audio works immediately. */
+  private playConfirmBlip(): void {
+    if (this.muted) return;
+    this.ensure();
+    this.resumeCtx();
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const vol = this.volumes.master * this.volumes.sfx * 0.55;
+    // Two-note "ready" chirp
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, t0);
+    osc.frequency.setValueAtTime(1320, t0 + 0.07);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.2);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ambient atmosphere (soft under BGM)
+  // ---------------------------------------------------------------------------
+
+  /** Soft dark pad under music. Skipped on phoneLite (BGM is primary). */
   startAmbient(intensity = 1): void {
     this.ambientWanted = true;
     this.ambientIntensity = Math.max(0, Math.min(1, intensity));
+    if (this.phoneLite) return; // BGM only on phone
     this.ensure();
     if (!this.ctx || this.muted) return;
     if (this.ambientNodes) {
@@ -136,21 +366,21 @@ export class AudioManager {
     this.applyAmbientGain(0.15);
   }
 
-  /** Lower ambient ceiling for phone screen-share; does not override mute. */
+  /** Mild BGM reduction for phone screen-share; does not gut music. Mute still wins. */
   setPhoneLite(on: boolean): void {
     this.phoneLite = !!on;
     this.applyAmbientGain(0.08);
+    this.applyBgmVolume(false);
+    // Drop soft drone on phone so BGM stays clear
+    if (this.phoneLite && this.ambientNodes) {
+      this.stopAmbient(0.3);
+    }
   }
 
   private ambientTargetGain(): number {
-    if (this.muted || !this.ambientWanted) return 0;
-    const phoneMul = this.phoneLite ? 0.8 : 1;
+    if (this.muted || !this.ambientWanted || this.phoneLite) return 0;
     return (
-      this.volumes.master *
-      this.volumes.music *
-      AMBIENT_BASE *
-      this.ambientIntensity *
-      phoneMul
+      this.volumes.master * this.volumes.music * AMBIENT_BASE * this.ambientIntensity
     );
   }
 
@@ -159,7 +389,7 @@ export class AudioManager {
       this.applyAmbientGain(0.12);
       return;
     }
-    if (this.ambientWanted) {
+    if (this.ambientWanted && !this.phoneLite) {
       if (!this.ambientNodes) this.spawnAmbient();
       else this.applyAmbientGain(0.25);
     }
@@ -175,7 +405,7 @@ export class AudioManager {
         Math.max(0.0001, this.ambientNodes.master.gain.value),
         t0
       );
-      if (this.muted || !this.ambientWanted) {
+      if (this.muted || !this.ambientWanted || this.phoneLite) {
         this.ambientNodes.master.gain.exponentialRampToValueAtTime(0.0001, t0 + rampSec);
       } else {
         this.ambientNodes.master.gain.exponentialRampToValueAtTime(target, t0 + rampSec);
@@ -186,7 +416,7 @@ export class AudioManager {
   }
 
   private spawnAmbient(): void {
-    if (!this.ctx || this.ambientNodes) return;
+    if (!this.ctx || this.ambientNodes || this.phoneLite) return;
     const ctx = this.ctx;
     if (ctx.state === 'suspended') void ctx.resume();
 
@@ -194,7 +424,6 @@ export class AudioManager {
     master.gain.value = 0.0001;
     master.connect(ctx.destination);
 
-    // Low dark drone (two detuned sines)
     const drone = ctx.createOscillator();
     drone.type = 'sine';
     drone.frequency.value = 55;
@@ -205,13 +434,12 @@ export class AudioManager {
 
     const drone2 = ctx.createOscillator();
     drone2.type = 'sine';
-    drone2.frequency.value = 82.4; // ~E2, slight interval
+    drone2.frequency.value = 82.4;
     const drone2Gain = ctx.createGain();
     drone2Gain.gain.value = 0.28;
     drone2.connect(drone2Gain);
     drone2Gain.connect(master);
 
-    // Filtered noise bed
     const noiseBuf = this.makeNoiseBuffer(ctx, 2);
     const noise = ctx.createBufferSource();
     noise.buffer = noiseBuf;
@@ -240,18 +468,16 @@ export class AudioManager {
       shimmerTimer: null,
     };
 
-    // Fade in ~1.4s
     const target = Math.max(0.0001, this.ambientTargetGain());
     master.gain.setValueAtTime(0.0001, t0);
-    master.gain.exponentialRampToValueAtTime(target, t0 + 1.4);
+    master.gain.exponentialRampToValueAtTime(target, t0 + 1.2);
 
     this.scheduleShimmer();
   }
 
   private scheduleShimmer(): void {
     if (!this.ambientNodes || !this.ctx || !this.ambientWanted) return;
-    // Quiet high sine blip every 4–9s
-    const delay = 4000 + Math.random() * 5000;
+    const delay = 5000 + Math.random() * 6000;
     this.ambientNodes.shimmerTimer = window.setTimeout(() => {
       this.playShimmer();
       this.scheduleShimmer();
@@ -259,7 +485,8 @@ export class AudioManager {
   }
 
   private playShimmer(): void {
-    if (this.muted || !this.ctx || !this.ambientNodes || this.quality < 0.4) return;
+    if (this.muted || !this.ctx || !this.ambientNodes || this.quality < 0.4 || this.phoneLite)
+      return;
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -306,8 +533,7 @@ export class AudioManager {
       /* ignore */
     }
     this.ambientNodes = null;
-    // If still wanted (e.g. unmute race), respawn
-    if (this.ambientWanted && !this.muted) this.spawnAmbient();
+    if (this.ambientWanted && !this.muted && !this.phoneLite) this.spawnAmbient();
   }
 
   private makeNoiseBuffer(ctx: AudioContext, seconds: number): AudioBuffer {
@@ -325,13 +551,13 @@ export class AudioManager {
 
   play(kind: SfxKind, opts?: { intensity?: number }): void {
     if (this.muted) return;
-    // throttle collisions when quality low; at max quality keep full richness
+    this.ensure();
+    this.resumeCtx();
+
     if (kind === 'collision' && this.quality < 0.85 && Math.random() > this.quality + 0.15) return;
 
     const now = performance.now();
-    // Slightly tighter min-gap at high quality so layered impacts still feel dense
-    const minGap =
-      kind === 'collision' ? (this.quality >= 0.85 ? 28 : 45) : 80;
+    const minGap = kind === 'collision' ? (this.quality >= 0.85 ? 28 : 45) : 80;
     const last = this.lastPlay.get(kind) || 0;
     if (now - last < minGap) return;
     this.lastPlay.set(kind, now);
@@ -352,13 +578,13 @@ export class AudioManager {
 
   private beep(kind: SfxKind, intensity: number): void {
     this.ensure();
+    this.resumeCtx();
     if (!this.ctx) return;
     const ctx = this.ctx;
-    if (ctx.state === 'suspended') void ctx.resume();
 
     const t0 = ctx.currentTime;
     const inten = Math.max(0.05, Math.min(1, intensity));
-    const vol = this.volumes.master * this.volumes.sfx * inten * 0.38;
+    const vol = this.volumes.master * this.volumes.sfx * inten * BEEP_SCALE;
 
     switch (kind) {
       case 'collision':
@@ -392,13 +618,13 @@ export class AudioManager {
     }
   }
 
-  /** Multi-layer ball hit: noise burst + body thud + bright tick. */
+  /** Multi-layer ball hit: noise burst + body thud + bright tick — punchy on phone. */
   private playImpact(t0: number, inten: number, vol: number): void {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const rich = this.quality >= 0.7;
 
-    // Layer 1 — filtered noise burst (contact grit)
+    // Layer 1 — filtered noise burst
     {
       const buf = this.makeNoiseBuffer(ctx, 0.08);
       const src = ctx.createBufferSource();
@@ -408,7 +634,7 @@ export class AudioManager {
       filter.frequency.value = 900 + inten * 1400;
       filter.Q.value = 1.2;
       const g = ctx.createGain();
-      const nv = vol * (rich ? 1.6 : 1.1);
+      const nv = vol * (rich ? 1.85 : 1.35);
       g.gain.setValueAtTime(nv, t0);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055 + inten * 0.03);
       src.connect(filter);
@@ -418,14 +644,14 @@ export class AudioManager {
       src.stop(t0 + 0.09);
     }
 
-    // Layer 2 — low body thud (sine drop)
+    // Layer 2 — low body thud
     {
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(140 + inten * 80, t0);
       osc.frequency.exponentialRampToValueAtTime(55 + inten * 20, t0 + 0.09);
-      const tv = vol * (rich ? 2.2 : 1.6);
+      const tv = vol * (rich ? 2.6 : 1.9);
       g.gain.setValueAtTime(tv, t0);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12 + inten * 0.05);
       osc.connect(g);
@@ -434,13 +660,13 @@ export class AudioManager {
       osc.stop(t0 + 0.18);
     }
 
-    // Layer 3 — bright tick (optional at high quality)
+    // Layer 3 — bright tick
     if (rich) {
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.value = 1200 + inten * 900;
-      const tv = vol * 0.55;
+      const tv = vol * 0.7;
       g.gain.setValueAtTime(tv, t0);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.035);
       osc.connect(g);
@@ -455,14 +681,13 @@ export class AudioManager {
     if (!this.ctx) return;
     const ctx = this.ctx;
 
-    // Sub boom
     {
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(90, t0);
       osc.frequency.exponentialRampToValueAtTime(32, t0 + 0.45);
-      const tv = vol * 2.4;
+      const tv = vol * 2.6;
       g.gain.setValueAtTime(tv, t0);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
       osc.connect(g);
@@ -471,7 +696,6 @@ export class AudioManager {
       osc.stop(t0 + 0.52);
     }
 
-    // Mid growl
     {
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
@@ -481,7 +705,7 @@ export class AudioManager {
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.value = 600;
-      const tv = vol * 1.1;
+      const tv = vol * 1.25;
       g.gain.setValueAtTime(tv, t0);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
       osc.connect(filter);
@@ -491,7 +715,6 @@ export class AudioManager {
       osc.stop(t0 + 0.42);
     }
 
-    // Noise smash
     {
       const buf = this.makeNoiseBuffer(ctx, 0.2);
       const src = ctx.createBufferSource();
@@ -501,7 +724,7 @@ export class AudioManager {
       filter.frequency.setValueAtTime(2000, t0);
       filter.frequency.exponentialRampToValueAtTime(200, t0 + 0.25);
       const g = ctx.createGain();
-      const tv = vol * 1.4 * (0.7 + inten * 0.3);
+      const tv = vol * 1.55 * (0.7 + inten * 0.3);
       g.gain.setValueAtTime(tv, t0);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
       src.connect(filter);
