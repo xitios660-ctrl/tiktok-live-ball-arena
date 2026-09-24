@@ -1,30 +1,12 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Design polish + Kill → Força**
+## Etapa atual: **Ticulinho-inspired visual theme**
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
-## Part A — Visual
-
-- Arena: vignette/gradient (skipped if `?transparent=1`), glass TOP 5 card with crown on #1, dramatic timer + glow, punchier kill feed rows, celebratory winner panel.
-- Balls: outer ring, clearer HP (green/yellow/red), stronger labels, buff auras, `💪×mult` when kills ≥ 3.
-- WaitingScene: TikTok-colored backdrop + pulsing CTA “COMENTE PARA JOGAR”.
-- Performance: no heavy filters; adaptive particles unchanged.
-
-## Part B — Kills → strength + ranking
-
-**Ranking (unchanged primary):** `kills → damageDealt → fewer deaths → highestSpeed` (`compareRanking`). King / TOP5 / winner all use this.
-
-**Strength formula (round-permanent until next round):**
-```
-strengthMult = 1 + min(kills * 0.08, 1.0)
-```
-- +8% collision damage power per kill; soft cap **+100%** (2.0×) at **12+** kills.
-- Applied in `PhysicsWorld.activeStrength` **before** gift mults (Dino/Titan/Galaxy still stack on top).
-- `DAMAGE_MAX` raised 28 → 36 so late-game strength can express.
-- Announce `💪 FORÇA +N%` every 3 kills (`strength_up`) — not per kill.
-- Survives death/respawn (`setKills` on respawn/spawn).
-
+Palette cream/teal/coral/gold/lavender/sage on charcoal chalkboard; Nunito HUD + admin.
+Tokens: `brand/THEME.md` + `packages/client/src/theme.ts`. Homage only — not official Ticulinho branding.
+Waiting: slogan “Jogos indie com alma ♡” + tiny eye doodle (not logo copy). OBS transparent still works.
 
 ## Add-on: Mild attraction + new powers
 

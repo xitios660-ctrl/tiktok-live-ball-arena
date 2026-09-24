@@ -13,15 +13,16 @@ import {
   type AbilityKey,
   type ArenaGiftEvent,
   type AnnounceEvent,
+  type AbilityFxEvent,
 } from '@arena/shared';
-import type { PhysicsWorld, DamageApplication, FxEvent } from './PhysicsWorld';
+import type { PhysicsWorld, DamageApplication } from './PhysicsWorld';
 
 export interface GiftApplyResult {
   ability: AbilityKey;
   times: number;
   announces: AnnounceEvent[];
   damages: DamageApplication[];
-  fx: FxEvent[];
+  fx: AbilityFxEvent[];
 }
 
 /**
@@ -44,7 +45,7 @@ export function applyGiftAbility(
   const name = event.user.nickname || event.user.username;
   const announces: AnnounceEvent[] = [];
   const damages: DamageApplication[] = [];
-  const fx: FxEvent[] = [];
+  const fx: AbilityFxEvent[] = [];
   const now = Date.now();
 
   for (let i = 0; i < times; i++) {
@@ -154,26 +155,47 @@ export function applyGiftAbility(
             targetId: zap.targetId || undefined,
             timestamp: Date.now(),
           });
+          fx.push({
+            type: 'ability_fx',
+            ability: 'lightning_zap',
+            userId,
+            x: zap.x,
+            y: zap.y,
+            targetId: zap.targetId || undefined,
+            targetX: zap.targetX,
+            targetY: zap.targetY,
+            value: zap.damage,
+            timestamp: Date.now(),
+          });
         }
         break;
       }
       case 'magnet_pulse': {
         if (i === 0) {
-          const n = physics.applyMagnetPulse(userId);
+          const mag = physics.applyMagnetPulse(userId);
           announces.push({
             type: 'announce',
             kind: 'gift',
-            message: `🧲 ÍMÃ! @${name} puxou ${n} bola(s)`,
+            message: `🧲 ÍMÃ! @${name} puxou ${mag.count} bola(s)`,
             userId,
             username: name,
-            value: n,
+            value: mag.count,
+            timestamp: Date.now(),
+          });
+          fx.push({
+            type: 'ability_fx',
+            ability: 'magnet_pulse',
+            userId,
+            x: mag.x,
+            y: mag.y,
+            value: mag.count,
             timestamp: Date.now(),
           });
         }
         break;
       }
       case 'freeze_aura': {
-        physics.applyFreezeAura(userId);
+        const fr = physics.applyFreezeAura(userId);
         if (i === times - 1) {
           announces.push({
             type: 'announce',
@@ -183,12 +205,22 @@ export function applyGiftAbility(
             username: name,
             timestamp: Date.now(),
           });
+          if (fr) {
+            fx.push({
+              type: 'ability_fx',
+              ability: 'freeze_aura',
+              userId,
+              x: fr.x,
+              y: fr.y,
+              timestamp: Date.now(),
+            });
+          }
         }
         break;
       }
       case 'dash_burst': {
         if (i === 0) {
-          physics.applyDashBurst(userId);
+          const dash = physics.applyDashBurst(userId);
           announces.push({
             type: 'announce',
             kind: 'gift',
@@ -197,11 +229,23 @@ export function applyGiftAbility(
             username: name,
             timestamp: Date.now(),
           });
+          if (dash) {
+            fx.push({
+              type: 'ability_fx',
+              ability: 'dash_burst',
+              userId,
+              x: dash.x,
+              y: dash.y,
+              targetX: dash.x + dash.vx * 0.05,
+              targetY: dash.y + dash.vy * 0.05,
+              timestamp: Date.now(),
+            });
+          }
         }
         break;
       }
       case 'reflect_shield': {
-        physics.applyReflectShield(userId);
+        const ref = physics.applyReflectShield(userId);
         if (i === times - 1) {
           announces.push({
             type: 'announce',
@@ -211,6 +255,16 @@ export function applyGiftAbility(
             username: name,
             timestamp: Date.now(),
           });
+          if (ref) {
+            fx.push({
+              type: 'ability_fx',
+              ability: 'reflect_shield',
+              userId,
+              x: ref.x,
+              y: ref.y,
+              timestamp: Date.now(),
+            });
+          }
         }
         break;
       }

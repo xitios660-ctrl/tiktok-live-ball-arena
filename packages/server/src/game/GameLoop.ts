@@ -373,6 +373,10 @@ export class GameLoop {
       emitted.push(a);
       this.pushCombat(a);
     }
+    for (const f of result.fx) {
+      emitted.push(f);
+      this.pushCombat(f);
+    }
     this.emitSnapshot();
     console.log(
       `[Gift] ${event.giftName} x${result.times} → @${event.user.username} (${ability})`
@@ -622,7 +626,7 @@ export class GameLoop {
     const pairs = new Set<string>();
 
     for (const d of damages) {
-      if (d.damage <= 0 && !d.shieldBroke && !d.killed) continue;
+      if (d.damage <= 0 && !d.shieldBroke && !d.killed && !d.reflected) continue;
 
       const pairKey = [d.attackerId, d.victimId].sort().join(':');
       if (!pairs.has(pairKey)) {
@@ -652,6 +656,22 @@ export class GameLoop {
       };
       emitted.push(hit);
       this.pushCombat(hit);
+
+      if (d.reflected) {
+        const rfx = {
+          type: 'ability_fx' as const,
+          ability: 'reflect_hit' as const,
+          userId: d.victimId,
+          x: d.reflectX ?? d.x,
+          y: d.reflectY ?? d.y,
+          targetId: d.attackerId,
+          targetX: d.x,
+          targetY: d.y,
+          timestamp: Date.now(),
+        };
+        emitted.push(rfx);
+        this.pushCombat(rfx);
+      }
 
       if (d.shieldBroke) {
         const victimBall = this.physics.getBall(d.victimId);

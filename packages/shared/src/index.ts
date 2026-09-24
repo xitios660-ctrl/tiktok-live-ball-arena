@@ -277,7 +277,26 @@ export interface AnnounceEvent {
   timestamp: number;
 }
 
-export type CombatEvent = HitEvent | KillEvent | AnnounceEvent;
+/** One-shot ability / combat feedback FX for the overlay (lightweight payloads) */
+export type AbilityFxKind =
+  | AbilityKey
+  | 'reflect_hit';
+
+export interface AbilityFxEvent {
+  type: 'ability_fx';
+  ability: AbilityFxKind;
+  userId: string;
+  x: number;
+  y: number;
+  /** Optional target (e.g. lightning zap victim) */
+  targetId?: string;
+  targetX?: number;
+  targetY?: number;
+  value?: number;
+  timestamp: number;
+}
+
+export type CombatEvent = HitEvent | KillEvent | AnnounceEvent | AbilityFxEvent;
 
 export const CANVAS_WIDTH = 1080;
 export const CANVAS_HEIGHT = 1920;

@@ -131,6 +131,10 @@ export interface DamageApplication {
   y: number;
   killed: boolean;
   shieldBroke?: boolean;
+  /** Victim had reflect_shield and bounced damage */
+  reflected?: boolean;
+  reflectX?: number;
+  reflectY?: number;
 }
 
 export interface FxEvent {
@@ -682,9 +686,16 @@ export class PhysicsWorld {
   }
 
   /** Zap nearest unprotected foe: damage + brief slow. */
-  applyLightningZap(casterId: string): { targetId: string | null; damage: number } {
+  applyLightningZap(casterId: string): {
+    targetId: string | null;
+    damage: number;
+    x: number;
+    y: number;
+    targetX?: number;
+    targetY?: number;
+  } {
     const src = this.balls.get(casterId);
-    if (!src) return { targetId: null, damage: 0 };
+    if (!src) return { targetId: null, damage: 0, x: 0, y: 0 };
     const now = Date.now();
     let best: BallBody | null = null;
     let bestDist = LIGHTNING_RANGE;
@@ -697,19 +708,26 @@ export class PhysicsWorld {
         best = o;
       }
     }
-    if (!best) return { targetId: null, damage: 0 };
+    if (!best) return { targetId: null, damage: 0, x: src.x, y: src.y };
     best.vx *= LIGHTNING_SLOW_FACTOR;
     best.vy *= LIGHTNING_SLOW_FACTOR;
     best.slowUntil = Math.max(best.slowUntil, now + LIGHTNING_SLOW_MS);
     best.hitFlashTicks = 10;
     this.dealDamage(best, LIGHTNING_DAMAGE, src, now);
-    return { targetId: best.userId, damage: LIGHTNING_DAMAGE };
+    return {
+      targetId: best.userId,
+      damage: LIGHTNING_DAMAGE,
+      x: src.x,
+      y: src.y,
+      targetX: best.x,
+      targetY: best.y,
+    };
   }
 
   /** Strong short pull of nearby balls toward caster. */
-  applyMagnetPulse(casterId: string): number {
+  applyMagnetPulse(casterId: string): { count: number; x: number; y: number } {
     const src = this.balls.get(casterId);
-    if (!src) return 0;
+    if (!src) return { count: 0, x: 0, y: 0 };
     const now = Date.now();
     src.magnetPulseUntil = Math.max(src.magnetPulseUntil, now + MAGNET_PULSE_VISUAL_MS);
     let n = 0;
@@ -729,16 +747,19 @@ export class PhysicsWorld {
       capSpeed(o, now);
       n += 1;
     }
-    return n;
+    return { count: n, x: src.x, y: src.y };
   }
 
-  applyFreezeAura(casterId: string): void {
-    this.setTimedBuff(casterId, 'freeze', Date.now() + FREEZE_AURA_MS);
-  }
-
-  applyDashBurst(casterId: string): void {
+  applyFreezeAura(casterId: string): { x: number; y: number } | null {
     const b = this.balls.get(casterId);
-    if (!b) return;
+    if (!b) return null;
+    this.setTimedBuff(casterId, 'freeze', Date.now() + FREEZE_AURA_MS);
+    return { x: b.x, y: b.y };
+  }
+
+  applyDashBurst(casterId: string): { x: number; y: number; vx: number; vy: number } | null {
+    const b = this.balls.get(casterId);
+    if (!b) return null;
     const now = Date.now();
     const s = speedOf(b);
     let nx = 1;
@@ -755,10 +776,14 @@ export class PhysicsWorld {
     b.vy += ny * DASH_BURST_BOOST;
     this.setTimedBuff(casterId, 'dash', now + DASH_BURST_SPEED_MS);
     capSpeed(b, now);
+    return { x: b.x, y: b.y, vx: b.vx, vy: b.vy };
   }
 
-  applyReflectShield(casterId: string): void {
+  applyReflectShield(casterId: string): { x: number; y: number } | null {
+    const b = this.balls.get(casterId);
+    if (!b) return null;
     this.setTimedBuff(casterId, 'reflect', Date.now() + REFLECT_SHIELD_MS);
+    return { x: b.x, y: b.y };
   }
 
   toPublicStates(): BallState[] {
@@ -828,8 +853,14 @@ export class PhysicsWorld {
       }
     }
     // Reflect shield: bounce portion back (no infinite loop — only if victim has reflect)
+    let reflected = false;
+    let reflectX: number | undefined;
+    let reflectY: number | undefined;
     if (attacker && now < victim.reflectUntil && dmg > 0 && !(now < attacker.reflectUntil)) {
       const bounced = Math.max(1, Math.round(dmg * REFLECT_RATIO));
+      reflected = true;
+      reflectX = victim.x;
+      reflectY = victim.y;
       if (!attacker.galaxy) {
         // Non-lethal bounce — avoids orphan deaths without a kill event path
         attacker.hp = Math.max(1, attacker.hp - bounced);
@@ -860,6 +891,9 @@ export class PhysicsWorld {
       y: victim.y,
       killed: !victim.galaxy && victim.hp <= 0,
       shieldBroke,
+      reflected: reflected || undefined,
+      reflectX,
+      reflectY,
     };
   }
 

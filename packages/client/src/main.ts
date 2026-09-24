@@ -5,6 +5,7 @@ import { ArenaScene } from './scenes/ArenaScene';
 import { connectSocket } from './socket';
 import { applyOverlayDom, getOverlayOptions } from './overlayConfig';
 import { audio } from './audio/AudioManager';
+import { THEME_HEX } from './theme';
 
 const opts = getOverlayOptions();
 applyOverlayDom(opts);
@@ -23,46 +24,53 @@ function bindAudioUnlock(): void {
 }
 bindAudioUnlock();
 
-const config: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
-  width: CANVAS_WIDTH,
-  height: CANVAS_HEIGHT,
-  parent: 'game-container',
-  backgroundColor: opts.transparent ? undefined : '#050508',
-  transparent: opts.transparent,
-  scene: [WaitingScene, ArenaScene],
-  scale: {
-    // Keep logical arena 1080×1920; FIT letterboxes on any phone/tablet.
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+function boot(): void {
+  const config: Phaser.Types.Core.GameConfig = {
+    type: Phaser.AUTO,
     width: CANVAS_WIDTH,
     height: CANVAS_HEIGHT,
-  },
-  // Reduce scroll/zoom jank on mobile
-  input: {
-    activePointers: 2,
-  },
-};
+    parent: 'game-container',
+    backgroundColor: opts.transparent ? undefined : THEME_HEX.charcoal,
+    transparent: opts.transparent,
+    scene: [WaitingScene, ArenaScene],
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+    },
+    input: {
+      activePointers: 2,
+    },
+  };
 
-const game = new Phaser.Game(config);
-connectSocket(game);
+  const game = new Phaser.Game(config);
+  connectSocket(game);
 
-/** Re-FIT on orientation / visual viewport changes (phones). */
-function refreshScale(): void {
-  try {
-    game.scale.refresh();
-  } catch {
-    /* game may not be ready */
+  function refreshScale(): void {
+    try {
+      game.scale.refresh();
+    } catch {
+      /* game may not be ready */
+    }
   }
-}
-window.addEventListener('resize', refreshScale);
-window.addEventListener('orientationchange', () => {
-  // Delay so browsers settle layout after rotate
-  setTimeout(refreshScale, 120);
-  setTimeout(refreshScale, 400);
-});
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', refreshScale);
+  window.addEventListener('resize', refreshScale);
+  window.addEventListener('orientationchange', () => {
+    setTimeout(refreshScale, 120);
+    setTimeout(refreshScale, 400);
+  });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', refreshScale);
+  }
+
+  (window as unknown as { __arenaGame?: Phaser.Game }).__arenaGame = game;
 }
 
-export default game;
+/** Prefer Nunito for Phaser text; fall back quickly if fonts API unavailable. */
+const fontsReady =
+  typeof document !== 'undefined' && document.fonts?.ready
+    ? document.fonts.ready.then(() => undefined).catch(() => undefined)
+    : Promise.resolve();
+void fontsReady.then(() => boot());
+
+export default null;

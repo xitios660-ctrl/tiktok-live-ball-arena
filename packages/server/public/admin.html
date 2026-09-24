@@ -5,10 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <meta name="mobile-web-app-capable" content="yes" />
   <title>Arena Admin — DEMO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg:#0f1115; --card:#1a1d24; --accent:#fe2c55; --ok:#20d68a;
-      --text:#e8eaed; --muted:#9aa0a6; --tap:44px;
+      /* Ticulinho-inspired cozy indie tokens — homage palette only */
+      --bg:#1E1E1E; --card:#2A2A2A; --accent:#FF6B6B; --ok:#9AD17D;
+      --text:#F7F3E7; --muted:#C4BDB0; --teal:#4DB6AC; --gold:#FFC857;
+      --lavender:#A78BFA; --cream:#F7F3E7; --tap:44px;
       --safe-t: env(safe-area-inset-top, 0px);
       --safe-b: env(safe-area-inset-bottom, 0px);
       --safe-l: env(safe-area-inset-left, 0px);
@@ -17,7 +22,7 @@
     * { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; }
     body {
-      margin:0; font-family: system-ui, -apple-system, sans-serif;
+      margin:0; font-family: Nunito, system-ui, -apple-system, sans-serif;
       background:var(--bg); color:var(--text);
       padding: 12px;
       padding-top: calc(12px + var(--safe-t));
@@ -30,20 +35,23 @@
     }
     .topbar {
       position: sticky; top: 0; z-index: 40;
-      background: rgba(15,17,21,.94);
+      background: rgba(30,30,30,.94);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       margin: -12px -12px 12px;
       padding: 10px 12px 12px;
       padding-top: calc(10px + var(--safe-t));
-      border-bottom: 1px solid #2a2f3a;
+      border-bottom: 1px solid #3a3a3a;
     }
-    .topbar h1 { font-size:1.2rem; margin:0 0 4px; line-height:1.25; }
+    .topbar h1 { font-size:1.25rem; margin:0 0 4px; line-height:1.25; color:var(--cream); font-weight:800; }
     .sub { color:var(--muted); margin:0 0 8px; font-size:.85rem; line-height:1.4; word-break: break-word; }
     .badges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .badge { display:inline-block; padding:4px 10px; border-radius:999px; background:#333; font-size:.75rem; }
-    .badge.demo { background:#3d2a00; color:#ffb020; }
+    .badge.demo { background:#5a3030; color:var(--cream); }
     .quick { display:flex; flex-wrap:wrap; gap:8px; }
+    .quick button.ok { background: var(--accent); color: var(--charcoal, #1E1E1E); }
+    .badge.demo { background:#5a3030; color:var(--cream); }
+    a { color: var(--teal); }
     .quick button { flex: 1 1 auto; min-width: calc(50% - 8px); }
     @media (min-width: 520px) {
       .quick button { min-width: 0; flex: 0 1 auto; }
@@ -58,7 +66,8 @@
       .topbar { margin: -16px -20px 16px; padding-left: 20px; padding-right: 20px; }
     }
     .card {
-      background:var(--card); border-radius:12px; padding:14px;
+      background:var(--card); border-radius:16px; padding:14px;
+      border: 1px solid #3a3a3a;
       min-width: 0; /* prevent grid blowout */
     }
     .card h2 { font-size:1rem; margin:0 0 10px; }
@@ -67,19 +76,19 @@
       padding: 12px 14px;
       margin: 0;
       min-height: var(--tap);
-      background:#2a2f3a; color:var(--text); font-weight:600;
+      background:#333333; color:var(--text); font-weight:700;
       font-size: .95rem;
       touch-action: manipulation;
     }
     button:active { transform: scale(0.98); }
-    button:hover { background:#3a4150; }
-    button.gift { background:#2a1f3d; }
-    button.gift:hover { background:#3d2a55; }
-    button.danger { background:#4a1520; }
-    button.ok { background:#0d3d2a; }
-    button.revenge { background:#5a3a00; }
+    button:hover { background:#404040; }
+    button.gift { background:#3a2f55; }
+    button.gift:hover { background:#4a3a6a; }
+    button.danger { background:#6b3030; }
+    button.ok { background:#2d4a32; }
+    button.revenge { background:#5a4520; }
     input[type=number], input[type=text], select {
-      background:#111; border:1px solid #333; color:var(--text);
+      background:#1a1a1a; border:1px solid #444; color:var(--text);
       border-radius:8px; padding:10px 12px;
       min-height: var(--tap);
       font-size: 16px; /* avoid iOS zoom on focus */
@@ -101,13 +110,13 @@
       gap:8px; margin-bottom:10px;
     }
     .row > button { flex: 1 1 auto; }
-    a { color:#7ab7ff; }
+    a { color: var(--teal); }
     .dead-btn { font-size:.85rem; min-height: var(--tap); }
     .status-line {
       font-size:.85rem; color:var(--muted);
       word-break: break-word; line-height:1.35;
     }
-    #winner { margin-top:6px; color:#ffd60a; font-size:.85rem; word-break:break-word; }
+    #winner { margin-top:6px; color:var(--gold); font-size:.85rem; word-break:break-word; }
   </style>
 </head>
 <body>

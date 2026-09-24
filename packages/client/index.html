@@ -10,6 +10,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Ball Arena Overlay</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
       html, body {
         margin: 0;
@@ -17,15 +23,15 @@
         width: 100%;
         height: 100%;
         height: 100dvh;
-        background: #000;
+        background: #1E1E1E;
         overflow: hidden;
         touch-action: none;
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
         overscroll-behavior: none;
+        font-family: Nunito, system-ui, sans-serif;
       }
-      /* Safe-area padding so letterbox respects notch / home indicator */
       body {
         display: flex;
         align-items: center;
@@ -43,16 +49,14 @@
         max-width: 100%;
         max-height: 100%;
         margin: 0;
-        background: #000;
+        background: #1E1E1E;
         position: relative;
         overflow: hidden;
-        /* Phaser canvas will FIT inside; CSS bars = letterbox */
       }
       #game-container canvas {
         display: block;
         margin: 0 auto;
       }
-      /* OBS Browser Source: ?transparent=1 or ?bg=transparent */
       html.obs-transparent,
       body.obs-transparent,
       #game-container.obs-transparent {
