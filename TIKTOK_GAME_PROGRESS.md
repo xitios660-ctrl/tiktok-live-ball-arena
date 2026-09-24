@@ -1,42 +1,41 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Likes/Shares + áudio + load test** (pós Etapa 13)
+## Etapa atual: **OBS polish** (DEMO overlay 1080×1920)
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
 ## Decisões
 
-1. **Likes:** acumulador global; a cada `LIKE_THRESHOLD` (default 100) dispara `LIKE_REWARD` (`heal_rain` | `speed_storm`). Não dispara por like individual.
-2. **Shares:** SHARE BOOST no sharer — +20 HP + 5s speed (`sugar` buff); cooldown 30s/user.
-3. **Random events:** a cada ~45s, 35% chance de HEAL RAIN / SPEED STORM / DOUBLE DAMAGE; admin ON/OFF + force.
-4. **Áudio:** Web Audio beeps (sem assets); mute no overlay; arquivos opcionais depois. Missing file = silent.
-5. **Load test:** admin 50/100 bots (cap 150); gift spam opcional; client adaptive particles se FPS cair.
-6. Physics continua server-authoritative.
-
-## Performance (spawn 100 — local 2026-09-24)
-
-- `/admin/sim/loadtest` 50 bots → 53 players ~0.00s; 100 bots → 153 players ~0.01s — **sem crash**.
-- Physics 30 Hz server-side OK neste box com 150 bolas.
-- Client: FPS meter + `particleBudget` (sparks ↓ se FPS < 40 / < 28). Overlay mute 🔊.
-- Áudio: Web Audio beeps (sem arquivos); ver `packages/client/src/audio/AudioManager.ts`.
+1. **Transparent OBS:** `?transparent=1` ou `?bg=transparent` → Phaser `transparent` + CSS `.obs-transparent` (html/body/#game-container). Fundo sólido escuro continua o default para preview local.
+2. **Safe margins (TikTok chrome):** top ~140px, bottom ~320px, side ~36px. TOP 5 upper-left; kill feed empilha perto da base (acima da barra de comments); title/timer/vivos/likes dentro da safe area.
+3. **Clean vs debug:** FPS + guias de safe area só com `?debug=1`; mute menor/menos proeminente no clean. Badge `DEMO` só se `?demo=1` (sem acoplar TIKTOK_MODE no client).
+4. Docs: `docs/OBS.md` (PT-BR) com setup Browser Source.
 
 ## Como testar
 
 ```bash
 TIKTOK_MODE=demo npm run build && npm start
-# Admin http://localhost:3000/admin
-# ❤️ +100 likes → HEAL RAIN toast
-# 📢 Share → +HP no alvo
-# 🧪 50 / 100 bots
-# Overlay: 🔊 mute, ❤️ meter, fps
+# Overlay Vite:  http://localhost:5173/?transparent=1
+# Debug guides:  http://localhost:5173/?transparent=1&debug=1
+# Demo badge:    http://localhost:5173/?transparent=1&demo=1
+# Admin:         http://localhost:3000/admin
+# Health:        http://localhost:3000/health
+# Guia OBS:      docs/OBS.md
 ```
 
 ## Arquivos
 
-- `packages/server/src/game/GlobalArenaEvents.ts`
-- `GameLoop.ts`, `PhysicsWorld.ts` (global damage)
-- `adminApi.ts`, `admin.html`, `DemoEventSimulator.ts` (bot cap 150)
-- `packages/client/src/audio/AudioManager.ts`, `ArenaScene.ts`
-- `packages/shared` — constants + announce kinds + `global` no snapshot
+- `packages/client/src/overlayConfig.ts` — query params + SAFE insets
+- `packages/client/src/main.ts`, `index.html` — transparent Phaser/CSS
+- `packages/client/src/scenes/ArenaScene.ts`, `WaitingScene.ts` — HUD safe zones
+- `docs/OBS.md`
 
-## Next: bank/historical Postgres opcional **ou** OBS polish
+## Anterior (likes/áudio/load test)
+
+- Likes threshold, shares, random events, Web Audio beeps, load test 50/100 bots — commit a91b0f4 era.
+
+## Next
+
+- Bank/historical **Postgres** (opcional)
+- VFX polish fino (partículas/abilities) se quiser
+- Production TikTok connector **só quando** o usuário pedir (flag; DEMO first)

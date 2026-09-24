@@ -2,7 +2,7 @@
 
 Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live spawnam bolas e habilidades na arena.
 
-> **Etapas 1–13 + 16–20:** DEMO default + gifts Rosa→Galaxy + **PRODUCTION connector** (`tiktok-live-connector`, flag). Next: likes/shares globais, áudio, load test.
+> **Etapas 1–13 + 16–20 + likes/áudio/load + OBS polish:** DEMO default. Overlay OBS: `?transparent=1` — ver `docs/OBS.md`. Next opcional: Postgres bank.
 
 ## DEMO vs PRODUCTION
 
@@ -12,7 +12,7 @@ Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live
 - **Likes:** acumulam; a cada 100 (`LIKE_THRESHOLD`) → HEAL RAIN ou SPEED STORM (`LIKE_REWARD`)
 - **Share:** +20 HP + 5s speed no sharer (cooldown 30s)
 - Admin: 🧪 50/100 bots, force HEAL/SPEED/DOUBLE, Random ON/OFF
-- Overlay: ❤️ meter, fps, 🔊 mute (beeps Web Audio)
+- Overlay: ❤️ meter, 🔊 mute (beeps Web Audio); fps só com `?debug=1`; OBS transparent via query
 
 ## TikTok modes (Etapa 13)
 
@@ -42,8 +42,9 @@ npm run dev                   # sobe server (:3000) + client Vite (:5173)
 
 - **Health:** http://localhost:3000/health  
 - **Admin DEMO:** http://localhost:3000/admin — botões para Rosa / Mini Dino / Rosquinha / Capivara / Galaxia, likes, shares, spawn N bots, disconnect/reconnect  
-- **Overlay (Vite):** http://localhost:5173 — use no OBS Browser Source (1080×1920)  
-- **Overlay (server):** http://localhost:3000/overlay (placeholder até `npm run build` no client)
+- **Overlay (Vite):** http://localhost:5173/?transparent=1 — OBS Browser Source 1080×1920 (fundo transparente)  
+- **Overlay (server):** http://localhost:3000/overlay?transparent=1 (após `npm run build`)  
+- **OBS setup:** ver `docs/OBS.md` (`?debug=1` = FPS + safe guides; `?demo=1` = badge DEMO)
 
 No painel admin: clique **▶ Iniciar** para começar a rodada de 5 min e veja eventos no overlay.
 
@@ -60,7 +61,7 @@ packages/shared   tipos, constantes, gift types
 packages/server   Express + Socket.IO + game loop stub + TikTok connector (interface) + DEMO sim
 packages/client   Phaser 3 overlay 1080×1920
 gifts/            gift-config.json (hierarquia Rosa → Galaxia)
-docs/             pesquisa de integração TikTok
+docs/             OBS.md + integração TikTok
 ```
 
 

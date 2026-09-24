@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, SOCKET_EVENTS, type RoundState } from '@arena/shared';
+import { getOverlayOptions, SAFE } from '../overlayConfig';
 
 export class WaitingScene extends Phaser.Scene {
   private title!: Phaser.GameObjects.Text;
@@ -11,7 +12,10 @@ export class WaitingScene extends Phaser.Scene {
   }
 
   create(data?: { round?: RoundState }): void {
-    this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x050508);
+    const opts = getOverlayOptions();
+    if (!opts.transparent) {
+      this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x050508);
+    }
 
     this.title = this.add
       .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60, 'AGUARDANDO A LIVE COMEÇAR', {
@@ -19,7 +23,7 @@ export class WaitingScene extends Phaser.Scene {
         fontSize: '48px',
         color: '#ffffff',
         align: 'center',
-        wordWrap: { width: CANVAS_WIDTH - 80 },
+        wordWrap: { width: CANVAS_WIDTH - SAFE.side * 2 },
       })
       .setOrigin(0.5);
 
@@ -45,12 +49,24 @@ export class WaitingScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT - 120, 'Admin DEMO: /admin', {
+      .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT - SAFE.bottom + 40, 'Admin DEMO: /admin', {
         fontFamily: 'monospace',
         fontSize: '22px',
         color: '#666666',
       })
       .setOrigin(0.5);
+
+    if (opts.demoBadge) {
+      this.add
+        .text(SAFE.side, SAFE.top, 'DEMO', {
+          fontFamily: 'Arial Black, Arial',
+          fontSize: '16px',
+          color: '#fe2c55',
+          backgroundColor: '#00000088',
+          padding: { x: 8, y: 4 },
+        })
+        .setDepth(200);
+    }
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {

@@ -12,6 +12,7 @@ import {
   type WinnerInfo,
 } from '@arena/shared';
 import { audio } from '../audio/AudioManager';
+import { getOverlayOptions, SAFE } from '../overlayConfig';
 
 interface BallView {
   container: Phaser.GameObjects.Container;
@@ -70,13 +71,22 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   create(data?: { round?: RoundState }): void {
-    this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x0a0e18);
+    const opts = getOverlayOptions();
+    const top = SAFE.top;
+    const side = SAFE.side;
+    const bottom = SAFE.bottom;
+
+    // Solid preview bg; skip fill in OBS transparent mode (keep thin stroke frame)
+    if (!opts.transparent) {
+      this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x0a0e18);
+    }
     this.border = this.add
-      .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, 0x10162a, 0.35)
+      .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, 0x10162a, opts.transparent ? 0 : 0.35)
       .setStrokeStyle(6, 0xfe2c55);
 
+    // Title / timer / vivos — below TikTok top chrome (~140px)
     this.add
-      .text(CANVAS_WIDTH / 2, 48, 'BALL ARENA', {
+      .text(CANVAS_WIDTH / 2, top + 12, 'BALL ARENA', {
         fontFamily: 'Arial Black, Arial',
         fontSize: '44px',
         color: '#ffffff',
@@ -85,7 +95,7 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.timerText = this.add
-      .text(CANVAS_WIDTH / 2, 110, this.formatTime(data?.round?.remainingSec ?? 300), {
+      .text(CANVAS_WIDTH / 2, top + 72, this.formatTime(data?.round?.remainingSec ?? 300), {
         fontFamily: 'monospace',
         fontSize: '56px',
         color: '#20d68a',
@@ -94,7 +104,7 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.playersText = this.add
-      .text(CANVAS_WIDTH / 2, 165, `Vivos: ${data?.round?.playerCount ?? 0}`, {
+      .text(CANVAS_WIDTH / 2, top + 128, `Vivos: ${data?.round?.playerCount ?? 0}`, {
         fontFamily: 'Arial',
         fontSize: '26px',
         color: '#aaaaaa',
@@ -102,9 +112,19 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(100);
 
-    // Permanent TOP 5
+    // Likes meter — upper-left inside safe area
+    this.likesText = this.add
+      .text(side, top + 20, '❤️ 0/100', {
+        fontFamily: 'Arial',
+        fontSize: '22px',
+        color: '#ff8fab',
+      })
+      .setDepth(200)
+      .setScrollFactor(0);
+
+    // Permanent TOP 5 — upper-left below likes
     this.top5Text = this.add
-      .text(36, 210, 'TOP 5\n—', {
+      .text(side, top + 160, 'TOP 5\n—', {
         fontFamily: 'monospace',
         fontSize: '22px',
         color: '#e8eaed',
@@ -113,7 +133,7 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.toastText = this.add
-      .text(CANVAS_WIDTH / 2, 250, '', {
+      .text(CANVAS_WIDTH / 2, top + 200, '', {
         fontFamily: 'Arial Black, Arial',
         fontSize: '30px',
         color: '#ffd60a',
@@ -138,12 +158,13 @@ export class ArenaScene extends Phaser.Scene {
     this.ballsLayer = this.add.container(0, 0).setDepth(10);
     this.killFeedLayer = this.add.container(0, 0).setDepth(200);
 
+    // Event feed — above TikTok bottom chrome (~320px)
     this.feedText = this.add
-      .text(40, CANVAS_HEIGHT - 200, '', {
+      .text(side, CANVAS_HEIGHT - bottom - 100, '', {
         fontFamily: 'monospace',
         fontSize: '18px',
         color: '#999999',
-        wordWrap: { width: CANVAS_WIDTH - 80 },
+        wordWrap: { width: CANVAS_WIDTH - side * 2 },
       })
       .setDepth(100);
 
@@ -175,35 +196,63 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5);
     this.winnerPanel.add([panelBg, this.winnerTitle, this.winnerBody, this.resultsHint]);
 
-    this.likesText = this.add
-      .text(24, 120, '❤️ 0/100', {
-        fontFamily: 'Arial',
-        fontSize: '22px',
-        color: '#ff8fab',
-      })
-      .setDepth(200)
-      .setScrollFactor(0);
+    // FPS only in ?debug=1
     this.fpsText = this.add
-      .text(CANVAS_WIDTH - 24, 24, '60 fps', {
+      .text(CANVAS_WIDTH - side, top, '60 fps', {
         fontFamily: 'Arial',
         fontSize: '18px',
         color: '#9aa0a6',
       })
       .setOrigin(1, 0)
-      .setDepth(200);
+      .setDepth(200)
+      .setVisible(opts.debug);
+
+    // Mute — smaller / less prominent in clean (non-debug) mode
+    const muteSize = opts.debug ? '36px' : '26px';
     this.muteBtn = this.add
-      .text(CANVAS_WIDTH - 24, 56, '🔊', {
+      .text(CANVAS_WIDTH - side, top + (opts.debug ? 32 : 8), '🔊', {
         fontFamily: 'Arial',
-        fontSize: '36px',
+        fontSize: muteSize,
       })
       .setOrigin(1, 0)
       .setDepth(200)
+      .setAlpha(opts.debug ? 1 : 0.7)
       .setInteractive({ useHandCursor: true });
     this.muteBtn.on('pointerdown', () => {
       const m = audio.toggleMute();
       this.muteBtn.setText(m ? '🔇' : '🔊');
       audio.ensure();
     });
+
+    if (opts.demoBadge) {
+      this.add
+        .text(CANVAS_WIDTH - side, top + (opts.debug ? 72 : 48), 'DEMO', {
+          fontFamily: 'Arial Black, Arial',
+          fontSize: '14px',
+          color: '#fe2c55',
+          backgroundColor: '#00000088',
+          padding: { x: 6, y: 3 },
+        })
+        .setOrigin(1, 0)
+        .setDepth(200)
+        .setAlpha(0.85);
+    }
+
+    // Soft safe-area guides only in debug
+    if (opts.debug) {
+      const g = this.add.graphics().setDepth(5).setAlpha(0.35);
+      g.lineStyle(2, 0x25f4ee, 1);
+      g.strokeRect(side, top, CANVAS_WIDTH - side * 2, CANVAS_HEIGHT - top - bottom);
+      this.add
+        .text(side + 4, top + 4, 'safe', {
+          fontFamily: 'monospace',
+          fontSize: '14px',
+          color: '#25f4ee',
+        })
+        .setDepth(6)
+        .setAlpha(0.6);
+    }
+
     // Unlock audio on first tap anywhere
     this.input.once('pointerdown', () => audio.ensure());
 
@@ -425,7 +474,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private pushKillFeed(message: string, color = '#ffffff', bg = '#fe2c55cc'): void {
     const text = this.add
-      .text(CANVAS_WIDTH - 40, 260, message, {
+      .text(CANVAS_WIDTH - SAFE.side, CANVAS_HEIGHT - SAFE.bottom - 80, message, {
         fontFamily: 'Arial',
         fontSize: '24px',
         color,
@@ -441,10 +490,13 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private layoutKillFeed(): void {
-    let y = 260;
+    // Stack upward from just above TikTok bottom chrome
+    const x = CANVAS_WIDTH - SAFE.side;
+    let y = CANVAS_HEIGHT - SAFE.bottom - 24;
     for (const item of this.killFeed) {
-      item.text.setPosition(CANVAS_WIDTH - 40, y);
-      y += item.text.height + 8;
+      y -= item.text.height;
+      item.text.setPosition(x, y);
+      y -= 8;
     }
   }
 
