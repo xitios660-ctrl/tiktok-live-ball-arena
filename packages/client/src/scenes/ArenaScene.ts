@@ -594,7 +594,17 @@ export class ArenaScene extends Phaser.Scene {
     pose(this.giftLegend?.root, 1550, landTop + 92, CANVAS_WIDTH - side - 318, top + 200);
     this.giftLegendBaseY = this.giftLegend?.root.y ?? this.giftLegendBaseY;
 
-    pose(this.eventCard?.root, 960, landTop + 322, CANVAS_WIDTH / 2, top + 248);
+    if (this.eventCard) {
+      if (landscape) {
+        this.eventCard.setPresentation(
+          landTop + 322,
+          CANVAS_HEIGHT - 960,
+          -Math.PI / 2
+        );
+      } else {
+        this.eventCard.setPresentation(CANVAS_WIDTH / 2, top + 248, 0);
+      }
+    }
     pose(this.toastText, 960, landTop + 338, CANVAS_WIDTH / 2, top + 250);
     pose(this.bigCountdown, 960, landMid, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
     pose(this.winnerPanel, 960, landMid, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
