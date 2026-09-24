@@ -84,7 +84,26 @@ TOP 5 fica no canto superior esquerdo (dentro da safe area); kill feed empilha p
 
 Com `?debug=1` aparece um retângulo ciano da safe area + FPS.
 
+## Celular / rotação (TikTok Live screen-share)
+
+O mundo do jogo fica fixo em **1080×1920** (retrato). No celular:
+
+| Modo | URL | Comportamento |
+|------|-----|----------------|
+| **Padrão (letterbox)** | `/overlay?phone=1` | Phaser `FIT` — em landscape o canvas fica centralizado com barras laterais (legível). |
+| **Preencher landscape** | `/overlay?phone=1&spin=1` | CSS `rotate(90°)` quando o telefone está deitado — o retrato preenche a tela. |
+
+Aliases do modo spin: `?rotate=1` ou `?fill=landscape` (mesmo efeito que `?spin=1`).
+
+Teste rápido:
+1. Retrato — canvas preenche a altura, sem corte.
+2. Landscape sem spin — letterbox centralizado.
+3. Landscape com `?spin=1` — canvas rotacionado preenchendo a tela.
+4. Volte ao retrato — layout destrava e volta ao normal.
+5. Gate de áudio / acesso continuam em tela cheia após girar.
+
 ## Admin DEMO
+
 
 Painel de simulação (não é TikTok real):
 

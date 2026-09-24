@@ -125,12 +125,16 @@ export function gateHtml(nextPath: string): string {
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; min-height: 100%;
+    width: 100%;
+    width: 100dvw;
     background: var(--dark);
     color: var(--light);
     font-family: Inter, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
   body {
+    min-height: 100%;
     min-height: 100dvh;
     display: flex;
     flex-direction: column;
@@ -141,7 +145,8 @@ export function gateHtml(nextPath: string): string {
   .stage {
     position: relative;
     width: 100%;
-    max-width: 480px;
+    max-width: min(480px, 100dvw);
+    min-height: 100%;
     min-height: 100dvh;
     margin: 0 auto;
     display: flex;

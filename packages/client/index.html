@@ -35,8 +35,11 @@
         margin: 0;
         padding: 0;
         width: 100%;
+        width: 100dvw;
         height: 100%;
         height: 100dvh;
+        max-width: 100%;
+        max-height: 100%;
         background: var(--arena-dark);
         overflow: hidden;
         touch-action: none;
@@ -45,8 +48,19 @@
         user-select: none;
         overscroll-behavior: none;
         font-family: var(--font-ui);
+        /* iOS Safari visualViewport sync (set by main.ts) */
+        --vvw: 100dvw;
+        --vvh: 100dvh;
+        --vv-left: 0px;
+        --vv-top: 0px;
       }
       body {
+        position: fixed;
+        inset: 0;
+        width: var(--vvw);
+        height: var(--vvh);
+        left: var(--vv-left);
+        top: var(--vv-top);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -66,10 +80,30 @@
         background: var(--arena-dark);
         position: relative;
         overflow: hidden;
+        box-sizing: border-box;
       }
       #game-container canvas {
         display: block;
         margin: 0 auto;
+      }
+      /*
+       * ?spin=1 / ?rotate=1 / ?fill=landscape — when viewport is landscape,
+       * rotate the portrait (1080×1920) canvas 90° so it fills the phone.
+       * Phaser parent box stays portrait-shaped (pre-transform) for Scale.FIT.
+       */
+      html.spin-fill.spin-landscape body {
+        padding: 0;
+      }
+      html.spin-fill.spin-landscape #game-container {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: var(--vvh);
+        height: var(--vvw);
+        max-width: none;
+        max-height: none;
+        transform: translate(-50%, -50%) rotate(90deg);
+        transform-origin: center center;
       }
       html.obs-transparent,
       body.obs-transparent,
@@ -84,6 +118,10 @@
       #audio-unlock-gate {
         position: fixed;
         inset: 0;
+        width: var(--vvw, 100%);
+        height: var(--vvh, 100%);
+        left: var(--vv-left, 0);
+        top: var(--vv-top, 0);
         z-index: 99999;
         display: flex;
         align-items: flex-end;

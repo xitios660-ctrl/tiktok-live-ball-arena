@@ -139,21 +139,60 @@ function boot(): void {
   const game = new Phaser.Game(config);
   connectSocket(game);
 
+  /** Sync CSS vars to visualViewport (iOS Safari address bar) + spin-landscape class. */
+  function syncViewportLayout(): void {
+    const vv = window.visualViewport;
+    const w = vv?.width ?? window.innerWidth;
+    const h = vv?.height ?? window.innerHeight;
+    const left = vv?.offsetLeft ?? 0;
+    const top = vv?.offsetTop ?? 0;
+    const root = document.documentElement;
+    root.style.setProperty('--vvw', `${Math.round(w)}px`);
+    root.style.setProperty('--vvh', `${Math.round(h)}px`);
+    root.style.setProperty('--vv-left', `${Math.round(left)}px`);
+    root.style.setProperty('--vv-top', `${Math.round(top)}px`);
+
+    // Spin-fill only rotates when the phone is actually landscape.
+    if (opts.spinFill) {
+      const landscape = w > h;
+      root.classList.toggle('spin-landscape', landscape);
+    } else {
+      root.classList.remove('spin-landscape');
+    }
+
+    // Force a layout unlock after orientation paint (iOS can stick old metrics).
+    void document.body.offsetHeight;
+  }
+
   function refreshScale(): void {
+    syncViewportLayout();
     try {
       game.scale.refresh();
     } catch {
       /* game may not be ready */
     }
   }
-  window.addEventListener('resize', refreshScale);
-  window.addEventListener('orientationchange', () => {
-    setTimeout(refreshScale, 120);
-    setTimeout(refreshScale, 400);
-  });
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', refreshScale);
+
+  /** Debounced multi-tick refresh — orientationchange often reports mid-animation sizes. */
+  const refreshTimers: number[] = [];
+  function scheduleRefresh(): void {
+    refreshScale();
+    for (const t of refreshTimers) window.clearTimeout(t);
+    refreshTimers.length = 0;
+    for (const ms of [50, 150, 400]) {
+      refreshTimers.push(window.setTimeout(refreshScale, ms));
+    }
   }
+
+  syncViewportLayout();
+  window.addEventListener('resize', scheduleRefresh);
+  window.addEventListener('orientationchange', scheduleRefresh);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scheduleRefresh);
+    window.visualViewport.addEventListener('scroll', scheduleRefresh);
+  }
+  // Some WebViews fire this after rotate settles.
+  window.addEventListener('pageshow', scheduleRefresh);
 
   (window as unknown as { __arenaGame?: Phaser.Game }).__arenaGame = game;
 }
