@@ -1,11 +1,15 @@
 import { io, Socket } from 'socket.io-client';
 import type Phaser from 'phaser';
-import { SOCKET_EVENTS, type RoundState, type ArenaLiveEvent } from '@arena/shared';
+import {
+  SOCKET_EVENTS,
+  type RoundState,
+  type ArenaLiveEvent,
+  type GameSnapshot,
+} from '@arena/shared';
 
 let socket: Socket | null = null;
 
 export function connectSocket(game: Phaser.Game): Socket {
-  // Same-origin in production; Vite proxies in dev. Override with ?ws=
   const params = new URLSearchParams(location.search);
   const url = params.get('ws') || undefined;
   socket = io(url, { transports: ['websocket', 'polling'] });
@@ -34,6 +38,10 @@ export function connectSocket(game: Phaser.Game): Socket {
 
   socket.on(SOCKET_EVENTS.LIVE_EVENT, (event: ArenaLiveEvent) => {
     game.events.emit(SOCKET_EVENTS.LIVE_EVENT, event);
+  });
+
+  socket.on(SOCKET_EVENTS.GAME_SNAPSHOT, (snap: GameSnapshot) => {
+    game.events.emit(SOCKET_EVENTS.GAME_SNAPSHOT, snap);
   });
 
   return socket;

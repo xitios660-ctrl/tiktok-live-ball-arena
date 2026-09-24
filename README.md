@@ -2,7 +2,7 @@
 
 Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live spawnam bolas e habilidades na arena.
 
-> **Etapa 1:** estrutura + stubs + simulador DEMO. Física completa = Etapa 2+.
+> **Etapas 1–3:** estrutura + DEMO + arena 1080×1920 + física server-side a **30 Hz**. HP/dano = Etapa 4–5.
 
 ## DEMO vs PRODUCTION
 
@@ -42,6 +42,14 @@ packages/client   Phaser 3 overlay 1080×1920
 gifts/            gift-config.json (hierarquia Rosa → Galaxia)
 docs/             pesquisa de integração TikTok
 ```
+
+
+## Física (Etapa 3)
+
+- Server autoritativo; client só renderiza `game:snapshot`
+- **30 Hz** (`PHYSICS_TICK_HZ`)
+- Colisão parede/bola: velocidade × **1.015** (aceleração progressiva)
+- Comentário ou join (bots) spawna bola; DEMO auto-inicia a rodada
 
 ## Presentes (hierarquia)
 

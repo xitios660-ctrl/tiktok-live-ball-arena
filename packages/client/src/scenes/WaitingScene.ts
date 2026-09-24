@@ -14,7 +14,7 @@ export class WaitingScene extends Phaser.Scene {
     this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x050508);
 
     this.title = this.add
-      .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40, 'AGUARDANDO A LIVE COMEÇAR', {
+      .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60, 'AGUARDANDO A LIVE COMEÇAR', {
         fontFamily: 'Arial, sans-serif',
         fontSize: '48px',
         color: '#ffffff',
@@ -27,9 +27,20 @@ export class WaitingScene extends Phaser.Scene {
     this.subtitle = this.add
       .text(
         CANVAS_WIDTH / 2,
-        CANVAS_HEIGHT / 2 + 40,
-        phase === 'ended' ? 'Rodada encerrada — aguardando próxima' : 'Ball Arena · OBS 1080×1920 · DEMO',
+        CANVAS_HEIGHT / 2 + 20,
+        phase === 'ended'
+          ? 'Rodada encerrada — aguardando próxima'
+          : 'Ball Arena · OBS 1080×1920 · DEMO',
         { fontFamily: 'Arial, sans-serif', fontSize: '28px', color: '#fe2c55' }
+      )
+      .setOrigin(0.5);
+
+    this.add
+      .text(
+        CANVAS_WIDTH / 2,
+        CANVAS_HEIGHT / 2 + 90,
+        'Admin: comentário/bots spawnam bolas e iniciam a rodada',
+        { fontFamily: 'Arial', fontSize: '22px', color: '#888888', align: 'center' }
       )
       .setOrigin(0.5);
 
@@ -57,7 +68,6 @@ export class WaitingScene extends Phaser.Scene {
 
   update(_t: number, dt: number): void {
     this.pulse += dt * 0.002;
-    const a = 0.7 + Math.sin(this.pulse) * 0.3;
-    this.title.setAlpha(a);
+    this.title.setAlpha(0.7 + Math.sin(this.pulse) * 0.3);
   }
 }

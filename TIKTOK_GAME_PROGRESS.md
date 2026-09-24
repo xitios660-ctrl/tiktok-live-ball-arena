@@ -1,31 +1,43 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Etapa 1 concluída** (estrutura + research + DEMO playtest)
+## Etapa atual: **Etapas 2 + 3 concluídas** (arena + física autoritativa)
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
 ## Decisões
 
-1. **DEMO-first:** `TIKTOK_MODE=demo` é o padrão. Playtest sem live TikTok via `/admin`.
-2. **Conector isolado:** interface `ITikTokConnector` — demo e production são swappable.
-3. **Biblioteca PRODUCTION recomendada:** `tiktok-live-connector` v2.5.x (não oficial; Webcast WS + Euler Stream signing). Ver `docs/TIKTOK_INTEGRATION.md`.
-4. **Client:** Phaser 3 + Vite, canvas 1080×1920 para OBS Browser Source.
-5. **Server autoritativo:** Express + Socket.IO; física ainda stub.
-6. **Rodada:** 5 minutos (`ROUND_DURATION_SEC=300`).
-7. **Admin DEMO:** REST + UI HTML com gifts Rosa/Dino/Rosquinha/Capivara/Galaxia, comment, like, share, join, follow, spawn N bots, disconnect/reconnect, auto on/off.
+1. **DEMO-first:** `TIKTOK_MODE=demo` padrão; playtest via `/admin`.
+2. **Conector isolado:** `ITikTokConnector` — demo/production swappable.
+3. **PRODUCTION (futuro):** `tiktok-live-connector` v2.5.x — ver `docs/TIKTOK_INTEGRATION.md`.
+4. **Client:** Phaser 3 + Vite, canvas **1080×1920** (OBS Browser Source).
+5. **Server autoritativo:** Express + Socket.IO; **física 100% no server**.
+6. **Tick rate:** **`PHYSICS_TICK_HZ = 30`** — integrate + broadcast `game:snapshot` a 30 Hz.
+7. **Spawn:** comentário ou join (bots) → 1 bola por `userId` (nudge se já existe). Auto-inicia rodada no DEMO se `waiting`.
+8. **Colisão:** paredes + bola-bola (impulso ~elástico); em **toda** colisão parede/jogador multiplica velocidade por **`1.015`**; cap `MAX_BALL_SPEED=900`; clamp NaN; push-out de paredes.
+9. **HP:** stub visual 100 (dano/morte = Etapa 4–5).
+10. **Gifts/abilities:** ainda stub (Etapa futura).
 
-## Arquivos criados
+## Arquivos principais (Etapa 2–3)
 
-- `README.md`, `TIKTOK_GAME_PROGRESS.md`, `.env.example`, `.gitignore`, `package.json` (workspaces)
-- `gifts/gift-config.json`
-- `docs/TIKTOK_INTEGRATION.md`
-- `packages/shared/` — tipos Arena events, RoundState, constants
-- `packages/server/` — Express, Socket.IO, GameLoop stub, DemoEventSimulator (inject API), TikTokLiveConnectorAdapter stub, `/health`, `/admin`, `/overlay`
-- `packages/client/` — Phaser WaitingScene (“AGUARDANDO A LIVE COMEÇAR”) + ArenaScene stub + Socket.IO
+- `packages/shared/src/index.ts` — `BallState`, `GameSnapshot`, constantes de física
+- `packages/server/src/game/PhysicsWorld.ts` — círculos, paredes, colisões
+- `packages/server/src/game/GameLoop.ts` — spawn + tick 30 Hz + snapshots
+- `packages/client/src/scenes/ArenaScene.ts` — render de bolas (label, iniciais/avatar, HP bar)
+- `packages/client/src/socket.ts` — escuta `game:snapshot`
 
-## Next: **Etapa 2 — Arena**
+## Como testar DEMO
 
-- Física Matter/Arcade: bolas, paredes, spawn por gift → abilityKey
-- Mapear gift-config → spawn sizes / impulsos
-- HUD timer + placar por usuário
-- (Opcional) ligar adapter `tiktok-live-connector` atrás da interface quando for testar live real
+```bash
+npm run dev   # ou server já em :3000 + overlay build
+# Admin http://localhost:3000/admin
+# 1) Spawn bots (5) OU Comentário
+# 2) Overlay http://localhost:3000/overlay ou :5173
+# Bolas devem aparecer, quicar nas paredes e entre si, acelerando aos poucos
+```
+
+## Next: **Etapa 4–5 — HP / dano / morte**
+
+- Dano em colisão bola-bola (escalar com velocidade relativa)
+- Morte / remoção / revenge stub
+- Ranking / placar
+- (Depois) gifts → abilityKey (tamanhos, boosts)

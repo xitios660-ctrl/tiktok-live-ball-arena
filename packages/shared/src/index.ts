@@ -33,7 +33,6 @@ export interface ArenaUser {
   avatarUrl?: string;
 }
 
-/** Normalized live events emitted by any connector implementation */
 export type ArenaEventType =
   | 'comment'
   | 'gift'
@@ -107,13 +106,53 @@ export interface RoundState {
   remainingSec: number;
   startedAt: number | null;
   mode: TikTokMode;
+  playerCount: number;
+}
+
+/** Public ball state (client-renderable). Server is authoritative. */
+export interface BallState {
+  id: string;
+  userId: string;
+  username: string;
+  nickname?: string;
+  avatarUrl?: string;
+  x: number;
+  y: number;
+  radius: number;
+  /** 0xRRGGBB */
+  color: number;
+  hp: number;
+  maxHp: number;
+  /** Display label (username or nickname) */
+  label: string;
+}
+
+/** Full snapshot broadcast ~PHYSICS_TICK_HZ times per second */
+export interface GameSnapshot {
+  tick: number;
+  tickHz: number;
+  phase: RoundPhase;
+  remainingSec: number;
+  playerCount: number;
+  balls: BallState[];
 }
 
 export const CANVAS_WIDTH = 1080;
 export const CANVAS_HEIGHT = 1920;
 export const DEFAULT_ROUND_DURATION_SEC = 300;
 
-/** Socket.IO event names (client <-> server) */
+/** Server physics + snapshot broadcast rate (Hz) */
+export const PHYSICS_TICK_HZ = 30;
+
+/** Progressive speed multiplier on wall or ball collision */
+export const SPEED_BOOST_ON_COLLISION = 1.015;
+
+export const DEFAULT_BALL_RADIUS = 36;
+export const DEFAULT_BALL_HP = 100;
+export const MAX_BALL_SPEED = 900;
+export const MIN_SPAWN_SPEED = 80;
+export const MAX_SPAWN_SPEED = 160;
+
 export const SOCKET_EVENTS = {
   ROUND_STATE: 'round:state',
   LIVE_EVENT: 'live:event',

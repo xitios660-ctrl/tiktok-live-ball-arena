@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.esm.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.esm.json && printf '{\\\"type\\\":\\\"module\\\"}\\n' > dist/esm/package.json",
     "dev": "tsc -p tsconfig.json --watch"
   },
   "devDependencies": {

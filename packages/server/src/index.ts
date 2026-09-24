@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import {
   SOCKET_EVENTS,
   DEFAULT_ROUND_DURATION_SEC,
+  PHYSICS_TICK_HZ,
   type TikTokMode,
 } from '@arena/shared';
 import { createConnector } from './tiktok/createConnector';
@@ -16,7 +17,6 @@ import { GameLoop } from './game/GameLoop';
 import { healthRouter } from './routes/health';
 import { adminApiRouter } from './routes/adminApi';
 
-// Load root .env if present
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
 
@@ -42,19 +42,12 @@ async function main() {
   const getDemo = (): DemoEventSimulator | null =>
     connector instanceof DemoEventSimulator ? connector : null;
 
-  // Wire connector → game → sockets
   connector.on('event', (ev) => {
     game.handleLiveEvent(ev);
     io.emit(SOCKET_EVENTS.LIVE_EVENT, ev);
   });
   connector.on('connected', (info) => {
     console.log(`[Connector] connected`, info);
-    io.emit(SOCKET_EVENTS.LIVE_EVENT, {
-      type: 'comment',
-      user: { userId: 'system', username: 'system', nickname: 'System' },
-      comment: `[${MODE}] connected @${info.username}`,
-      timestamp: Date.now(),
-    });
   });
   connector.on('disconnected', (reason) => {
     console.log(`[Connector] disconnected`, reason);
@@ -64,18 +57,16 @@ async function main() {
   });
 
   game.onRound((state) => io.emit(SOCKET_EVENTS.ROUND_STATE, state));
+  game.onSnapshot((snap) => io.emit(SOCKET_EVENTS.GAME_SNAPSHOT, snap));
 
-  // HTTP routes
   app.use(healthRouter({ game, connector, mode: MODE }));
   app.use(adminApiRouter({ game, getDemo, mode: MODE }));
 
-  // Admin UI
   const publicDir = path.join(__dirname, '../public');
   app.get('/admin', (_req, res) => {
     res.sendFile(path.join(publicDir, 'admin.html'));
   });
 
-  // Overlay: prefer Vite-built client, else redirect to Vite dev, else placeholder
   const clientDist = path.resolve(__dirname, '../../client/dist');
   const serveOverlay = (_req: express.Request, res: express.Response) => {
     const indexHtml = path.join(clientDist, 'index.html');
@@ -88,7 +79,7 @@ async function main() {
 a{color:#fe2c55}</style></head>
 <body>
   <h1>AGUARDANDO A LIVE COMEÇAR</h1>
-  <p>Client build ainda não existe. Em dev, use o Vite: <a href="http://localhost:5173">:5173</a></p>
+  <p>Client build ausente. Dev: <a href="http://localhost:5173">:5173</a></p>
   <p>Admin DEMO: <a href="/admin">/admin</a></p>
 </body></html>`);
     }
@@ -104,12 +95,13 @@ a{color:#fe2c55}</style></head>
   io.on('connection', (socket) => {
     console.log(`[Socket] client ${socket.id}`);
     socket.emit(SOCKET_EVENTS.ROUND_STATE, game.getState());
+    socket.emit(SOCKET_EVENTS.GAME_SNAPSHOT, game.getSnapshot());
     socket.on(SOCKET_EVENTS.CLIENT_READY, () => {
       socket.emit(SOCKET_EVENTS.ROUND_STATE, game.getState());
+      socket.emit(SOCKET_EVENTS.GAME_SNAPSHOT, game.getSnapshot());
     });
   });
 
-  // Boot connector (DEMO connects; PRODUCTION stub throws — catch and log)
   try {
     await connector.connect(USERNAME);
   } catch (err) {
@@ -118,16 +110,16 @@ a{color:#fe2c55}</style></head>
       err instanceof Error ? err.message : err
     );
     if (MODE === 'production') {
-      console.error('[Boot] Falling back advice: set TIKTOK_MODE=demo for local playtest');
+      console.error('[Boot] Set TIKTOK_MODE=demo for local playtest');
     }
   }
 
-  // In DEMO, auto-start a waiting round (user starts via admin)
   game.resetToWaiting();
 
   server.listen(PORT, HOST, () => {
     console.log(`\n🏟️  TikTok Live Ball Arena`);
     console.log(`   mode:     ${MODE}`);
+    console.log(`   physics:  ${PHYSICS_TICK_HZ} Hz (server authoritative)`);
     console.log(`   health:   http://localhost:${PORT}/health`);
     console.log(`   overlay:  http://localhost:${PORT}/overlay`);
     console.log(`   admin:    http://localhost:${PORT}/admin`);
