@@ -2,7 +2,7 @@
   "name": "tiktok-live-ball-arena",
   "version": "0.1.0",
   "private": true,
-  "description": "TikTok Live Ball Arena — interactive live game overlay (OBS 1080x1920)",
+  "description": "TikTok Live Ball Arena \u2014 interactive live game overlay (OBS 1080x1920)",
   "workspaces": [
     "packages/shared",
     "packages/server",
@@ -20,6 +20,6 @@
     "typescript": "^5.7.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": "20.x"
   }
 }
