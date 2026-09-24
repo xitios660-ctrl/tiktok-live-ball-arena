@@ -236,7 +236,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setAlpha(0);
 
     this.footer = this.add
-      .text(0, 0, '💬  COMENTE PARA JOGAR', {
+      .text(0, 0, '💬 COMENTE PARA JOGAR   •   ❤️ 10 LIKES = +2 HP   •   100 LIKES = +10 HP PARA TODOS', {
         fontFamily: FONT_ACCENT,
         fontSize: '28px',
         color: THEME_HEX.arenaDark,
@@ -718,7 +718,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
     view.name
       .setPosition(0, r + 14)
-      .setText(b.isBoss ? '🤖 CHATGPT BOSS · +10☠' : this.truncate(b.label, 14))
+      .setText(b.isBoss ? '👑 BOSS · +10☠' : this.truncate(b.label, 14))
       .setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
     view.initials
       .setFontSize(Math.max(14, Math.floor(r * 0.68)))
