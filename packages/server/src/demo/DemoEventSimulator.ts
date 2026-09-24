@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import type { ArenaLiveEvent, ArenaUser } from '@arena/shared';
-import type { ITikTokConnector, ConnectorEventMap } from '../tiktok/ITikTokConnector';
+import type { ITikTokConnector, ConnectorEventMap, ConnectorStatus } from '../tiktok/ITikTokConnector';
 
 const DEMO_USERS: ArenaUser[] = [
   { userId: 'demo-1', username: 'fan_alpha', nickname: 'Fan Alpha' },
@@ -79,16 +79,26 @@ export class DemoEventSimulator implements ITikTokConnector {
     return this.autoEnabled;
   }
 
-  getStatus() {
+
+  getStatus(): ConnectorStatus {
     return {
-      mode: 'demo' as const,
+      phase: this.connected ? 'connected' : 'disconnected',
+      label: this.connected ? 'DEMO CONECTADO (simulado)' : 'DEMO DESCONECTADO',
+      mode: 'demo',
       name: this.name,
-      connected: this.connected,
       username: this.username,
-      autoEnabled: this.autoEnabled,
+      roomId: 'demo-room',
+      connected: this.connected,
+      live: this.connected,
+      reconnectAttempt: 0,
+      lastError: null,
+      lastEventAt: null,
+      lastConnectedAt: this.connected ? Date.now() : null,
       note: 'Events are SIMULATED — not real TikTok',
     };
   }
+
+
 
   /** Inject a normalized live event (admin / API). */
   inject(event: ArenaLiveEvent): void {

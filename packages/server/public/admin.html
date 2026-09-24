@@ -35,7 +35,8 @@
     Eventos <strong>simulados</strong>. Morto → <strong>comentário</strong> respawna (vingança se tiver killer).
     Overlay: <a href="/overlay" target="_blank">/overlay</a> ·
     Health: <a href="/health" target="_blank">/health</a>
-    <span class="badge demo">DEMO</span>
+    <span class="badge demo" id="modeBadge">DEMO</span>
+    <span class="badge" id="tiktokStatus" style="margin-left:6px;background:#1a3a2a">tiktok: —</span>
   </p>
 
   <div class="grid">
@@ -147,6 +148,14 @@
     async function refresh() {
       const j = await fetch('/admin/status').then(r => r.json());
       const rd = j.round || {};
+      const tk = j.tiktok || {};
+      const badge = document.getElementById('tiktokStatus');
+      if (badge) {
+        badge.textContent = `tiktok: ${tk.label || tk.phase || '—'} @${tk.username || '-'}`;
+        badge.style.background = tk.live ? '#0d3d2a' : (tk.phase === 'reconnecting' || tk.phase === 'waiting_live' ? '#5a3a00' : '#333');
+      }
+      const mb = document.getElementById('modeBadge');
+      if (mb) { mb.textContent = (j.mode || 'demo').toUpperCase(); mb.className = 'badge ' + (j.mode === 'demo' ? 'demo' : ''); }
       document.getElementById('round').textContent =
         `phase=${rd.phase} rem=${rd.remainingSec}s results=${rd.resultsRemainingSec??'-'} vivos=${rd.playerCount||0} king=${j.kingUserId||'-'}`;
       const w = j.winner;

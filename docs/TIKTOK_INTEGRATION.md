@@ -1,72 +1,69 @@
-# TikTok Live Integration Research (2026-09)
+# TikTok Live Integration
 
-**Status:** research only. PRODUCTION adapter is a **stub**. DEMO events are **simulated**, not TikTok.
+**Status (Etapa 13):** PRODUCTION adapter is wired with `tiktok-live-connector@2.5.0`.  
+DEMO remains the **default** and is fully simulated. PRODUCTION is **unofficial** Webcast WebSocket — TikTok can break it anytime. **Do not claim it works without a real live.**
 
-## Is there an official TikTok LIVE events API?
+## Official API?
 
-**No.** TikTok does not provide a public official API for reading livestream chat/gifts/likes for third-party games. Anything that works today is unofficial reverse-engineering of the Webcast WebSocket, or an intermediary product wrapping that.
+**No.** TikTok does not provide a public official API for LIVE chat/gifts. Libraries reverse-engineer the internal Webcast protocol.
 
-## What we need
+## Modes
 
-| Field / event | Needed |
-|---------------|--------|
-| comments | yes |
-| gifts + gift streak (`repeatCount` / `repeatEnd`) | yes |
-| likes | yes |
-| shares | yes |
-| joins (member) | yes |
-| follows | yes |
-| userId, username (uniqueId), avatar | yes |
-| giftId, giftName, coinValue (diamonds) | yes |
+| `TIKTOK_MODE` | Connector | Notes |
+|---------------|-----------|--------|
+| `demo` (default) | `DemoEventSimulator` | Admin `/admin` injects fake events. **Not TikTok.** |
+| `production` | `TikTokLiveConnectorAdapter` | `tiktok-live-connector` → same `ArenaLiveEvent` path as DEMO |
 
-## Candidates (verified ~2026-09)
+## How to switch to PRODUCTION
 
-### 1. `tiktok-live-connector` (Node.js) — **RECOMMENDED for PRODUCTION**
+```bash
+cp .env.example .env
+# Edit:
+TIKTOK_MODE=production
+TIKTOK_USERNAME=your_host_uniqueId   # without @
+# Optional (Euler sign / higher limits):
+TIKTOK_SIGN_API_KEY=...
 
-- **Type:** unofficial library → connects to TikTok’s **internal Webcast WebSocket**
-- **npm:** `tiktok-live-connector` **v2.5.0** (updated 2026-09-16), ~39k weekly downloads
-- **Repos:** https://github.com/zerodytrash/TikTok-Live-Connector
-- **Maintainers lineage:** Zerody + Isaac Kogan / Euler Stream ecosystem
-- **Signing:** WebSocket URL signing via **Euler Stream** sign server (`signApiKey` optional; free community limits, paid for higher)
-- **Events:** `chat`, `gift` (streak-aware), `like`, `member`, `follow`, `share`, `roomUser`, `streamEnd`, …
-- **Payload fields:** `user.userId`, `user.uniqueId`, `user.nickname`, avatar URLs, `giftId`, `giftDetails.giftName`, `repeatCount`, `repeatEnd`, diamond/coin via extended gift info
-- **License:** AGPL-3.0-only (check compliance for your distribution)
-- **Caveats:** reverse-engineered; TikTok can break protocol anytime; authors themselves say use managed Euler WebSocket API for guaranteed uptime
-
-### 2. Euler Stream managed WebSocket API
-
-- **Type:** intermediary / SaaS sign + optional managed stream
-- **Site:** https://www.eulerstream.com
-- Same ecosystem as above; better for production SLAs if budget allows
-
-### 3. TikFinity
-
-- **Type:** intermediary desktop app + Event API / WebSocket for overlays & games
-- Requires **TikFinity Desktop** running locally while live
-- Good for creators who already use TikFinity alerts; less ideal as sole server-side dependency on a remote VPS without the desktop app
-
-### 4. `PirateTok/live-js`
-
-- **Type:** unofficial JS Webcast connector claiming **no signing server / no API keys**
-- Newer / smaller community than tiktok-live-connector
-- Worth watching as a swap-in behind `ITikTokConnector` if Euler dependency becomes a problem
-
-### 5. StreamElements
-
-- Does **not** natively ingest TikTok LIVE the way it does Twitch/YT. Typical path: TikFinity (or similar) → Streamer.bot / webhooks → overlays. Not a primary connector for this project.
-
-## Recommendation (this project)
-
-1. **Ship DEMO** with `DemoEventSimulator` + `/admin` (current Etapa 1).
-2. **PRODUCTION:** implement `TikTokLiveConnectorAdapter` wrapping **`tiktok-live-connector`**, mapping events into our normalized `ArenaLiveEvent` types in `@arena/shared`.
-3. Keep **`ITikTokConnector`** so we can swap to Euler managed API or `live-js` without rewriting the game loop.
-4. Enable `enableExtendedGiftInfo` (or equivalent) to resolve gift names / diamond counts for mapping into `gifts/gift-config.json`.
-5. Handle gift streaks: only apply game effect when `repeatEnd === true` (or non-streakable gift).
-
-## Mapping plan (future)
-
-```
-TikTok giftName / giftId  →  gift-config.json  →  abilityKey  →  GameLoop
+npm run build && npm start
+# or: npm run dev
 ```
 
-Never treat DEMO simulator output as proof of TikTok connectivity.
+1. Start the host LIVE on TikTok.
+2. Watch logs: `[TIKTOK] AGUARDANDO LIVE` until live, then `LIVE DETECTADA / TIKTOK CONECTADO`.
+3. `/health` → `tiktok.phase` / `tiktok.label` / `live`.
+4. Admin panel badge shows connection status. Gift inject still works for testing (same GameLoop path).
+
+### Manual verification checklist (PRODUCTION)
+
+- [ ] With host **offline**: server stays up, phase `waiting_live`, retries with backoff (no hang, no silent death).
+- [ ] Host goes **LIVE**: phase `connected`, chat/gifts appear in logs (`[COMMENT]` `[GIFT]` …).
+- [ ] Mid-round disconnect: phase `reconnecting`, **round continues**, reconnect resumes events.
+- [ ] Stream end: back to `waiting_live`.
+- [ ] Gift streaks: only final `repeatEnd` applies ability (giftType===1).
+
+We **cannot** fully smoke-test a live room in CI. Use the checklist above on a real account.
+
+## Risks / caveats
+
+- Unofficial protocol — breakage without notice.
+- AGPL-3.0 library license — review for your distribution.
+- Sign server (Euler) may rate-limit; optional `TIKTOK_SIGN_API_KEY`.
+- Never treat DEMO events as proof of TikTok connectivity.
+
+## Event mapping
+
+```
+Webcast CHAT     → comment  → spawn/respawn
+Webcast GIFT     → gift     → abilities (Rosa→Galaxy)
+Webcast LIKE     → like     (logged; global effects later)
+Webcast SHARE    → share    (deduped)
+Webcast FOLLOW   → follow
+Webcast MEMBER   → join
+```
+
+Dedup fingerprints for gifts/shares avoid double-apply on redelivery.
+
+## Architecture
+
+`ITikTokConnector` ← `DemoEventSimulator` | `TikTokLiveConnectorAdapter`  
+→ `GameLoop.handleLiveEvent` (single path)

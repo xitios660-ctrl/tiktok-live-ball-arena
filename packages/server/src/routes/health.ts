@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import type { GameLoop } from '../game/GameLoop';
 import type { ITikTokConnector } from '../tiktok/ITikTokConnector';
-import type { DemoEventSimulator } from '../demo/DemoEventSimulator';
+
+const startedAt = Date.now();
 
 export function healthRouter(deps: {
   game: GameLoop;
@@ -10,18 +11,25 @@ export function healthRouter(deps: {
 }): Router {
   const router = Router();
   router.get('/health', (_req, res) => {
-    const demo = deps.connector as DemoEventSimulator;
+    const snap = deps.game.getSnapshot();
+    const round = deps.game.getState();
+    const tiktok = deps.connector.getStatus();
     res.json({
       ok: true,
       service: 'tiktok-live-ball-arena',
       mode: deps.mode,
-      connector: deps.connector.name,
-      connected: deps.connector.isConnected(),
-      round: deps.game.getState(),
-      demo:
-        deps.mode === 'demo' && typeof demo.getStatus === 'function'
-          ? demo.getStatus()
-          : undefined,
+      uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+      tiktok,
+      live: tiktok.live,
+      liveStatus: tiktok.label,
+      players: round.playerCount,
+      round: {
+        phase: round.phase,
+        remainingSec: round.remainingSec,
+        resultsRemainingSec: round.resultsRemainingSec,
+        roundId: round.roundId,
+      },
+      balls: snap.balls.length,
       timestamp: new Date().toISOString(),
     });
   });

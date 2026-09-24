@@ -47,13 +47,23 @@ async function main() {
     io.emit(SOCKET_EVENTS.LIVE_EVENT, ev);
   });
   connector.on('connected', (info) => {
-    console.log(`[Connector] connected`, info);
+    console.log(`[TIKTOK] LIVE DETECTADA / CONECTADO`, info);
+    io.emit('tiktok:status', connector.getStatus());
   });
   connector.on('disconnected', (reason) => {
-    console.log(`[Connector] disconnected`, reason);
+    console.log(`[TIKTOK] disconnected`, reason);
+    io.emit('tiktok:status', connector.getStatus());
+  });
+  connector.on('reconnecting', (attempt, delayMs) => {
+    console.log(`[TIKTOK] RECONECTANDO #${attempt} in ${delayMs}ms`);
+    io.emit('tiktok:status', connector.getStatus());
+  });
+  connector.on('status', (st) => {
+    io.emit('tiktok:status', st);
   });
   connector.on('error', (err) => {
-    console.error(`[Connector] error`, err.message);
+    console.error(`[TIKTOK] error`, err.message);
+    io.emit('tiktok:status', connector.getStatus());
   });
 
   game.onRound((state) => io.emit(SOCKET_EVENTS.ROUND_STATE, state));
@@ -61,7 +71,7 @@ async function main() {
   game.onCombat((ev) => io.emit(SOCKET_EVENTS.COMBAT_EVENT, ev));
 
   app.use(healthRouter({ game, connector, mode: MODE }));
-  app.use(adminApiRouter({ game, getDemo, mode: MODE }));
+  app.use(adminApiRouter({ game, getDemo, mode: MODE, connector }));
 
   const publicDir = path.join(__dirname, '../public');
   app.get('/admin', (_req, res) => {
@@ -105,13 +115,17 @@ a{color:#fe2c55}</style></head>
 
   try {
     await connector.connect(USERNAME);
+    console.log(`[Boot] Connector status:`, connector.getStatus().label);
   } catch (err) {
     console.error(
       `[Boot] Connector connect failed (${MODE}):`,
       err instanceof Error ? err.message : err
     );
     if (MODE === 'production') {
-      console.error('[Boot] Set TIKTOK_MODE=demo for local playtest');
+      console.error(
+        '[Boot] Production connector will keep retrying AGUARDANDO LIVE. ' +
+          'Set TIKTOK_MODE=demo for local playtest without a live.'
+      );
     }
   }
 
@@ -124,7 +138,13 @@ a{color:#fe2c55}</style></head>
     console.log(`   health:   http://localhost:${PORT}/health`);
     console.log(`   overlay:  http://localhost:${PORT}/overlay`);
     console.log(`   admin:    http://localhost:${PORT}/admin`);
-    console.log(`   DEMO events are SIMULATED — not real TikTok\n`);
+    console.log(`   tiktok:   ${connector.getStatus().label}`);
+    if (MODE === 'demo') {
+      console.log(`   DEMO events are SIMULATED — not real TikTok`);
+    } else {
+      console.log(`   PRODUCTION: unofficial Webcast WS — needs @${USERNAME} LIVE`);
+    }
+    console.log('');
   });
 }
 

@@ -2,9 +2,22 @@
 
 Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live spawnam bolas e habilidades na arena.
 
-> **Etapas 1–11 + 16–20:** DEMO completo até gifts **Rosa→Galaxy** com efeitos reais. Next: polish sim + connector PRODUCTION (Etapa 13) atrás de flag.
+> **Etapas 1–13 + 16–20:** DEMO default + gifts Rosa→Galaxy + **PRODUCTION connector** (`tiktok-live-connector`, flag). Next: likes/shares globais, áudio, load test.
 
 ## DEMO vs PRODUCTION
+
+
+## TikTok modes (Etapa 13)
+
+| Mode | Env | Behavior |
+|------|-----|----------|
+| **DEMO** (default) | `TIKTOK_MODE=demo` | Simulated events via `/admin`. **Not TikTok.** |
+| **PRODUCTION** | `TIKTOK_MODE=production` + `TIKTOK_USERNAME=host` | Unofficial Webcast WS (`tiktok-live-connector@2.5.0`). Waits for LIVE with backoff. |
+
+See `docs/TIKTOK_INTEGRATION.md` for risks, checklist, and reconnect behavior.
+
+
+### Legacy table
 
 | Modo | `TIKTOK_MODE` | O que acontece |
 |------|---------------|----------------|

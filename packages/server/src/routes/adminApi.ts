@@ -7,8 +7,45 @@ export function adminApiRouter(deps: {
   game: GameLoop;
   getDemo: () => DemoEventSimulator | null;
   mode: string;
+  connector: import('../tiktok/ITikTokConnector').ITikTokConnector;
 }): Router {
   const router = Router();
+
+
+  /** Build gift event and push through the same GameLoop path (works in DEMO + PRODUCTION). */
+  const injectGiftDirect = (giftId: string, opts: { repeatCount?: number; user?: { userId?: string; username?: string; nickname?: string } }) => {
+    const presets = DEMO_GIFT_PRESETS;
+    const preset = presets.find((g) => g.giftId === giftId) || presets[0];
+    let user = opts.user;
+    const targetId =
+      user?.userId ||
+      deps.game.resolveGiftTargetUserId(null);
+    if (targetId) {
+      const ball = deps.game.getSnapshot().balls.find((b) => b.userId === targetId);
+      const stats = deps.game.getStats().find((s) => s.userId === targetId);
+      user = {
+        userId: targetId,
+        username: ball?.username || stats?.username || user?.username || targetId,
+        nickname: ball?.nickname || stats?.nickname || user?.nickname,
+      };
+    }
+    const event = {
+      type: 'gift' as const,
+      user: {
+        userId: user?.userId || `admin-${Date.now()}`,
+        username: user?.username || 'admin_gifter',
+        nickname: user?.nickname,
+      },
+      giftId: preset.giftId,
+      giftName: preset.giftName,
+      repeatCount: Math.max(1, Number(opts.repeatCount) || 1),
+      repeatEnd: true,
+      coinValue: preset.coinValue,
+      timestamp: Date.now(),
+    };
+    deps.game.handleLiveEvent(event);
+    return event;
+  };
 
   const requireDemo = (
     _req: unknown,
@@ -54,6 +91,7 @@ export function adminApiRouter(deps: {
       recentCombat: deps.game.getRecentCombat().slice(-20),
       recentEvents: deps.game.getRecentEvents().slice(-20),
       demo: demo?.getStatus() ?? null,
+      tiktok: deps.connector.getStatus(),
       gifts: DEMO_GIFT_PRESETS,
     });
   });
@@ -91,41 +129,28 @@ export function adminApiRouter(deps: {
     res.json({ ok: true, event });
   });
 
-  router.post('/admin/sim/gift', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
+  router.post('/admin/sim/gift', (req, res) => {
     const giftId = (req.body?.giftId as string) || 'rosa';
     const repeatCount = Number(req.body?.repeatCount) || 1;
-    // Target: explicit userId → last spawned / first alive ball
-    let user = req.body?.user as { userId?: string; username?: string; nickname?: string } | undefined;
-    const targetId =
-      (req.body?.userId as string) ||
-      user?.userId ||
-      deps.game.resolveGiftTargetUserId(null);
-    if (targetId) {
-      const ball = deps.game.getSnapshot().balls.find((b) => b.userId === targetId);
-      const stats = deps.game.getStats().find((s) => s.userId === targetId);
-      user = {
-        userId: targetId,
-        username: ball?.username || stats?.username || user?.username || targetId,
-        nickname: ball?.nickname || stats?.nickname || user?.nickname,
-      };
-    }
-    const event = demo.injectGift(giftId, { repeatCount, user });
+    const user = req.body?.user as { userId?: string; username?: string; nickname?: string } | undefined;
+    const userId = (req.body?.userId as string) || user?.userId;
+    const event = injectGiftDirect(giftId, { repeatCount, user: { ...user, userId } });
     const snap = deps.game.getSnapshot();
     const targetBall = snap.balls.find((b) => b.userId === event.user.userId);
     res.json({
       ok: true,
       event,
+      mode: deps.mode,
       target: targetBall
         ? {
             userId: targetBall.userId,
             username: targetBall.username,
             hp: targetBall.hp,
             maxHp: targetBall.maxHp,
-            shieldHp: targetBall.shieldHp,
-            buffs: targetBall.buffs,
-            isGalaxy: targetBall.isGalaxy,
-            sizeScale: targetBall.sizeScale,
+            shieldHp: targetBall.shieldHp ?? 0,
+            buffs: targetBall.buffs ?? [],
+            isGalaxy: !!targetBall.isGalaxy,
+            sizeScale: targetBall.sizeScale ?? 1,
           }
         : null,
     });
