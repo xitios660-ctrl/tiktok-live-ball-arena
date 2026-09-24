@@ -7,6 +7,12 @@ export interface OverlayOptions {
   debug: boolean;
   /** Tiny DEMO badge when ?demo=1 is present. */
   demoBadge: boolean;
+  /**
+   * Visual quality mode.
+   * - 'max' (default): stay high unless FPS is catastrophic (<18 / <12).
+   * - 'auto': older adaptive curve (degrade below 40 / 28 fps). Pass ?quality=auto.
+   */
+  qualityMode: 'max' | 'auto';
 }
 
 /** TikTok Live chrome insets — keep HUD out of username/status and comments/gift bar. */
@@ -23,7 +29,9 @@ export function readOverlayOptions(): OverlayOptions {
     params.get('transparent') === '1' || bg === 'transparent' || bg === 'none';
   const debug = params.get('debug') === '1';
   const demoBadge = params.get('demo') === '1';
-  return { transparent, debug, demoBadge };
+  const q = (params.get('quality') || 'max').toLowerCase();
+  const qualityMode: 'max' | 'auto' = q === 'auto' ? 'auto' : 'max';
+  return { transparent, debug, demoBadge, qualityMode };
 }
 
 /** Apply transparent CSS class to html/body/#game-container. */

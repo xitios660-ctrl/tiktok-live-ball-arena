@@ -4,10 +4,12 @@
  * Maps particleBudget (0..1, set from FPS in ArenaScene.trackFps) into
  * 'high' | 'medium' | 'low', then scales twinkles / sparks / trails / dust.
  *
- * Tiers (ArenaScene):
- *   fps >= 40  → budget 1.00 → high
- *   fps >= 28  → budget 0.50 → medium
- *   fps <  28  → budget 0.25 → low
+ * Default (max quality): stay at budget 1 / high unless FPS is catastrophic
+ *   fps < 12 → budget 0.25 → low
+ *   fps < 18 → budget 0.5  → medium
+ *   else     → budget 1.00 → high
+ *
+ * Optional ?quality=auto restores the older adaptive curve (40 / 28 fps).
  *
  * Physics / TikTok stay server-side — this only gates client VFX counts.
  */
@@ -36,22 +38,41 @@ export function qualityFromBudget(budget: number): QualityTier {
   return 'low';
 }
 
-export function qualityFromFps(fps: number): QualityTier {
-  if (fps >= 40) return 'high';
-  if (fps >= 28) return 'medium';
-  return 'low';
+export function qualityFromFps(fps: number, mode: 'max' | 'auto' = 'max'): QualityTier {
+  if (mode === 'auto') {
+    if (fps >= 40) return 'high';
+    if (fps >= 28) return 'medium';
+    return 'low';
+  }
+  // Max-by-default: only degrade in emergency
+  if (fps < 12) return 'low';
+  if (fps < 18) return 'medium';
+  return 'high';
+}
+
+/** Budget for trackFps — max stays at 1 unless catastrophic FPS. */
+export function budgetFromFps(fps: number, mode: 'max' | 'auto' = 'max'): number {
+  if (mode === 'auto') {
+    if (fps < 28) return 0.25;
+    if (fps < 40) return 0.5;
+    return 1;
+  }
+  if (fps < 12) return 0.25;
+  if (fps < 18) return 0.5;
+  return 1;
 }
 
 export function fxScaleFor(tier: QualityTier): FxScale {
   switch (tier) {
     case 'high':
+      // Modest bump vs older 1.0 / 1.35 — richer sparks/trails without melting mid phones
       return {
-        twinkles: 1,
-        sparks: 1.35,
-        trails: 1,
-        dust: 1,
-        trailAlpha: 0.4,
-        sparkSize: 1.15,
+        twinkles: 1.15,
+        sparks: 1.5,
+        trails: 1.15,
+        dust: 1.1,
+        trailAlpha: 0.44,
+        sparkSize: 1.22,
         trailGhosts: 2,
       };
     case 'medium':

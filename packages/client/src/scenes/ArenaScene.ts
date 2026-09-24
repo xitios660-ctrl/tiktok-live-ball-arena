@@ -39,7 +39,7 @@ import {
   createBottomCtaStrip,
   type CinematicHudHandles,
 } from '../ui/CinematicHud';
-import { fxScaleFromBudget, qualityFromBudget, type QualityTier } from '../fx/QualityTier';
+import { fxScaleFromBudget, qualityFromBudget, budgetFromFps, type QualityTier } from '../fx/QualityTier';
 import { createGiftLegend, tickGiftLegend, type GiftLegendHandles } from '../ui/GiftLegend';
 import {
   createPremiumTop5,
@@ -377,8 +377,13 @@ export class ArenaScene extends Phaser.Scene {
         .setAlpha(0.6);
     }
 
-    // Unlock audio on first tap anywhere
-    this.input.once('pointerdown', () => audio.ensure());
+    // Unlock audio on first tap anywhere; start arena ambient bed
+    audio.ensure();
+    audio.startAmbient(0.85);
+    this.input.once('pointerdown', () => {
+      audio.ensure();
+      audio.startAmbient(0.85);
+    });
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.game.events.on(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
@@ -393,6 +398,7 @@ export class ArenaScene extends Phaser.Scene {
       this.pickupsLayer?.clear();
       this.ambientTwinkles?.destroy();
       this.ambientTwinkles = null;
+      // Keep ambient running across scene swaps (Waiting↔Arena); AudioManager owns lifecycle.
     });
   }
 
@@ -1341,13 +1347,14 @@ export class ArenaScene extends Phaser.Scene {
       this.fpsFrames = 0;
       this.fpsAcc = 0;
       if (this.fpsText) this.fpsText.setText(`${this.fps} fps`);
-      // Adaptive quality tiers: high|medium|low from FPS → particleBudget → FX scales
-      // (see fx/QualityTier.ts). Physics stays server-side.
-      if (this.fps < 28) this.particleBudget = 0.25;
-      else if (this.fps < 40) this.particleBudget = 0.5;
-      else this.particleBudget = 1;
+      // Max quality by default: keep particleBudget=1 / high unless FPS is
+      // catastrophic (<18 → medium, <12 → low). Pass ?quality=auto for the
+      // older adaptive curve (40/28). See fx/QualityTier.ts.
+      const qMode = getOverlayOptions().qualityMode;
+      this.particleBudget = budgetFromFps(this.fps, qMode);
       this.qualityTier = qualityFromBudget(this.particleBudget);
-      audio.setQuality(this.particleBudget);
+      // Force rich audio when max quality; only throttle SFX under emergency tiers
+      audio.setQuality(qMode === 'max' ? Math.max(this.particleBudget, 0.85) : this.particleBudget);
       this.pickupsLayer?.setBudget(this.particleBudget);
     }
   }

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, SOCKET_EVENTS, type RoundState } from '@arena/shared';
 import { getOverlayOptions, SAFE } from '../overlayConfig';
+import { audio } from '../audio/AudioManager';
 import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT } from '../theme';
 import { createAmbientTwinkles } from '../ui/CinematicHud';
 import { createBallArenaLogo, tickBallArenaLogo, type BallArenaLogoHandles } from '../ui/BallArenaLogo';
@@ -64,6 +65,14 @@ export class WaitingScene extends Phaser.Scene {
     }
 
     this.twinkles = createAmbientTwinkles(this, this.overlayTransparent ? 8 : 18, 2);
+
+    // Soft arena atmosphere (full intensity resumes in ArenaScene)
+    audio.ensure();
+    audio.startAmbient(0.55);
+    this.input.once('pointerdown', () => {
+      audio.ensure();
+      audio.startAmbient(0.55);
+    });
 
     // Thin cream frame
     this.add
