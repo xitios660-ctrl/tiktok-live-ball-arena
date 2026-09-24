@@ -103,6 +103,10 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   private lastConnectedAt: number | null = null;
   private lastWsAt: number | null = null;
   private generation = 0;
+  /** Helps recover rapid tap bursts when TikTok emits per-user LIKE as +1. */
+  private lastTotalLikeCount: number | null = null;
+  private lastLikeUserId: string | null = null;
+  private lastLikeAt = 0;
 
   async connect(username: string): Promise<void> {
     this.username = username.replace(/^@/, '').trim();
@@ -283,6 +287,9 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     this.lastConnectedAt = Date.now();
     this.lastWsAt = Date.now();
     this.lastError = null;
+    this.lastTotalLikeCount = null;
+    this.lastLikeUserId = null;
+    this.lastLikeAt = 0;
     if (roomId) this.roomId = roomId;
     this.setPhase('connected');
     console.log(
@@ -417,23 +424,68 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   }
 
   private handleLike(raw: unknown): void {
-    const data = raw as {
-      user?: Record<string, unknown>;
-      likeCount?: number;
-      totalLikeCount?: number;
-    };
-    const user = toUser(data.user);
-    const likeCount = Math.max(1, Number(data.likeCount ?? 1));
+    const data = raw as Record<string, unknown>;
+    const nestedUser = data.user as Record<string, unknown> | undefined;
+
+    // Connector versions have used both nested data.user and top-level user
+    // fields. Accept both so COMMENT and LIKE resolve to the same player id.
+    const user = toUser(nestedUser || data);
+
+    const rawLikeCount = Math.max(
+      1,
+      Number(
+        data.likeCount ??
+          data.like_count ??
+          data.count ??
+          1
+      ) || 1
+    );
+
+    const totalRaw =
+      data.totalLikeCount ??
+      data.total_like_count ??
+      data.totalLikes;
+    const totalLikeCount =
+      totalRaw != null && Number.isFinite(Number(totalRaw))
+        ? Math.max(0, Number(totalRaw))
+        : undefined;
+
+    const now = Date.now();
+    let totalDelta = 0;
+    if (
+      totalLikeCount != null &&
+      this.lastTotalLikeCount != null &&
+      totalLikeCount >= this.lastTotalLikeCount
+    ) {
+      totalDelta = Math.floor(totalLikeCount - this.lastTotalLikeCount);
+    }
+
+    // TikTok can throttle a rapid heart burst into sparse +1 per-user events
+    // while the room total still moves by the real number of taps. Only use
+    // that delta when consecutive events belong to the SAME user within a
+    // short burst window, reducing accidental cross-user attribution.
+    const sameUserBurst =
+      this.lastLikeUserId === user.userId &&
+      now - this.lastLikeAt <= 4_000;
+
+    const creditedLikeCount = sameUserBurst
+      ? Math.max(rawLikeCount, Math.min(totalDelta, 100))
+      : rawLikeCount;
+
+    if (totalLikeCount != null) this.lastTotalLikeCount = totalLikeCount;
+    this.lastLikeUserId = user.userId;
+    this.lastLikeAt = now;
+
     this.push(
       {
         type: 'like',
         user,
-        likeCount,
-        totalLikeCount: data.totalLikeCount != null ? Number(data.totalLikeCount) : undefined,
-        timestamp: Date.now(),
+        likeCount: creditedLikeCount,
+        totalLikeCount,
+        timestamp: now,
       },
       '[LIKE]',
-      `@${user.username} +${likeCount}`
+      `@${user.username} +${creditedLikeCount} (raw=${rawLikeCount}, totalDelta=${totalDelta}, total=${totalLikeCount ?? '?'}, id=${user.userId})`
     );
   }
 
