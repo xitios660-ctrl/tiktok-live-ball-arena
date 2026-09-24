@@ -81,8 +81,7 @@
         <input id="comment" type="text" placeholder="comentário" style="width:140px" />
         <button onclick="comment()">💬 Comentário</button>
       </div>
-      <button onclick="post('/admin/sim/like', { likeCount: 10 })">❤️ Likes</button>
-      <button onclick="post('/admin/sim/join')">👋 Join</button>
+            <button onclick="post('/admin/sim/join')">👋 Join</button>
     </div>
 
     <div class="card">
@@ -100,13 +99,35 @@
     </div>
 
     <div class="card">
-      <h2>Bots & conexão</h2>
+      <h2>Bots & Load test</h2>
       <div class="row">
-        <label>N <input id="bots" type="number" value="5" min="1" max="50" /></label>
+        <label>N <input id="bots" type="number" value="5" min="1" max="150" /></label>
         <button onclick="bots(false)">👥 Spawn bots</button>
       </div>
-      <button onclick="post('/admin/sim/auto', { enabled: false })">Auto OFF</button>
-      <button onclick="post('/admin/sim/auto', { enabled: true })">Auto ON</button>
+      <button onclick="loadtest(50)">🧪 50 bots</button>
+      <button onclick="loadtest(100)">🧪 100 bots</button>
+      <button class="danger" onclick="loadtest(100, true)">💣 100 + gift spam</button>
+      <div class="row" style="margin-top:8px">
+        <button onclick="post('/admin/sim/auto', { enabled: false })">Auto OFF</button>
+        <button onclick="post('/admin/sim/auto', { enabled: true })">Auto ON</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Likes / Shares / Eventos</h2>
+      <div id="likesMeter" style="font-size:.85rem;color:var(--muted);margin-bottom:8px">likes: —</div>
+      <button onclick="post('/admin/sim/like', { likeCount: 50 })">❤️ +50 likes</button>
+      <button class="ok" onclick="post('/admin/sim/like', { likeCount: 100 })">❤️ +100 (threshold)</button>
+      <button onclick="post('/admin/sim/share')">📢 Share (alvo)</button>
+      <div class="row" style="margin-top:8px">
+        <button onclick="post('/admin/events/force', { kind: 'heal_rain' })">💚 HEAL RAIN</button>
+        <button onclick="post('/admin/events/force', { kind: 'speed_storm' })">⚡ SPEED STORM</button>
+        <button onclick="post('/admin/events/force', { kind: 'double_damage' })">💥 DOUBLE DMG</button>
+      </div>
+      <div class="row">
+        <button onclick="post('/admin/events/random', { enabled: true })">Random ON</button>
+        <button onclick="post('/admin/events/random', { enabled: false })">Random OFF</button>
+      </div>
     </div>
   </div>
 
@@ -135,6 +156,9 @@
     function comment() {
       return post('/admin/sim/comment', { comment: document.getElementById('comment').value || undefined });
     }
+    function loadtest(count, giftSpam) {
+      return post('/admin/sim/loadtest', { count, giftSpam: !!giftSpam });
+    }
     function bots(withGift) {
       return post('/admin/sim/bots', { count: Number(document.getElementById('bots').value) || 5, withGift });
     }
@@ -156,6 +180,11 @@
       }
       const mb = document.getElementById('modeBadge');
       if (mb) { mb.textContent = (j.mode || 'demo').toUpperCase(); mb.className = 'badge ' + (j.mode === 'demo' ? 'demo' : ''); }
+      const gl = j.global || {};
+      const lm = document.getElementById('likesMeter');
+      if (lm) {
+        lm.textContent = `likes ${gl.likesAccumulated||0}/${gl.likesThreshold||100} reward=${gl.likesReward||'-'} random=${gl.randomEventsEnabled?'ON':'OFF'} effect=${gl.activeEffect||'-'}`;
+      }
       document.getElementById('round').textContent =
         `phase=${rd.phase} rem=${rd.remainingSec}s results=${rd.resultsRemainingSec??'-'} vivos=${rd.playerCount||0} king=${j.kingUserId||'-'}`;
       const w = j.winner;

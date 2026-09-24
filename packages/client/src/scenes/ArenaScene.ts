@@ -11,6 +11,7 @@ import {
   type PlayerStats,
   type WinnerInfo,
 } from '@arena/shared';
+import { audio } from '../audio/AudioManager';
 
 interface BallView {
   container: Phaser.GameObjects.Container;
@@ -55,6 +56,13 @@ export class ArenaScene extends Phaser.Scene {
   private readonly killFeedTtl = 5000;
   private toastUntil = 0;
   private intensity = false;
+  private fpsAcc = 0;
+  private fpsFrames = 0;
+  private fps = 60;
+  private particleBudget = 1;
+  private muteBtn!: Phaser.GameObjects.Text;
+  private fpsText!: Phaser.GameObjects.Text;
+  private likesText!: Phaser.GameObjects.Text;
   private lastRemaining = 300;
 
   constructor() {
@@ -167,6 +175,38 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5);
     this.winnerPanel.add([panelBg, this.winnerTitle, this.winnerBody, this.resultsHint]);
 
+    this.likesText = this.add
+      .text(24, 120, '❤️ 0/100', {
+        fontFamily: 'Arial',
+        fontSize: '22px',
+        color: '#ff8fab',
+      })
+      .setDepth(200)
+      .setScrollFactor(0);
+    this.fpsText = this.add
+      .text(CANVAS_WIDTH - 24, 24, '60 fps', {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        color: '#9aa0a6',
+      })
+      .setOrigin(1, 0)
+      .setDepth(200);
+    this.muteBtn = this.add
+      .text(CANVAS_WIDTH - 24, 56, '🔊', {
+        fontFamily: 'Arial',
+        fontSize: '36px',
+      })
+      .setOrigin(1, 0)
+      .setDepth(200)
+      .setInteractive({ useHandCursor: true });
+    this.muteBtn.on('pointerdown', () => {
+      const m = audio.toggleMute();
+      this.muteBtn.setText(m ? '🔇' : '🔊');
+      audio.ensure();
+    });
+    // Unlock audio on first tap anywhere
+    this.input.once('pointerdown', () => audio.ensure());
+
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.game.events.on(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
     this.game.events.on(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
@@ -180,7 +220,8 @@ export class ArenaScene extends Phaser.Scene {
     });
   }
 
-  update(): void {
+  update(_time: number, delta: number): void {
+    this.trackFps(delta);
     const now = Date.now();
     this.killFeed = this.killFeed.filter((item) => {
       const age = now - item.born;
@@ -227,6 +268,10 @@ export class ArenaScene extends Phaser.Scene {
     this.applyTimerVisuals(snap.remainingSec, snap.phase);
     this.playersText.setText(`Vivos: ${snap.playerCount}`);
     this.syncBalls(snap.balls);
+    if (snap.global && this.likesText) {
+      const g = snap.global;
+      this.likesText.setText(`❤️ ${g.likesAccumulated}/${g.likesThreshold}` + (g.activeEffect ? ` · ${g.activeEffect}` : ''));
+    }
     this.renderTop5(snap.top5 || snap.stats.slice(0, 5));
 
     if (snap.phase === 'results') {
@@ -239,15 +284,18 @@ export class ArenaScene extends Phaser.Scene {
   private onCombat = (event: CombatEvent) => {
     if (event.type === 'hit') {
       this.spawnHitSparks(event.x, event.y, 0xffffff);
+      audio.play('collision', { intensity: Math.min(1, (event.damage || 8) / 28) });
     } else if (event.type === 'kill') {
       const revenge = !!event.isRevenge;
       this.pushKillFeed(event.message, revenge ? '#ffd60a' : '#ffffff', revenge ? '#8b0000cc' : '#fe2c55cc');
       this.spawnHitSparks(event.x, event.y, revenge ? 0xffd60a : 0xfe2c55, 18);
       this.spawnDeathFlash(event.x, event.y);
+      audio.play(revenge ? 'revenge' : 'death');
       if (revenge) this.showToast(event.message);
     } else if (event.type === 'announce') {
       if (event.kind === 'countdown' && event.value != null) {
         this.showBigCountdown(event.value);
+        audio.play('countdown');
       } else if (event.kind === 'last_minute') {
         this.showToast('ÚLTIMO MINUTO!');
         this.pushKillFeed(event.message, '#fe2c55', '#000000aa');
@@ -257,6 +305,7 @@ export class ArenaScene extends Phaser.Scene {
       } else if (event.kind === 'winner' || event.kind === 'next_round') {
         this.showToast(event.message);
         this.pushKillFeed(event.message, '#ffd60a', '#000000aa');
+        if (event.kind === 'winner') audio.play('victory');
       } else if (
         event.kind === 'gift' ||
         event.kind === 'galaxy' ||
@@ -265,10 +314,25 @@ export class ArenaScene extends Phaser.Scene {
       ) {
         this.showToast(event.message);
         this.pushKillFeed(event.message, '#e0aaff', '#2a1040cc');
+        audio.play('gift');
+      } else if (
+        event.kind === 'heal_rain' ||
+        event.kind === 'speed_storm' ||
+        event.kind === 'double_damage' ||
+        event.kind === 'likes_threshold' ||
+        event.kind === 'share_boost'
+      ) {
+        this.showToast(event.message);
+        this.pushKillFeed(event.message, '#7CFC00', '#0d3d2acc');
+        if (event.kind === 'speed_storm') audio.play('speed_storm');
+        else if (event.kind === 'share_boost') audio.play('share');
+        else audio.play('heal_rain');
       } else {
         this.pushKillFeed(event.message, '#ffd60a', '#000000aa');
         if (event.kind === 'respawn' || event.kind === 'revenge_respawn' || event.kind === 'eliminated') {
           this.showToast(event.message);
+          if (event.kind === 'respawn' || event.kind === 'revenge_respawn') audio.play('respawn');
+          if (event.kind === 'revenge_respawn') audio.play('revenge');
         }
       }
     }
@@ -385,6 +449,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private spawnHitSparks(x: number, y: number, color: number, n = 8): void {
+    n = Math.max(1, Math.floor(n * (this.particleBudget ?? 1)));
     for (let i = 0; i < n; i++) {
       const angle = (Math.PI * 2 * i) / n + Math.random() * 0.3;
       const dist = 20 + Math.random() * 40;
@@ -647,6 +712,23 @@ export class ArenaScene extends Phaser.Scene {
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
     return label.slice(0, 2).toUpperCase() || '?';
   }
+
+  private trackFps(delta: number): void {
+    this.fpsFrames += 1;
+    this.fpsAcc += delta;
+    if (this.fpsAcc >= 500) {
+      this.fps = Math.round((this.fpsFrames * 1000) / this.fpsAcc);
+      this.fpsFrames = 0;
+      this.fpsAcc = 0;
+      if (this.fpsText) this.fpsText.setText(`${this.fps} fps`);
+      // Adaptive quality: reduce particles/trails when FPS drops (physics stays server-side)
+      if (this.fps < 28) this.particleBudget = 0.25;
+      else if (this.fps < 40) this.particleBudget = 0.5;
+      else this.particleBudget = 1;
+      audio.setQuality(this.particleBudget);
+    }
+  }
+
 
   private truncate(s: string, n: number): string {
     return s.length > n ? s.slice(0, n - 1) + '…' : s;

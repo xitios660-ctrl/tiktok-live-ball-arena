@@ -236,6 +236,8 @@ function recomputeGeometry(b: BallBody, now: number): void {
 
 export class PhysicsWorld {
   private balls = new Map<string, BallBody>();
+  private globalDamageUntil = 0;
+  private globalDamageMult = 1;
   private readonly width = CANVAS_WIDTH;
   private readonly height = CANVAS_HEIGHT;
   private readonly margin = 8;
@@ -356,6 +358,7 @@ export class PhysicsWorld {
 
   /** Clear all temporary buffs (round reset / wipe) */
   clearAllBuffs(): void {
+    this.clearGlobalDamage();
     const now = Date.now();
     for (const b of this.balls.values()) {
       b.dinoRageUntil = 0;
@@ -370,6 +373,27 @@ export class PhysicsWorld {
       recomputeGeometry(b, now);
     }
   }
+
+  /** Arena-wide damage multiplier (DOUBLE DAMAGE event) */
+  setGlobalDamage(mult: number, untilMs: number): void {
+    this.globalDamageMult = Math.max(1, mult);
+    this.globalDamageUntil = Math.max(this.globalDamageUntil, untilMs);
+  }
+
+  clearGlobalDamage(): void {
+    this.globalDamageUntil = 0;
+    this.globalDamageMult = 1;
+  }
+
+  getGlobalDamageMult(now = Date.now()): number {
+    if (now >= this.globalDamageUntil) return 1;
+    return this.globalDamageMult;
+  }
+
+  isGlobalDamageActive(now = Date.now()): boolean {
+    return now < this.globalDamageUntil;
+  }
+
 
   applyDirectDamage(victimId: string, damage: number, attackerId?: string): DamageApplication | null {
     const victim = this.balls.get(victimId);
@@ -593,7 +617,8 @@ export class PhysicsWorld {
     attacker: BallBody | undefined,
     now: number
   ): DamageApplication {
-    let dmg = Math.max(0, Math.round(raw * (1 - activeResist(victim, now))));
+    const gMult = this.getGlobalDamageMult(now);
+    let dmg = Math.max(0, Math.round(raw * gMult * (1 - activeResist(victim, now))));
     let shieldBroke = false;
     if (victim.shieldHp > 0 && dmg > 0) {
       const absorbed = Math.min(victim.shieldHp, dmg);

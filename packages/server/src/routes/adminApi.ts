@@ -92,6 +92,7 @@ export function adminApiRouter(deps: {
       recentEvents: deps.game.getRecentEvents().slice(-20),
       demo: demo?.getStatus() ?? null,
       tiktok: deps.connector.getStatus(),
+      global: deps.game.getGlobalState(),
       gifts: DEMO_GIFT_PRESETS,
     });
   });
@@ -156,16 +157,38 @@ export function adminApiRouter(deps: {
     });
   });
 
-  router.post('/admin/sim/like', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
-    const event = demo.injectLike(Number(req.body?.likeCount) || 5, req.body?.user);
-    res.json({ ok: true, event });
+  router.post('/admin/sim/like', (req, res) => {
+    const likeCount = Math.max(1, Number(req.body?.likeCount) || 100);
+    const demo = deps.getDemo();
+    if (demo) {
+      demo.injectLike(likeCount, req.body?.user);
+    } else {
+      deps.game.handleLikes(likeCount);
+    }
+    res.json({ ok: true, likeCount, global: deps.game.getGlobalState() });
   });
 
-  router.post('/admin/sim/share', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
-    const event = demo.injectShare(req.body?.user);
-    res.json({ ok: true, event });
+  router.post('/admin/sim/share', (req, res) => {
+    const demo = deps.getDemo();
+    let user = req.body?.user;
+    const targetId = req.body?.userId || user?.userId || deps.game.resolveGiftTargetUserId(null);
+    if (targetId) {
+      const ball = deps.game.getSnapshot().balls.find((b) => b.userId === targetId);
+      const stats = deps.game.getStats().find((s) => s.userId === targetId);
+      user = {
+        userId: targetId,
+        username: ball?.username || stats?.username || user?.username || targetId,
+        nickname: ball?.nickname || stats?.nickname || user?.nickname,
+      };
+    }
+    if (demo && user) {
+      demo.injectShare(user);
+    } else if (user) {
+      deps.game.handleShare(user);
+    } else if (demo) {
+      demo.injectShare();
+    }
+    res.json({ ok: true, user, global: deps.game.getGlobalState() });
   });
 
   router.post('/admin/sim/join', requireDemo, (req, res) => {
@@ -187,6 +210,54 @@ export function adminApiRouter(deps: {
     const events = demo.spawnBots(count, withGift);
     res.json({ ok: true, count: events.filter((e) => e.type === 'join').length, events });
   });
+
+  router.post('/admin/sim/loadtest', requireDemo, (req, res) => {
+    const demo = deps.getDemo()!;
+    const count = Math.min(150, Math.max(1, Number(req.body?.count) || 50));
+    const withGift = Boolean(req.body?.withGift);
+    const giftSpam = Boolean(req.body?.giftSpam);
+    const events = demo.spawnBots(count, withGift);
+    let gifts = 0;
+    if (giftSpam) {
+      const balls = deps.game.getSnapshot().balls;
+      for (const b of balls.slice(0, Math.min(20, balls.length))) {
+        deps.game.handleLiveEvent({
+          type: 'gift',
+          user: { userId: b.userId, username: b.username, nickname: b.nickname },
+          giftId: 'rosa',
+          giftName: 'Rosa',
+          repeatCount: 1,
+          repeatEnd: true,
+          coinValue: 1,
+          timestamp: Date.now(),
+        });
+        gifts += 1;
+      }
+    }
+    res.json({
+      ok: true,
+      spawned: events.filter((e) => e.type === 'join').length,
+      gifts,
+      players: deps.game.getState().playerCount,
+    });
+  });
+
+  router.post('/admin/events/random', (req, res) => {
+    const enabled = req.body?.enabled;
+    if (typeof enabled === 'boolean') deps.game.setRandomEventsEnabled(enabled);
+    res.json({ ok: true, global: deps.game.getGlobalState() });
+  });
+
+  router.post('/admin/events/force', (req, res) => {
+    const kind = (req.body?.kind as string) || 'heal_rain';
+    if (kind !== 'heal_rain' && kind !== 'speed_storm' && kind !== 'double_damage') {
+      res.status(400).json({ ok: false, error: 'kind must be heal_rain|speed_storm|double_damage' });
+      return;
+    }
+    deps.game.forceArenaEvent(kind);
+    res.json({ ok: true, kind, global: deps.game.getGlobalState() });
+  });
+
 
   router.post('/admin/sim/disconnect', requireDemo, async (_req, res) => {
     const demo = deps.getDemo()!;

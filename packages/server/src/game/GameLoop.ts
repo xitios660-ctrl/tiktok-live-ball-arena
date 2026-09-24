@@ -24,6 +24,7 @@ import {
 import { randomUUID } from 'crypto';
 import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
 import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
+import { GlobalArenaEvents } from './GlobalArenaEvents';
 
 export type RoundListener = (state: RoundState) => void;
 export type LiveListener = (event: ArenaLiveEvent) => void;
@@ -80,6 +81,7 @@ export class GameLoop {
   private historical = new Map<string, HistoricalStats>();
   /** Last ball that spawned / received focus — admin gifts target this */
   private lastSpawnedUserId: string | null = null;
+  private readonly globalEvents = new GlobalArenaEvents();
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -123,6 +125,7 @@ export class GameLoop {
       top5,
       kingUserId,
       winner: this.winner,
+      global: this.globalEvents.getState(),
     };
   }
 
@@ -228,6 +231,7 @@ export class GameLoop {
     this.players.clear();
     this.recentCombat = [];
     this.lastSpawnedUserId = null;
+    this.globalEvents.resetRound();
     this.tick = 0;
     this.winner = null;
     this.resultsRemainingSec = 0;
@@ -300,7 +304,47 @@ export class GameLoop {
       this.handleJoin(event.user);
     } else if (event.type === 'gift') {
       this.handleGift(event);
+    } else if (event.type === 'like') {
+      this.handleLikes(event.likeCount || 1);
+    } else if (event.type === 'share') {
+      this.handleShare(event.user);
     }
+  }
+
+  handleLikes(count: number): void {
+    if (this.state.phase !== 'running') {
+      // still accumulate? Spec: during round. Skip if not running.
+      return;
+    }
+    const anns = this.globalEvents.addLikes(count, this.physics);
+    for (const a of anns) this.pushCombat(a);
+    if (anns.length) this.emitSnapshot();
+    console.log(`[LIKE] +${count} → accum=${this.globalEvents.likesAccumulated}/${this.globalEvents.likesThreshold}`);
+  }
+
+  handleShare(user: ArenaUser): void {
+    if (this.state.phase === 'results' || this.state.phase === 'ended') return;
+    // Ensure sharer has a ball so boost applies
+    this.spawnNewOrNudge(user);
+    const ann = this.globalEvents.applyShare(user, this.physics);
+    if (ann) {
+      this.pushCombat(ann);
+      this.emitSnapshot();
+    }
+  }
+
+  setRandomEventsEnabled(enabled: boolean): void {
+    this.globalEvents.setRandomEventsEnabled(enabled);
+  }
+
+  forceArenaEvent(kind: 'heal_rain' | 'speed_storm' | 'double_damage'): void {
+    if (this.state.phase !== 'running') return;
+    for (const a of this.globalEvents.forceEvent(kind, this.physics)) this.pushCombat(a);
+    this.emitSnapshot();
+  }
+
+  getGlobalState() {
+    return this.globalEvents.getState();
   }
 
   /**
@@ -801,6 +845,9 @@ export class GameLoop {
     }
 
     this.updateKing();
+    for (const a of this.globalEvents.maybeRandomEvent(this.physics, true)) {
+      this.pushCombat(a);
+    }
     this.emitRound();
     this.emitSnapshot();
 

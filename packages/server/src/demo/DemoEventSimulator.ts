@@ -169,7 +169,7 @@ export class DemoEventSimulator implements ITikTokConnector {
 
   /** Spawn N fake bots that each emit a join (+ optional random gift). */
   spawnBots(count: number, withGift = false): ArenaLiveEvent[] {
-    const n = Math.max(1, Math.min(50, Math.floor(count)));
+    const n = Math.max(1, Math.min(150, Math.floor(count)));
     const emitted: ArenaLiveEvent[] = [];
     for (let i = 0; i < n; i++) {
       this.botSeq += 1;

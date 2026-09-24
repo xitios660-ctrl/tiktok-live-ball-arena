@@ -178,6 +178,16 @@ export interface WinnerInfo {
   highestSpeed: number;
 }
 
+export interface GlobalEventState {
+  likesAccumulated: number;
+  likesThreshold: number;
+  likesReward: 'heal_rain' | 'speed_storm';
+  randomEventsEnabled: boolean;
+  /** Active arena-wide effect key, if any */
+  activeEffect?: 'heal_rain' | 'speed_storm' | 'double_damage' | null;
+  activeEffectUntil?: number | null;
+}
+
 export interface GameSnapshot {
   tick: number;
   tickHz: number;
@@ -192,6 +202,7 @@ export interface GameSnapshot {
   top5: PlayerStats[];
   kingUserId: string | null;
   winner: WinnerInfo | null;
+  global?: GlobalEventState;
 }
 
 export interface HitEvent {
@@ -236,7 +247,12 @@ export interface AnnounceEvent {
     | 'gift'
     | 'galaxy'
     | 'sugar_burst'
-    | 'stomp';
+    | 'stomp'
+    | 'heal_rain'
+    | 'speed_storm'
+    | 'double_damage'
+    | 'share_boost'
+    | 'likes_threshold';
   message: string;
   userId?: string;
   username?: string;
@@ -332,6 +348,22 @@ export function resolveAbilityKey(giftId: string | number): AbilityKey | null {
   const id = String(giftId).toLowerCase();
   return GIFT_ABILITY_BY_ID[id] ?? null;
 }
+
+/** —— Likes / Shares / Random arena events —— */
+export const LIKE_THRESHOLD_DEFAULT = 100;
+export const LIKE_REWARD_DEFAULT: 'heal_rain' | 'speed_storm' = 'heal_rain';
+export const HEAL_RAIN_HP = 15;
+export const SPEED_STORM_DURATION_MS = 8_000;
+export const DOUBLE_DAMAGE_DURATION_MS = 10_000;
+export const DOUBLE_DAMAGE_MULT = 2.0;
+
+export const SHARE_HEAL = 20;
+export const SHARE_SPEED_DURATION_MS = 5_000;
+export const SHARE_COOLDOWN_MS = 30_000;
+
+/** Random event cadence during a running round */
+export const RANDOM_EVENT_INTERVAL_SEC = 45;
+export const RANDOM_EVENT_CHANCE = 0.35; // per tick check
 
 export const SOCKET_EVENTS = {
   ROUND_STATE: 'round:state',

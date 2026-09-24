@@ -7,6 +7,13 @@ Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live
 ## DEMO vs PRODUCTION
 
 
+## Likes / Shares / Load test
+
+- **Likes:** acumulam; a cada 100 (`LIKE_THRESHOLD`) → HEAL RAIN ou SPEED STORM (`LIKE_REWARD`)
+- **Share:** +20 HP + 5s speed no sharer (cooldown 30s)
+- Admin: 🧪 50/100 bots, force HEAL/SPEED/DOUBLE, Random ON/OFF
+- Overlay: ❤️ meter, fps, 🔊 mute (beeps Web Audio)
+
 ## TikTok modes (Etapa 13)
 
 | Mode | Env | Behavior |
