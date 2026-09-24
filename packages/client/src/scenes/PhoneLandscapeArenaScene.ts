@@ -544,14 +544,14 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
     if (!animate) {
       for (const target of targets) {
-        (target as Phaser.GameObjects.Components.Alpha).setAlpha(visible ? 1 : 0);
+        (target as unknown as { setAlpha: (value: number) => unknown }).setAlpha(visible ? 1 : 0);
       }
       return;
     }
 
     if (visible) {
       for (const target of targets) {
-        (target as Phaser.GameObjects.Components.Alpha).setAlpha(0);
+        (target as unknown as { setAlpha: (value: number) => unknown }).setAlpha(0);
       }
       this.panelTween = this.tweens.add({
         targets,
