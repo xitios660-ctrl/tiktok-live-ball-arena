@@ -15,13 +15,18 @@ import {
 interface BallView {
   container: Phaser.GameObjects.Container;
   circle: Phaser.GameObjects.Arc;
+  aura: Phaser.GameObjects.Arc;
+  shieldRing: Phaser.GameObjects.Arc;
   initials: Phaser.GameObjects.Text;
   label: Phaser.GameObjects.Text;
   hpBg: Phaser.GameObjects.Rectangle;
   hpFg: Phaser.GameObjects.Rectangle;
+  shieldFg: Phaser.GameObjects.Rectangle;
   revengeMark: Phaser.GameObjects.Text;
   crown: Phaser.GameObjects.Text;
+  buffIcon: Phaser.GameObjects.Text;
   lastHp: number;
+  lastHealFlash: boolean;
 }
 
 interface FeedItem {
@@ -252,6 +257,14 @@ export class ArenaScene extends Phaser.Scene {
       } else if (event.kind === 'winner' || event.kind === 'next_round') {
         this.showToast(event.message);
         this.pushKillFeed(event.message, '#ffd60a', '#000000aa');
+      } else if (
+        event.kind === 'gift' ||
+        event.kind === 'galaxy' ||
+        event.kind === 'sugar_burst' ||
+        event.kind === 'stomp'
+      ) {
+        this.showToast(event.message);
+        this.pushKillFeed(event.message, '#e0aaff', '#2a1040cc');
       } else {
         this.pushKillFeed(event.message, '#ffd60a', '#000000aa');
         if (event.kind === 'respawn' || event.kind === 'revenge_respawn' || event.kind === 'eliminated') {
@@ -420,6 +433,8 @@ export class ArenaScene extends Phaser.Scene {
 
   private createBallView(b: BallState): BallView {
     const container = this.add.container(b.x, b.y);
+    const aura = this.add.circle(0, 0, b.radius + 10, 0x7cfc00, 0).setStrokeStyle(4, 0x7cfc00, 0);
+    const shieldRing = this.add.circle(0, 0, b.radius + 6, 0xff9f1c, 0).setStrokeStyle(3, 0xff9f1c, 0);
     const circle = this.add.circle(0, 0, b.radius, b.color, 1);
     circle.setStrokeStyle(3, 0xffffff, 0.85);
 
@@ -444,6 +459,7 @@ export class ArenaScene extends Phaser.Scene {
     const barW = b.radius * 2;
     const hpBg = this.add.rectangle(0, -b.radius - 12, barW, 8, 0x333333).setOrigin(0.5);
     const hpFg = this.add.rectangle(-barW / 2, -b.radius - 12, barW, 8, 0x20d68a).setOrigin(0, 0.5);
+    const shieldFg = this.add.rectangle(-barW / 2, -b.radius - 22, 0, 5, 0xff9f1c).setOrigin(0, 0.5);
 
     const revengeMark = this.add
       .text(b.radius * 0.6, -b.radius - 8, '🎯', { fontSize: '26px' })
@@ -455,41 +471,116 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
 
-    container.add([circle, initials, hpBg, hpFg, label, revengeMark, crown]);
+    const buffIcon = this.add
+      .text(0, b.radius + 36, '', { fontSize: '22px' })
+      .setOrigin(0.5, 0);
+
+    container.add([aura, shieldRing, circle, initials, hpBg, hpFg, shieldFg, label, revengeMark, crown, buffIcon]);
     if (b.avatarUrl) this.tryLoadAvatar(b, circle, initials, container);
 
-    return { container, circle, initials, label, hpBg, hpFg, revengeMark, crown, lastHp: b.hp };
+    return {
+      container, circle, aura, shieldRing, initials, label, hpBg, hpFg, shieldFg,
+      revengeMark, crown, buffIcon, lastHp: b.hp, lastHealFlash: false,
+    };
   }
 
   private updateBallView(view: BallView, b: BallState): void {
     view.container.setPosition(b.x, b.y);
     view.circle.setRadius(b.radius);
+    view.aura.setRadius(b.radius + 12);
+    view.shieldRing.setRadius(b.radius + 7);
 
     const protected_ = !!b.spawnProtected;
     const flash = !!b.hitFlash;
-    view.circle.setFillStyle(flash ? 0xffffff : b.color, protected_ ? 0.35 : flash ? 0.9 : 1);
-    view.circle.setStrokeStyle(
-      b.isKing ? 5 : 3,
-      b.isKing ? 0xffd60a : protected_ ? 0x25f4ee : flash ? 0xfe2c55 : 0xffffff,
-      protected_ ? 0.5 : 0.9
+    const buffs = b.buffs || [];
+    const isGalaxy = !!b.isGalaxy || buffs.includes('galaxy_god');
+    const isDino = buffs.includes('dino_rage');
+    const isDonut = buffs.includes('donut_overdrive');
+    const isTitan = buffs.includes('capybara_titan');
+    const isSugar = buffs.includes('sugar_burst');
+
+    view.circle.setFillStyle(
+      flash ? 0xffffff : isGalaxy ? 0x9b5de5 : b.color,
+      protected_ ? 0.35 : flash ? 0.9 : 1
     );
+    let stroke = 0xffffff;
+    let strokeW = b.isKing ? 5 : 3;
+    if (isGalaxy) { stroke = 0xe0aaff; strokeW = 6; }
+    else if (b.isKing) stroke = 0xffd60a;
+    else if (protected_) stroke = 0x25f4ee;
+    else if (flash) stroke = 0xfe2c55;
+    else if (isDino) stroke = 0x7cfc00;
+    else if (isTitan) stroke = 0xc4a484;
+    else if (isDonut) stroke = 0xff9f1c;
+    view.circle.setStrokeStyle(strokeW, stroke, protected_ ? 0.5 : 0.95);
     view.container.setAlpha(protected_ ? 0.55 : 1);
+
+    // Aura
+    if (isDino) view.aura.setStrokeStyle(5, 0x7cfc00, 0.7);
+    else if (isGalaxy) view.aura.setStrokeStyle(6, 0xc77dff, 0.85);
+    else if (isTitan) view.aura.setStrokeStyle(5, 0xc4a484, 0.55);
+    else if (isSugar) view.aura.setStrokeStyle(4, 0xff66aa, 0.7);
+    else view.aura.setStrokeStyle(0, 0x000000, 0);
+
+    // Donut shield ring
+    const sh = b.shieldHp || 0;
+    if (sh > 0 || isDonut) {
+      view.shieldRing.setStrokeStyle(4, 0xff9f1c, 0.85);
+      view.shieldRing.rotation += 0.04;
+    } else {
+      view.shieldRing.setStrokeStyle(0, 0x000000, 0);
+    }
 
     view.revengeMark.setVisible(!!b.revengeMarked);
     view.crown.setVisible(!!b.isKing);
-    view.crown.setY(-b.radius - 30);
+    view.crown.setY(-b.radius - 34);
+
+    const icons: string[] = [];
+    if (isGalaxy) icons.push('🌌');
+    if (isTitan) icons.push('🦫');
+    if (isDino) icons.push('🦖');
+    if (isDonut || sh > 0) icons.push('🍩');
+    if (isSugar) icons.push('💥');
+    view.buffIcon.setText(icons.join(''));
+    view.buffIcon.setY(b.radius + 36);
 
     view.label.setText(this.truncate(b.label, 14));
     view.label.setY(b.radius + 14);
     const barW = b.radius * 2;
     view.hpBg.setPosition(0, -b.radius - 12);
     view.hpBg.setSize(barW, 8);
-    const ratio = b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 0;
-    view.hpFg.setPosition(-barW / 2, -b.radius - 12);
-    view.hpFg.setSize(barW * ratio, 8);
-    view.hpFg.setFillStyle(ratio > 0.3 ? 0x20d68a : 0xfe2c55);
+    if (isGalaxy) {
+      view.hpFg.setPosition(-barW / 2, -b.radius - 12);
+      view.hpFg.setSize(barW, 8);
+      view.hpFg.setFillStyle(0xc77dff);
+      view.label.setText(this.truncate(b.label, 10) + ' ∞');
+    } else {
+      const ratio = b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 0;
+      view.hpFg.setPosition(-barW / 2, -b.radius - 12);
+      view.hpFg.setSize(barW * ratio, 8);
+      view.hpFg.setFillStyle(ratio > 0.3 ? 0x20d68a : 0xfe2c55);
+    }
+    const shieldRatio = Math.min(1, sh / 300);
+    view.shieldFg.setPosition(-barW / 2, -b.radius - 22);
+    view.shieldFg.setSize(barW * shieldRatio, 5);
+    view.shieldFg.setVisible(sh > 0);
 
-    if (b.hp < view.lastHp) {
+    if (b.healFlash && !view.lastHealFlash) {
+      this.spawnHeartBurst(b.x, b.y);
+    }
+    view.lastHealFlash = !!b.healFlash;
+    if (b.sugarBurstFlash || b.stompFlash || b.galaxyImpactFlash) {
+      this.tweens.add({
+        targets: view.aura,
+        scaleX: 1.8,
+        scaleY: 1.8,
+        alpha: 0.2,
+        duration: 200,
+        yoyo: true,
+      });
+    }
+
+    if (b.hp < view.lastHp && !isGalaxy) {
       this.tweens.add({
         targets: view.container,
         scaleX: 1.15,
@@ -499,6 +590,21 @@ export class ArenaScene extends Phaser.Scene {
       });
     }
     view.lastHp = b.hp;
+  }
+
+  private spawnHeartBurst(x: number, y: number): void {
+    for (let i = 0; i < 4; i++) {
+      const heart = this.add.text(x, y, '💖', { fontSize: '20px' }).setDepth(250);
+      const ang = Math.random() * Math.PI * 2;
+      this.tweens.add({
+        targets: heart,
+        x: x + Math.cos(ang) * (40 + Math.random() * 50),
+        y: y + Math.sin(ang) * (40 + Math.random() * 50) - 30,
+        alpha: 0,
+        duration: 500 + Math.random() * 300,
+        onComplete: () => heart.destroy(),
+      });
+    }
   }
 
   private tryLoadAvatar(

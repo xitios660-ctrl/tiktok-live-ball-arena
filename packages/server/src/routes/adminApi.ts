@@ -46,6 +46,10 @@ export function adminApiRouter(deps: {
         maxHp: b.maxHp,
         spawnProtected: b.spawnProtected,
         revengeMarked: b.revengeMarked,
+        shieldHp: b.shieldHp ?? 0,
+        buffs: b.buffs ?? [],
+        isGalaxy: !!b.isGalaxy,
+        sizeScale: b.sizeScale ?? 1,
       })),
       recentCombat: deps.game.getRecentCombat().slice(-20),
       recentEvents: deps.game.getRecentEvents().slice(-20),
@@ -90,11 +94,41 @@ export function adminApiRouter(deps: {
   router.post('/admin/sim/gift', requireDemo, (req, res) => {
     const demo = deps.getDemo()!;
     const giftId = (req.body?.giftId as string) || 'rosa';
-    const event = demo.injectGift(giftId, {
-      repeatCount: req.body?.repeatCount,
-      user: req.body?.user,
+    const repeatCount = Number(req.body?.repeatCount) || 1;
+    // Target: explicit userId → last spawned / first alive ball
+    let user = req.body?.user as { userId?: string; username?: string; nickname?: string } | undefined;
+    const targetId =
+      (req.body?.userId as string) ||
+      user?.userId ||
+      deps.game.resolveGiftTargetUserId(null);
+    if (targetId) {
+      const ball = deps.game.getSnapshot().balls.find((b) => b.userId === targetId);
+      const stats = deps.game.getStats().find((s) => s.userId === targetId);
+      user = {
+        userId: targetId,
+        username: ball?.username || stats?.username || user?.username || targetId,
+        nickname: ball?.nickname || stats?.nickname || user?.nickname,
+      };
+    }
+    const event = demo.injectGift(giftId, { repeatCount, user });
+    const snap = deps.game.getSnapshot();
+    const targetBall = snap.balls.find((b) => b.userId === event.user.userId);
+    res.json({
+      ok: true,
+      event,
+      target: targetBall
+        ? {
+            userId: targetBall.userId,
+            username: targetBall.username,
+            hp: targetBall.hp,
+            maxHp: targetBall.maxHp,
+            shieldHp: targetBall.shieldHp,
+            buffs: targetBall.buffs,
+            isGalaxy: targetBall.isGalaxy,
+            sizeScale: targetBall.sizeScale,
+          }
+        : null,
     });
-    res.json({ ok: true, event });
   });
 
   router.post('/admin/sim/like', requireDemo, (req, res) => {

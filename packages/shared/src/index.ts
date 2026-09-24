@@ -3,11 +3,19 @@
 export type TikTokMode = 'demo' | 'production';
 
 export type AbilityKey =
-  | 'spawn_small_ball'
-  | 'spawn_medium_ball'
-  | 'boost_speed'
-  | 'spawn_heavy_ball'
-  | 'ultimate_chaos';
+  | 'heal_pulse'
+  | 'dino_rage'
+  | 'donut_overdrive'
+  | 'capybara_titan'
+  | 'galaxy_god';
+
+/** Active buff keys mirrored to client for VFX */
+export type BuffKey =
+  | 'dino_rage'
+  | 'donut_overdrive'
+  | 'sugar_burst'
+  | 'capybara_titan'
+  | 'galaxy_god';
 
 export interface GiftConfigEntry {
   id: string;
@@ -118,6 +126,15 @@ export interface BallState {
   revengeMarked?: boolean;
   /** 👑 Rei da Arena */
   isKing?: boolean;
+  /** Active buff keys for client VFX */
+  buffs?: BuffKey[];
+  shieldHp?: number;
+  isGalaxy?: boolean;
+  sizeScale?: number;
+  healFlash?: boolean;
+  sugarBurstFlash?: boolean;
+  stompFlash?: boolean;
+  galaxyImpactFlash?: boolean;
 }
 
 export interface PlayerStats {
@@ -215,7 +232,11 @@ export interface AnnounceEvent {
     | 'last_minute'
     | 'countdown'
     | 'winner'
-    | 'next_round';
+    | 'next_round'
+    | 'gift'
+    | 'galaxy'
+    | 'sugar_burst'
+    | 'stomp';
   message: string;
   userId?: string;
   username?: string;
@@ -252,6 +273,65 @@ export const SPAWN_PROTECTION_MS = 2000;
 export const REVENGE_MARK_MS = 10000;
 /** Min gap between "NOVO REI DA ARENA" announces */
 export const KING_ANNOUNCE_COOLDOWN_MS = 8000;
+
+/** —— Gift ability formulas / caps (server + docs) —— */
+export const GIFT_SOFT_MAX_HP = 150;
+export const ROSA_HEAL = 2;
+
+export const DINO_DURATION_MS = 10_000;
+export const DINO_STRENGTH_MULT = 1.25;
+export const DINO_SPEED_MULT = 1.15;
+export const DINO_COLLISION_DMG_MULT = 1.2;
+
+export const DONUT_HEAL = 20;
+export const DONUT_SHIELD_PER = 100;
+export const DONUT_SHIELD_MAX = 300;
+export const DONUT_DURATION_MS = 12_000;
+export const DONUT_SPEED_MULT = 1.2;
+export const DONUT_RESIST = 0.25;
+export const SUGAR_BURST_SPEED_MULT = 1.25;
+export const SUGAR_BURST_DURATION_MS = 3_000;
+export const SUGAR_BURST_PUSH = 420;
+export const SUGAR_BURST_DAMAGE = 8;
+export const SUGAR_BURST_RADIUS = 220;
+
+export const TITAN_DURATION_MS = 20_000;
+export const TITAN_SIZE_MULT = 1.6;
+export const TITAN_MASS_MULT = 2.0;
+export const TITAN_STRENGTH_MULT = 1.75;
+export const TITAN_RESIST = 0.4;
+export const TITAN_COLLISION_DMG_MULT = 1.35;
+export const TITAN_SPEED_MULT = 1.2;
+export const TITAN_HP_GAIN = 50;
+export const TITAN_RESTACK_HP = 25;
+export const TITAN_REGEN_PER_SEC = 2;
+export const TITAN_ULTRA_CALMA_KB = 0.5;
+export const TITAN_STOMP_SPEED = 280;
+export const TITAN_STOMP_PUSH = 380;
+export const TITAN_STOMP_RADIUS = 260;
+export const TITAN_HIT_KB_BONUS = 1.35;
+export const TITAN_HIT_SPEED = 320;
+
+export const GALAXY_STRENGTH_MULT = 4.0; // +300%
+export const GALAXY_SPEED_MULT = 2.0; // +100%
+export const GALAXY_SIZE_MULT = 1.5;
+export const GALAXY_MASS_MULT = 4.0;
+export const GALAXY_IMPACT_SPEED = 350;
+export const GALAXY_IMPACT_PUSH = 520;
+export const GALAXY_IMPACT_EXTRA_DMG = 1.5;
+
+export const GIFT_ABILITY_BY_ID: Record<string, AbilityKey> = {
+  rosa: 'heal_pulse',
+  mini_dino: 'dino_rage',
+  rosquinha: 'donut_overdrive',
+  capivara: 'capybara_titan',
+  galaxia: 'galaxy_god',
+};
+
+export function resolveAbilityKey(giftId: string | number): AbilityKey | null {
+  const id = String(giftId).toLowerCase();
+  return GIFT_ABILITY_BY_ID[id] ?? null;
+}
 
 export const SOCKET_EVENTS = {
   ROUND_STATE: 'round:state',

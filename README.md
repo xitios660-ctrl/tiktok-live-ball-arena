@@ -2,7 +2,7 @@
 
 Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live spawnam bolas e habilidades na arena.
 
-> **Etapas 1–11:** DEMO + física + HP/morte + respawn/vingança + **TOP 5 + rodada 5 min + vencedor + auto next**. Next: gifts Rosa→Galaxy (16–20).
+> **Etapas 1–11 + 16–20:** DEMO completo até gifts **Rosa→Galaxy** com efeitos reais. Next: polish sim + connector PRODUCTION (Etapa 13) atrás de flag.
 
 ## DEMO vs PRODUCTION
 
@@ -73,17 +73,17 @@ docs/             pesquisa de integração TikTok
 - Colisão parede/bola: velocidade × **1.015** (aceleração progressiva)
 - Comentário ou join (bots) spawna bola; DEMO auto-inicia a rodada
 
-## Presentes (hierarquia)
+## Presentes (hierarquia — beneficia o SENDER)
 
-| Gift | Coins (aprox.) | Ability |
-|------|----------------|---------|
-| Rosa | 1 | spawn_small_ball |
-| Mini Dino | 5 | spawn_medium_ball |
-| Rosquinha | 30 | boost_speed |
-| Capivara | 99 | spawn_heavy_ball |
-| Galaxia | 1000 | ultimate_chaos |
+| Gift | Coins | Ability | Efeito |
+|------|-------|---------|--------|
+| Rosa | 1 | heal_pulse | +2 HP (soft max 150), stack |
+| Mini Dino | 10 | dino_rage | 10s +25% força / +15% speed / +20% colisão |
+| Rosquinha | 30 | donut_overdrive | +20 HP, escudo 100 (cap 300), 12s buff; break→SUGAR BURST |
+| Capivara | 100 | capybara_titan | 20s titan; restack +20s +25 HP; stomp; Ultra Calma |
+| Galaxia | 1000 | galaxy_god | Imortal até fim da rodada atual; limpa no reset |
 
-Detalhes em `gifts/gift-config.json`.
+Admin: escolha o **alvo** e clique o gift. Detalhes em `gifts/gift-config.json`.
 
 ## Honestidade TikTok
 

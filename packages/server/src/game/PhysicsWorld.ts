@@ -12,8 +12,40 @@ import {
   DAMAGE_MAX,
   DAMAGE_IMPACT_THRESHOLD,
   SPAWN_PROTECTION_MS,
+  GIFT_SOFT_MAX_HP,
+  DINO_STRENGTH_MULT,
+  DINO_SPEED_MULT,
+  DINO_COLLISION_DMG_MULT,
+  DONUT_SPEED_MULT,
+  DONUT_RESIST,
+  SUGAR_BURST_SPEED_MULT,
+  SUGAR_BURST_DURATION_MS,
+  SUGAR_BURST_PUSH,
+  SUGAR_BURST_DAMAGE,
+  SUGAR_BURST_RADIUS,
+  TITAN_SIZE_MULT,
+  TITAN_MASS_MULT,
+  TITAN_STRENGTH_MULT,
+  TITAN_RESIST,
+  TITAN_COLLISION_DMG_MULT,
+  TITAN_SPEED_MULT,
+  TITAN_ULTRA_CALMA_KB,
+  TITAN_STOMP_SPEED,
+  TITAN_STOMP_PUSH,
+  TITAN_STOMP_RADIUS,
+  TITAN_HIT_KB_BONUS,
+  TITAN_HIT_SPEED,
+  TITAN_REGEN_PER_SEC,
+  GALAXY_STRENGTH_MULT,
+  GALAXY_SPEED_MULT,
+  GALAXY_SIZE_MULT,
+  GALAXY_MASS_MULT,
+  GALAXY_IMPACT_SPEED,
+  GALAXY_IMPACT_PUSH,
+  GALAXY_IMPACT_EXTRA_DMG,
   type ArenaUser,
   type BallState,
+  type BuffKey,
 } from '@arena/shared';
 
 export interface BallBody {
@@ -35,11 +67,29 @@ export interface BallBody {
   hitFlashTicks: number;
   lastHitterId: string | null;
   lastHitterName: string | null;
-  /** ms timestamp — protected until */
   spawnProtectedUntil: number;
-  /** ms timestamp — 🎯 mark until */
   revengeMarkedUntil: number;
   highestSpeed: number;
+  /** Base (pre-buff) geometry */
+  baseRadius: number;
+  baseMass: number;
+  baseStrength: number;
+  /** Timed buffs */
+  dinoRageUntil: number;
+  donutUntil: number;
+  sugarBurstUntil: number;
+  titanUntil: number;
+  /** Titan multipliers applied once until buff ends */
+  titanApplied: boolean;
+  galaxy: boolean;
+  shieldHp: number;
+  /** VFX */
+  healFlashTicks: number;
+  sugarBurstFlashTicks: number;
+  stompFlashTicks: number;
+  galaxyImpactFlashTicks: number;
+  /** Accumulators for regen */
+  regenAcc: number;
 }
 
 export interface DamageApplication {
@@ -52,10 +102,19 @@ export interface DamageApplication {
   x: number;
   y: number;
   killed: boolean;
+  shieldBroke?: boolean;
+}
+
+export interface FxEvent {
+  type: 'sugar_burst' | 'stomp' | 'galaxy_impact';
+  userId: string;
+  x: number;
+  y: number;
 }
 
 export interface StepResult {
   damages: DamageApplication[];
+  fx: FxEvent[];
 }
 
 const COLORS = [
@@ -77,15 +136,58 @@ function speedOf(b: BallBody): number {
   return Math.hypot(b.vx, b.vy);
 }
 
-function capSpeed(b: BallBody): void {
+function activeSpeedMult(b: BallBody, now: number): number {
+  let m = 1;
+  if (now < b.dinoRageUntil) m *= DINO_SPEED_MULT;
+  if (now < b.donutUntil) m *= DONUT_SPEED_MULT;
+  if (now < b.sugarBurstUntil) m *= SUGAR_BURST_SPEED_MULT;
+  if (now < b.titanUntil) m *= TITAN_SPEED_MULT;
+  if (b.galaxy) m *= GALAXY_SPEED_MULT;
+  return m;
+}
+
+function activeStrength(b: BallBody, now: number): number {
+  let s = b.baseStrength;
+  if (now < b.dinoRageUntil) s *= DINO_STRENGTH_MULT;
+  if (now < b.titanUntil) s *= TITAN_STRENGTH_MULT;
+  if (b.galaxy) s *= GALAXY_STRENGTH_MULT;
+  return s;
+}
+
+function activeCollisionDmgMult(b: BallBody, now: number): number {
+  let m = 1;
+  if (now < b.dinoRageUntil) m *= DINO_COLLISION_DMG_MULT;
+  if (now < b.titanUntil) m *= TITAN_COLLISION_DMG_MULT;
+  if (b.galaxy) m *= GALAXY_IMPACT_EXTRA_DMG;
+  return m;
+}
+
+function activeResist(b: BallBody, now: number): number {
+  let r = 0;
+  if (now < b.donutUntil) r += DONUT_RESIST;
+  if (now < b.titanUntil) r += TITAN_RESIST;
+  return Math.min(0.85, r);
+}
+
+function knockbackTakenMult(b: BallBody, now: number): number {
+  if (now < b.titanUntil) return TITAN_ULTRA_CALMA_KB;
+  return 1;
+}
+
+function maxSpeedFor(b: BallBody, now: number): number {
+  return MAX_BALL_SPEED * activeSpeedMult(b, now);
+}
+
+function capSpeed(b: BallBody, now = Date.now()): void {
   const s = speedOf(b);
   if (!Number.isFinite(b.vx) || !Number.isFinite(b.vy)) {
     b.vx = MIN_SPAWN_SPEED;
     b.vy = 0;
     return;
   }
-  if (s > MAX_BALL_SPEED) {
-    const k = MAX_BALL_SPEED / s;
+  const max = maxSpeedFor(b, now);
+  if (s > max) {
+    const k = max / s;
     b.vx *= k;
     b.vy *= k;
   }
@@ -93,21 +195,43 @@ function capSpeed(b: BallBody): void {
   if (capped > b.highestSpeed) b.highestSpeed = capped;
 }
 
-function boostSpeed(b: BallBody): void {
+function boostSpeed(b: BallBody, now = Date.now()): void {
   b.vx *= SPEED_BOOST_ON_COLLISION;
   b.vy *= SPEED_BOOST_ON_COLLISION;
-  capSpeed(b);
+  capSpeed(b, now);
 }
 
-function calcDamage(impact: number, attackerMass: number, victimMass: number, strength: number): number {
+function calcDamage(
+  impact: number,
+  attackerMass: number,
+  victimMass: number,
+  strength: number,
+  collisionMult: number
+): number {
   const total = attackerMass + victimMass || 1;
   const share = attackerMass / total;
-  const raw = impact * DAMAGE_SPEED_FACTOR * share * strength;
+  const raw = impact * DAMAGE_SPEED_FACTOR * share * strength * collisionMult;
   return clamp(Math.round(raw), DAMAGE_MIN, DAMAGE_MAX);
 }
 
 function isProtected(b: BallBody, now = Date.now()): boolean {
   return now < b.spawnProtectedUntil;
+}
+
+function recomputeGeometry(b: BallBody, now: number): void {
+  let size = 1;
+  let massM = 1;
+  if (now < b.titanUntil && b.titanApplied) {
+    size *= TITAN_SIZE_MULT;
+    massM *= TITAN_MASS_MULT;
+  }
+  if (b.galaxy) {
+    size *= GALAXY_SIZE_MULT;
+    massM *= GALAXY_MASS_MULT;
+  }
+  b.radius = b.baseRadius * size;
+  b.mass = b.baseMass * massM;
+  b.strength = activeStrength(b, now);
 }
 
 export class PhysicsWorld {
@@ -152,6 +276,101 @@ export class PhysicsWorld {
     if (b) b.revengeMarkedUntil = 0;
   }
 
+  /** Soft heal — soft max GIFT_SOFT_MAX_HP unless galaxy */
+  heal(userId: string, amount: number): number {
+    const b = this.balls.get(userId);
+    if (!b) return 0;
+    const before = b.hp;
+    if (b.galaxy) {
+      b.hp += amount;
+    } else {
+      b.hp = Math.min(GIFT_SOFT_MAX_HP, b.hp + amount);
+      b.maxHp = Math.min(GIFT_SOFT_MAX_HP, Math.max(b.maxHp, b.hp, DEFAULT_BALL_HP));
+    }
+    b.healFlashTicks = 10;
+    return b.hp - before;
+  }
+
+  addShield(userId: string, amount: number, maxShield: number): number {
+    const b = this.balls.get(userId);
+    if (!b) return 0;
+    const before = b.shieldHp;
+    b.shieldHp = Math.min(maxShield, b.shieldHp + amount);
+    return b.shieldHp - before;
+  }
+
+  setTimedBuff(
+    userId: string,
+    kind: 'dino' | 'donut' | 'sugar' | 'titan',
+    until: number
+  ): void {
+    const b = this.balls.get(userId);
+    if (!b) return;
+    const now = Date.now();
+    if (kind === 'dino') b.dinoRageUntil = Math.max(b.dinoRageUntil, until);
+    if (kind === 'donut') b.donutUntil = Math.max(b.donutUntil, until);
+    if (kind === 'sugar') b.sugarBurstUntil = Math.max(b.sugarBurstUntil, until);
+    if (kind === 'titan') {
+      const was = now < b.titanUntil && b.titanApplied;
+      b.titanUntil = Math.max(b.titanUntil, until);
+      if (!was) b.titanApplied = true;
+    }
+    recomputeGeometry(b, now);
+    // Nudge velocity toward new speed mult
+    const mult = activeSpeedMult(b, now);
+    const s = speedOf(b);
+    if (s > 40 && mult > 1) {
+      const target = Math.min(s * 1.08, maxSpeedFor(b, now));
+      const k = target / s;
+      b.vx *= k;
+      b.vy *= k;
+    }
+    capSpeed(b, now);
+  }
+
+  enableGalaxy(userId: string): void {
+    const b = this.balls.get(userId);
+    if (!b) return;
+    b.galaxy = true;
+    b.hp = Math.max(b.hp, 9999);
+    b.maxHp = 9999;
+    recomputeGeometry(b, Date.now());
+    capSpeed(b);
+  }
+
+  clearGalaxy(userId: string): void {
+    const b = this.balls.get(userId);
+    if (!b || !b.galaxy) return;
+    b.galaxy = false;
+    b.hp = Math.min(b.hp, GIFT_SOFT_MAX_HP);
+    b.maxHp = Math.min(DEFAULT_BALL_HP, GIFT_SOFT_MAX_HP);
+    if (b.hp > b.maxHp) b.hp = b.maxHp;
+    recomputeGeometry(b, Date.now());
+  }
+
+  clearAllGalaxy(): void {
+    for (const b of this.balls.values()) {
+      if (b.galaxy) this.clearGalaxy(b.userId);
+    }
+  }
+
+  /** Clear all temporary buffs (round reset / wipe) */
+  clearAllBuffs(): void {
+    const now = Date.now();
+    for (const b of this.balls.values()) {
+      b.dinoRageUntil = 0;
+      b.donutUntil = 0;
+      b.sugarBurstUntil = 0;
+      b.titanUntil = 0;
+      b.titanApplied = false;
+      b.galaxy = false;
+      b.shieldHp = 0;
+      b.hp = Math.min(b.hp, DEFAULT_BALL_HP);
+      b.maxHp = DEFAULT_BALL_HP;
+      recomputeGeometry(b, now);
+    }
+  }
+
   applyDirectDamage(victimId: string, damage: number, attackerId?: string): DamageApplication | null {
     const victim = this.balls.get(victimId);
     if (!victim) return null;
@@ -167,27 +386,11 @@ export class PhysicsWorld {
         }
       }
     }
-    const dmg = clamp(Math.round(damage), 1, 999);
-    victim.hp = Math.max(0, victim.hp - dmg);
-    victim.hitFlashTicks = 6;
-    if (attacker) {
-      victim.lastHitterId = attacker.userId;
-      victim.lastHitterName = attacker.nickname || attacker.username;
-    }
-    return {
-      victimId: victim.userId,
-      victimName: victim.nickname || victim.username,
-      attackerId: attacker?.userId || 'admin',
-      attackerName: attacker ? attacker.nickname || attacker.username : 'admin',
-      damage: dmg,
-      victimHpAfter: victim.hp,
-      x: victim.x,
-      y: victim.y,
-      killed: victim.hp <= 0,
-    };
+    const now = Date.now();
+    const result = this.dealDamage(victim, Math.round(damage), attacker, now);
+    return result;
   }
 
-  /** First join / comment while alive-missing — create ball (optional short protection for first spawn too) */
   spawnOrNudge(user: ArenaUser, radius = DEFAULT_BALL_RADIUS, withProtection = false): BallBody {
     const existing = this.balls.get(user.userId);
     if (existing) {
@@ -206,7 +409,6 @@ export class PhysicsWorld {
     return this.createBall(user, radius, withProtection ? SPAWN_PROTECTION_MS : 0);
   }
 
-  /** Respawn after death — always new ball, HP 100, spawn protection */
   respawn(user: ArenaUser, radius = DEFAULT_BALL_RADIUS): BallBody {
     this.balls.delete(user.userId);
     return this.createBall(user, radius, SPAWN_PROTECTION_MS);
@@ -240,12 +442,26 @@ export class PhysicsWorld {
       spawnProtectedUntil: protectionMs > 0 ? now + protectionMs : 0,
       revengeMarkedUntil: 0,
       highestSpeed: speed,
+      baseRadius: r,
+      baseMass: r * r,
+      baseStrength: 1,
+      dinoRageUntil: 0,
+      donutUntil: 0,
+      sugarBurstUntil: 0,
+      titanUntil: 0,
+      titanApplied: false,
+      galaxy: false,
+      shieldHp: 0,
+      healFlashTicks: 0,
+      sugarBurstFlashTicks: 0,
+      stompFlashTicks: 0,
+      galaxyImpactFlashTicks: 0,
+      regenAcc: 0,
     };
     this.balls.set(user.userId, body);
     return body;
   }
 
-  /** Prefer empty space away from other balls */
   private findSafeSpawn(r: number): { x: number; y: number } {
     const minX = this.margin + r;
     const maxX = this.width - this.margin - r;
@@ -266,12 +482,39 @@ export class PhysicsWorld {
 
   step(dt: number): StepResult {
     const damages: DamageApplication[] = [];
-    if (dt <= 0 || !Number.isFinite(dt)) return { damages };
+    const fx: FxEvent[] = [];
+    if (dt <= 0 || !Number.isFinite(dt)) return { damages, fx };
     const now = Date.now();
     const list = [...this.balls.values()];
 
     for (const b of list) {
       if (b.hitFlashTicks > 0) b.hitFlashTicks -= 1;
+      if (b.healFlashTicks > 0) b.healFlashTicks -= 1;
+      if (b.sugarBurstFlashTicks > 0) b.sugarBurstFlashTicks -= 1;
+      if (b.stompFlashTicks > 0) b.stompFlashTicks -= 1;
+      if (b.galaxyImpactFlashTicks > 0) b.galaxyImpactFlashTicks -= 1;
+
+      // Expire titan flag
+      if (b.titanApplied && now >= b.titanUntil) {
+        b.titanApplied = false;
+      }
+      recomputeGeometry(b, now);
+
+      // Titan regen
+      if (now < b.titanUntil) {
+        b.regenAcc += TITAN_REGEN_PER_SEC * dt;
+        if (b.regenAcc >= 1) {
+          const add = Math.floor(b.regenAcc);
+          b.regenAcc -= add;
+          if (!b.galaxy) {
+            b.hp = Math.min(GIFT_SOFT_MAX_HP, b.hp + add);
+            b.maxHp = Math.max(b.maxHp, Math.min(GIFT_SOFT_MAX_HP, b.hp));
+          } else {
+            b.hp += add;
+          }
+        }
+      }
+
       if (!Number.isFinite(b.x)) b.x = this.width / 2;
       if (!Number.isFinite(b.y)) b.y = this.height / 2;
       if (!Number.isFinite(b.vx)) b.vx = 0;
@@ -279,32 +522,41 @@ export class PhysicsWorld {
 
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      this.resolveWalls(b);
-      capSpeed(b);
+      const wallFx = this.resolveWalls(b, now);
+      if (wallFx) fx.push(wallFx);
+      capSpeed(b, now);
     }
 
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
         const a = list[i];
         const b = list[j];
-        // Spawn protection: no push, no damage with either party
         if (isProtected(a, now) || isProtected(b, now)) continue;
-        damages.push(...this.resolveBallBall(a, b));
+        const res = this.resolveBallBall(a, b, now);
+        damages.push(...res.damages);
+        fx.push(...res.fx);
       }
     }
 
     for (const b of list) {
-      this.resolveWalls(b);
-      capSpeed(b);
+      this.resolveWalls(b, now);
+      capSpeed(b, now);
     }
 
-    return { damages };
+    return { damages, fx };
   }
 
   toPublicStates(): BallState[] {
     const now = Date.now();
     const out: BallState[] = [];
     for (const b of this.balls.values()) {
+      const buffs: BuffKey[] = [];
+      if (now < b.dinoRageUntil) buffs.push('dino_rage');
+      if (now < b.donutUntil) buffs.push('donut_overdrive');
+      if (now < b.sugarBurstUntil) buffs.push('sugar_burst');
+      if (now < b.titanUntil) buffs.push('capybara_titan');
+      if (b.galaxy) buffs.push('galaxy_god');
+      const sizeScale = b.radius / b.baseRadius;
       out.push({
         id: b.id,
         userId: b.userId,
@@ -315,23 +567,103 @@ export class PhysicsWorld {
         y: b.y,
         radius: b.radius,
         color: b.color,
-        hp: b.hp,
-        maxHp: b.maxHp,
+        hp: b.galaxy ? 9999 : b.hp,
+        maxHp: b.galaxy ? 9999 : b.maxHp,
         label: b.nickname || b.username,
         hitFlash: b.hitFlashTicks > 0,
         spawnProtected: isProtected(b, now),
         revengeMarked: now < b.revengeMarkedUntil,
+        buffs,
+        shieldHp: b.shieldHp,
+        isGalaxy: b.galaxy,
+        sizeScale,
+        healFlash: b.healFlashTicks > 0,
+        sugarBurstFlash: b.sugarBurstFlashTicks > 0,
+        stompFlash: b.stompFlashTicks > 0,
+        galaxyImpactFlash: b.galaxyImpactFlashTicks > 0,
       });
     }
     return out;
   }
 
-  private resolveWalls(b: BallBody): void {
+  /** Apply damage with resist + shield + galaxy immortality */
+  private dealDamage(
+    victim: BallBody,
+    raw: number,
+    attacker: BallBody | undefined,
+    now: number
+  ): DamageApplication {
+    let dmg = Math.max(0, Math.round(raw * (1 - activeResist(victim, now))));
+    let shieldBroke = false;
+    if (victim.shieldHp > 0 && dmg > 0) {
+      const absorbed = Math.min(victim.shieldHp, dmg);
+      victim.shieldHp -= absorbed;
+      dmg -= absorbed;
+      if (victim.shieldHp <= 0) {
+        victim.shieldHp = 0;
+        shieldBroke = true;
+      }
+    }
+    if (victim.galaxy) {
+      // Cannot die — cosmetic chip only
+      victim.hp = Math.max(5000, victim.hp - Math.min(dmg, 50));
+      dmg = 0;
+    } else if (dmg > 0) {
+      victim.hp = Math.max(0, victim.hp - dmg);
+    }
+    victim.hitFlashTicks = 6;
+    if (attacker) {
+      victim.lastHitterId = attacker.userId;
+      victim.lastHitterName = attacker.nickname || attacker.username;
+    }
+    return {
+      victimId: victim.userId,
+      victimName: victim.nickname || victim.username,
+      attackerId: attacker?.userId || 'admin',
+      attackerName: attacker ? attacker.nickname || attacker.username : 'admin',
+      damage: Math.max(0, Math.round(raw)),
+      victimHpAfter: victim.galaxy ? 9999 : victim.hp,
+      x: victim.x,
+      y: victim.y,
+      killed: !victim.galaxy && victim.hp <= 0,
+      shieldBroke,
+    };
+  }
+
+  /** Public sugar burst after shield break */
+  triggerSugarBurst(userId: string): { damages: DamageApplication[]; fx: FxEvent | null } {
+    const src = this.balls.get(userId);
+    if (!src) return { damages: [], fx: null };
+    const now = Date.now();
+    src.sugarBurstFlashTicks = 12;
+    this.setTimedBuff(userId, 'sugar', now + SUGAR_BURST_DURATION_MS);
+    const damages: DamageApplication[] = [];
+    for (const o of this.balls.values()) {
+      if (o.userId === userId) continue;
+      if (isProtected(o, now)) continue;
+      const dist = Math.hypot(o.x - src.x, o.y - src.y);
+      if (dist > SUGAR_BURST_RADIUS || dist < 1) continue;
+      const nx = (o.x - src.x) / dist;
+      const ny = (o.y - src.y) / dist;
+      const kb = SUGAR_BURST_PUSH * knockbackTakenMult(o, now);
+      o.vx += nx * kb;
+      o.vy += ny * kb;
+      capSpeed(o, now);
+      damages.push(this.dealDamage(o, SUGAR_BURST_DAMAGE, src, now));
+    }
+    return {
+      damages,
+      fx: { type: 'sugar_burst', userId, x: src.x, y: src.y },
+    };
+  }
+
+  private resolveWalls(b: BallBody, now: number): FxEvent | null {
     const minX = this.margin + b.radius;
     const maxX = this.width - this.margin - b.radius;
     const minY = this.margin + b.radius;
     const maxY = this.height - this.margin - b.radius;
     let hit = false;
+    const preSpeed = speedOf(b);
 
     if (b.x < minX) {
       b.x = minX;
@@ -353,11 +685,40 @@ export class PhysicsWorld {
       hit = true;
     }
 
-    if (hit) boostSpeed(b);
+    if (hit) {
+      boostSpeed(b, now);
+      // Capybara stomp on hard wall hit
+      if (now < b.titanUntil && preSpeed >= TITAN_STOMP_SPEED) {
+        b.stompFlashTicks = 10;
+        this.applyRadialPush(b, TITAN_STOMP_RADIUS, TITAN_STOMP_PUSH, now);
+        return { type: 'stomp', userId: b.userId, x: b.x, y: b.y };
+      }
+    }
+    return null;
   }
 
-  private resolveBallBall(a: BallBody, b: BallBody): DamageApplication[] {
-    const out: DamageApplication[] = [];
+  private applyRadialPush(src: BallBody, radius: number, push: number, now: number): void {
+    for (const o of this.balls.values()) {
+      if (o.userId === src.userId) continue;
+      const dist = Math.hypot(o.x - src.x, o.y - src.y);
+      if (dist > radius || dist < 1) continue;
+      const nx = (o.x - src.x) / dist;
+      const ny = (o.y - src.y) / dist;
+      const falloff = 1 - dist / radius;
+      const kb = push * falloff * knockbackTakenMult(o, now);
+      o.vx += nx * kb;
+      o.vy += ny * kb;
+      capSpeed(o, now);
+    }
+  }
+
+  private resolveBallBall(
+    a: BallBody,
+    b: BallBody,
+    now: number
+  ): { damages: DamageApplication[]; fx: FxEvent[] } {
+    const damages: DamageApplication[] = [];
+    const fx: FxEvent[] = [];
     let dx = b.x - a.x;
     let dy = b.y - a.y;
     let dist = Math.hypot(dx, dy);
@@ -369,7 +730,7 @@ export class PhysicsWorld {
       dist = Math.hypot(dx, dy) || 1;
     }
 
-    if (dist >= minDist) return out;
+    if (dist >= minDist) return { damages, fx };
 
     const nx = dx / dist;
     const ny = dy / dist;
@@ -388,51 +749,48 @@ export class PhysicsWorld {
     const velAlongNormal = rvx * nx + rvy * ny;
 
     if (velAlongNormal > 0) {
-      boostSpeed(a);
-      boostSpeed(b);
-      return out;
+      boostSpeed(a, now);
+      boostSpeed(b, now);
+      return { damages, fx };
     }
 
     const impact = -velAlongNormal;
 
     if (impact >= DAMAGE_IMPACT_THRESHOLD) {
-      const dmgToA = calcDamage(impact, b.mass * b.strength, a.mass, b.strength);
-      const dmgToB = calcDamage(impact, a.mass * a.strength, b.mass, a.strength);
+      const dmgToA = calcDamage(
+        impact,
+        b.mass * activeStrength(b, now),
+        a.mass,
+        activeStrength(b, now),
+        activeCollisionDmgMult(b, now)
+      );
+      const dmgToB = calcDamage(
+        impact,
+        a.mass * activeStrength(a, now),
+        b.mass,
+        activeStrength(a, now),
+        activeCollisionDmgMult(a, now)
+      );
 
-      a.hp = Math.max(0, a.hp - dmgToA);
-      b.hp = Math.max(0, b.hp - dmgToB);
-      a.hitFlashTicks = 6;
-      b.hitFlashTicks = 6;
-      a.lastHitterId = b.userId;
-      a.lastHitterName = b.nickname || b.username;
-      b.lastHitterId = a.userId;
-      b.lastHitterName = a.nickname || a.username;
+      const appA = this.dealDamage(a, dmgToA, b, now);
+      const appB = this.dealDamage(b, dmgToB, a, now);
+      damages.push(appA, appB);
 
-      const cx = (a.x + b.x) / 2;
-      const cy = (a.y + b.y) / 2;
-
-      out.push({
-        victimId: a.userId,
-        victimName: a.nickname || a.username,
-        attackerId: b.userId,
-        attackerName: b.nickname || b.username,
-        damage: dmgToA,
-        victimHpAfter: a.hp,
-        x: cx,
-        y: cy,
-        killed: a.hp <= 0,
-      });
-      out.push({
-        victimId: b.userId,
-        victimName: b.nickname || b.username,
-        attackerId: a.userId,
-        attackerName: a.nickname || a.username,
-        damage: dmgToB,
-        victimHpAfter: b.hp,
-        x: cx,
-        y: cy,
-        killed: b.hp <= 0,
-      });
+      // Galaxy impact
+      if (a.galaxy && impact >= GALAXY_IMPACT_SPEED) {
+        a.galaxyImpactFlashTicks = 10;
+        const kb = GALAXY_IMPACT_PUSH * knockbackTakenMult(b, now);
+        b.vx += nx * kb;
+        b.vy += ny * kb;
+        fx.push({ type: 'galaxy_impact', userId: a.userId, x: a.x, y: a.y });
+      }
+      if (b.galaxy && impact >= GALAXY_IMPACT_SPEED) {
+        b.galaxyImpactFlashTicks = 10;
+        const kb = GALAXY_IMPACT_PUSH * knockbackTakenMult(a, now);
+        a.vx -= nx * kb;
+        a.vy -= ny * kb;
+        fx.push({ type: 'galaxy_impact', userId: b.userId, x: b.x, y: b.y });
+      }
     }
 
     const restitution = 0.92;
@@ -441,13 +799,25 @@ export class PhysicsWorld {
     let j = -(1 + restitution) * velAlongNormal;
     j /= invMassA + invMassB;
 
-    a.vx -= j * nx * invMassA;
-    a.vy -= j * ny * invMassA;
-    b.vx += j * nx * invMassB;
-    b.vy += j * ny * invMassB;
+    // Titan extra knockback on high-speed hits
+    let jA = j;
+    let jB = j;
+    const spdA = speedOf(a);
+    const spdB = speedOf(b);
+    if (now < a.titanUntil && spdA >= TITAN_HIT_SPEED) jB *= TITAN_HIT_KB_BONUS;
+    if (now < b.titanUntil && spdB >= TITAN_HIT_SPEED) jA *= TITAN_HIT_KB_BONUS;
 
-    boostSpeed(a);
-    boostSpeed(b);
-    return out;
+    // Ultra Calma reduces received knockback
+    jA *= knockbackTakenMult(a, now);
+    jB *= knockbackTakenMult(b, now);
+
+    a.vx -= jA * nx * invMassA;
+    a.vy -= jA * ny * invMassA;
+    b.vx += jB * nx * invMassB;
+    b.vy += jB * ny * invMassB;
+
+    boostSpeed(a, now);
+    boostSpeed(b, now);
+    return { damages, fx };
   }
 }

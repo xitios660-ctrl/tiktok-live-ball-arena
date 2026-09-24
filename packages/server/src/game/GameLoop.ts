@@ -6,9 +6,11 @@ import {
   REVENGE_MARK_MS,
   KING_ANNOUNCE_COOLDOWN_MS,
   compareRanking,
+  resolveAbilityKey,
   type RoundState,
   type TikTokMode,
   type ArenaLiveEvent,
+  type ArenaGiftEvent,
   type ArenaUser,
   type GameSnapshot,
   type PlayerStats,
@@ -21,6 +23,7 @@ import {
 } from '@arena/shared';
 import { randomUUID } from 'crypto';
 import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
+import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
 
 export type RoundListener = (state: RoundState) => void;
 export type LiveListener = (event: ArenaLiveEvent) => void;
@@ -75,6 +78,8 @@ export class GameLoop {
   private countdownAnnounced = new Set<number>();
   /** Persistent across rounds (in-memory stub for DB) */
   private historical = new Map<string, HistoricalStats>();
+  /** Last ball that spawned / received focus — admin gifts target this */
+  private lastSpawnedUserId: string | null = null;
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -222,6 +227,7 @@ export class GameLoop {
     this.physics.clear();
     this.players.clear();
     this.recentCombat = [];
+    this.lastSpawnedUserId = null;
     this.tick = 0;
     this.winner = null;
     this.resultsRemainingSec = 0;
@@ -292,7 +298,50 @@ export class GameLoop {
       this.handleComment(event.user);
     } else if (event.type === 'join') {
       this.handleJoin(event.user);
+    } else if (event.type === 'gift') {
+      this.handleGift(event);
     }
+  }
+
+  /**
+   * Gift benefits SENDER only. Spawns sender if missing.
+   * Admin may pass preferred userId via event.user.
+   */
+  handleGift(event: ArenaGiftEvent): CombatEvent[] {
+    if (this.state.phase === 'results' || this.state.phase === 'ended') return [];
+    const ability = resolveAbilityKey(event.giftId);
+    if (!ability) {
+      console.warn(`[Gift] Unknown giftId=${event.giftId}`);
+      return [];
+    }
+
+    // Ensure sender has a ball (gift can also be entry)
+    this.spawnNewOrNudge(event.user);
+    this.lastSpawnedUserId = event.user.userId;
+
+    const result = applyGiftAbility(this.physics, event, ability);
+    if (!result) return [];
+
+    const emitted: CombatEvent[] = [];
+    for (const a of result.announces) {
+      emitted.push(a);
+      this.pushCombat(a);
+    }
+    this.emitSnapshot();
+    console.log(
+      `[Gift] ${event.giftName} x${result.times} → @${event.user.username} (${ability})`
+    );
+    return emitted;
+  }
+
+  /** Prefer explicit userId, else last spawned, else first alive ball */
+  resolveGiftTargetUserId(preferred?: string | null): string | null {
+    if (preferred && this.physics.hasUser(preferred)) return preferred;
+    if (this.lastSpawnedUserId && this.physics.hasUser(this.lastSpawnedUserId)) {
+      return this.lastSpawnedUserId;
+    }
+    const first = this.physics.getAll()[0];
+    return first?.userId ?? null;
   }
 
   adminDamage(victimId: string, damage: number, attackerId?: string): CombatEvent[] {
@@ -346,6 +395,7 @@ export class GameLoop {
 
     this.physics.spawnOrNudge(user);
     this.ensurePlayerRecord(user.userId, user.username, user.nickname);
+    this.lastSpawnedUserId = user.userId;
     const rec = this.players.get(user.userId)!;
     rec.alive = true;
     rec.deadAt = null;
@@ -483,8 +533,27 @@ export class GameLoop {
 
   private physicsTick(): void {
     if (this.state.phase !== 'running') return;
-    const { damages } = this.physics.step(this.dt);
+    const { damages, fx } = this.physics.step(this.dt);
     if (damages.length) this.processDamages(damages);
+    for (const f of fx) {
+      if (f.type === 'stomp') {
+        this.pushCombat({
+          type: 'announce',
+          kind: 'stomp',
+          message: `🦫 STOMP!`,
+          userId: f.userId,
+          timestamp: Date.now(),
+        });
+      } else if (f.type === 'galaxy_impact') {
+        this.pushCombat({
+          type: 'announce',
+          kind: 'galaxy',
+          message: `🌌 GALAXY IMPACT!`,
+          userId: f.userId,
+          timestamp: Date.now(),
+        });
+      }
+    }
     this.tick += 1;
     this.emitSnapshot();
   }
@@ -504,7 +573,7 @@ export class GameLoop {
     const pairs = new Set<string>();
 
     for (const d of damages) {
-      if (d.damage <= 0) continue;
+      if (d.damage <= 0 && !d.shieldBroke && !d.killed) continue;
 
       const pairKey = [d.attackerId, d.victimId].sort().join(':');
       if (!pairs.has(pairKey)) {
@@ -534,6 +603,28 @@ export class GameLoop {
       };
       emitted.push(hit);
       this.pushCombat(hit);
+
+      if (d.shieldBroke) {
+        const victimBall = this.physics.getBall(d.victimId);
+        const burst = this.physics.triggerSugarBurst(d.victimId);
+        const ann = sugarBurstAnnounce(d.victimId, d.victimName);
+        emitted.push(ann);
+        this.pushCombat(ann);
+        if (burst.damages.length) {
+          // Process burst damages without re-entering shield recursion loops beyond one level
+          for (const bd of burst.damages) {
+            if (bd.killed && !killedIds.has(bd.victimId)) {
+              killedIds.add(bd.victimId);
+              const ke = this.handleDeath(bd);
+              if (ke) {
+                emitted.push(ke);
+                this.pushCombat(ke);
+              }
+            }
+          }
+        }
+        void victimBall;
+      }
 
       if (d.killed && !killedIds.has(d.victimId)) {
         killedIds.add(d.victimId);
@@ -719,6 +810,9 @@ export class GameLoop {
   }
 
   private enterResults(): void {
+    // Galaxy lasts ONLY until end of current round
+    this.physics.clearAllGalaxy();
+    this.physics.clearAllBuffs();
     // Freeze: stop physics stepping
     this.stopPhysics();
     const stats = this.getStats();

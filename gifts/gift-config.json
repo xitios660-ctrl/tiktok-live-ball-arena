@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "description": "Hierarquia de presentes do Ball Arena. coinValue = diamantes TikTok aproximados; abilityKey dispara a habilidade no jogo.",
+  "version": 2,
+  "description": "Hierarquia Rosa→Galaxy. Beneficia apenas o SENDER. abilityKey dispara a habilidade no servidor.",
   "gifts": [
     {
       "id": "rosa",
@@ -8,17 +8,17 @@
       "name": "Rosa",
       "coinValue": 1,
       "tier": 1,
-      "abilityKey": "spawn_small_ball",
-      "description": "Spawna uma bolinha pequena na arena"
+      "abilityKey": "heal_pulse",
+      "description": "HEAL PULSE: +2 HP (soft max 150), particles, stack OK; repeatCount = N heals"
     },
     {
       "id": "mini_dino",
       "tiktokGiftNames": ["Mini Dino", "Dinosaur"],
       "name": "Mini Dino",
-      "coinValue": 5,
+      "coinValue": 10,
       "tier": 2,
-      "abilityKey": "spawn_medium_ball",
-      "description": "Spawna uma bola média com impulso"
+      "abilityKey": "dino_rage",
+      "description": "DINO RAGE 10s: +25% strength, +15% speed, +20% collision dmg; stack extends duration"
     },
     {
       "id": "rosquinha",
@@ -26,17 +26,17 @@
       "name": "Rosquinha",
       "coinValue": 30,
       "tier": 3,
-      "abilityKey": "boost_speed",
-      "description": "Aplica boost de velocidade nas bolas do gifter"
+      "abilityKey": "donut_overdrive",
+      "description": "DONUT: +20 HP, shield 100 (cap 300), 12s +20% speed +25% resist; shield break → SUGAR BURST"
     },
     {
       "id": "capivara",
       "tiktokGiftNames": ["Capybara", "Capivara"],
       "name": "Capivara",
-      "coinValue": 99,
+      "coinValue": 100,
       "tier": 4,
-      "abilityKey": "spawn_heavy_ball",
-      "description": "Spawna bola pesada que empurra as outras"
+      "abilityKey": "capybara_titan",
+      "description": "TITAN 20s: size/mass/strength/resist/speed; +50 HP; regen +2/s; stomp; Ultra Calma; restack +20s +25 HP"
     },
     {
       "id": "galaxia",
@@ -44,8 +44,8 @@
       "name": "Galaxia",
       "coinValue": 1000,
       "tier": 5,
-      "abilityKey": "ultimate_chaos",
-      "description": "Ultimate: explosão / chaos na arena inteira"
+      "abilityKey": "galaxy_god",
+      "description": "GALAXY GOD até o fim da rodada atual: imortal, +300% strength, +100% speed, +50% size; limpa no reset"
     }
   ]
 }

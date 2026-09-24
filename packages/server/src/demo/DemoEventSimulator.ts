@@ -11,9 +11,9 @@ const DEMO_USERS: ArenaUser[] = [
 
 export const DEMO_GIFT_PRESETS = [
   { giftId: 'rosa', giftName: 'Rosa', coinValue: 1 },
-  { giftId: 'mini_dino', giftName: 'Mini Dino', coinValue: 5 },
+  { giftId: 'mini_dino', giftName: 'Mini Dino', coinValue: 10 },
   { giftId: 'rosquinha', giftName: 'Rosquinha', coinValue: 30 },
-  { giftId: 'capivara', giftName: 'Capivara', coinValue: 99 },
+  { giftId: 'capivara', giftName: 'Capivara', coinValue: 100 },
   { giftId: 'galaxia', giftName: 'Galaxia', coinValue: 1000 },
 ] as const;
 
