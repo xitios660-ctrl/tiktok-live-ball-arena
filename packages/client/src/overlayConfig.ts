@@ -6,9 +6,9 @@
  * Do not combine with ?transparent=1 for phone screen-share into TikTok Live.
  *
  * Orientation / fill:
- *   default           — Phaser FIT letterbox (portrait 1080×1920 stays readable in landscape)
- *   ?spin=1|?rotate=1 — CSS rotate(90°) when landscape so the portrait canvas fills the phone
- *   ?fill=landscape   — same as spin/rotate
+ *   default           — landscape fills the phone (CSS rotate 90° when w>h)
+ *   ?spin=0|?letterbox=1|?fill=letterbox — Phaser FIT letterbox instead
+ *   ?spin=1 stays accepted (no-op; fill is already default)
  */
 
 export type QualityMode = 'max' | 'auto' | 'phone';
@@ -39,8 +39,7 @@ export interface OverlayOptions {
   startMuted: boolean;
   /**
    * Rotate portrait canvas 90° to fill a landscape phone viewport
-   * (CSS transform wrapper). From ?spin=1, ?rotate=1, or ?fill=landscape.
-   * Default / omitted = Phaser FIT letterbox (no CSS rotate).
+   * (CSS transform wrapper). ON by default; disable with ?spin=0 / ?letterbox=1.
    */
   spinFill: boolean;
 }
@@ -62,10 +61,15 @@ export function readOverlayOptions(): OverlayOptions {
   const phoneLite = params.get('phone') === '1' || params.get('lite') === '1';
   const startMuted = params.get('mute') === '1';
   const fill = (params.get('fill') || '').toLowerCase();
-  const spinFill =
-    params.get('spin') === '1' ||
-    params.get('rotate') === '1' ||
-    fill === 'landscape';
+  // Default: fill landscape phone by rotating portrait canvas 90°.
+  // Opt out: ?spin=0 | ?rotate=0 | ?fill=letterbox | ?letterbox=1
+  const spinOff =
+    params.get('spin') === '0' ||
+    params.get('rotate') === '0' ||
+    params.get('letterbox') === '1' ||
+    fill === 'letterbox' ||
+    fill === 'fit';
+  const spinFill = !spinOff;
   const q = (params.get('quality') || 'max').toLowerCase();
   let qualityMode: QualityMode = q === 'auto' ? 'auto' : q === 'phone' ? 'phone' : 'max';
   // Phone screen-share always uses the dedicated budget curve.
