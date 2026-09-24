@@ -87,21 +87,43 @@
         margin: 0 auto;
       }
       /*
-       * Default: when viewport is landscape, rotate the portrait (1080×1920)
-       * canvas 90° so it fills the phone. Opt out with ?spin=0 / ?letterbox=1.
-       * Phaser parent box stays portrait-shaped (pre-transform) for Scale.FIT.
+       * Landscape phone fill.
+       *
+       * IMPORTANT: never rotate #game-container itself. Phaser measures its
+       * parent to calculate Scale.FIT; rotating that parent makes some mobile
+       * browsers report swapped/transformed bounds and the game collapses into
+       * a narrow strip.
+       *
+       * Instead, give Phaser an untransformed 9:16 parent sized with a
+       * cover-style calculation, then rotate only the rendered canvas.
+       * Gameplay coordinates and the internal 1080×1920 canvas stay untouched.
        */
       html.spin-fill.spin-landscape body {
         padding: 0;
       }
       html.spin-fill.spin-landscape #game-container {
+        --landscape-parent-w: max(
+          var(--vvh),
+          calc(var(--vvw) * 0.5625)
+        );
+        --landscape-parent-h: calc(var(--landscape-parent-w) * 1.7777777778);
+
         position: absolute;
         left: 50%;
         top: 50%;
-        width: var(--vvh);
-        height: var(--vvw);
+        width: var(--landscape-parent-w);
+        height: var(--landscape-parent-h);
         max-width: none;
         max-height: none;
+        overflow: visible;
+        transform: translate(-50%, -50%);
+        transform-origin: center center;
+      }
+      html.spin-fill.spin-landscape #game-container canvas {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        margin: 0;
         transform: translate(-50%, -50%) rotate(90deg);
         transform-origin: center center;
       }
