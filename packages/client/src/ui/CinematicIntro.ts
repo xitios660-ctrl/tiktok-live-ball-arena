@@ -9,7 +9,6 @@ interface IntroOverlayOptions {
 
 const HOME_VIDEO = '/assets/ball-arena/cinematic/home-loop.mp4';
 const PLAY_VIDEO = '/assets/ball-arena/cinematic/play-transition.mp4';
-const FALLBACK_BG = '/assets/ball-arena/backgrounds/access-arena.jpg';
 const LOGO = '/assets/ball-arena/logos/ball-arena-logo.png';
 
 export function shouldShowCinematicIntro(opts: IntroOverlayOptions): boolean {
@@ -126,6 +125,16 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
     const fallback = document.createElement('div');
     fallback.className = 'cinematic-fallback';
 
+    const fallbackBoss = document.createElement('div');
+    fallbackBoss.className = 'cinematic-fallback-boss';
+    fallbackBoss.setAttribute('aria-hidden', 'true');
+    fallbackBoss.innerHTML =
+      '<span class="boss-crown">♛</span>' +
+      '<span class="boss-eye boss-eye-left"></span>' +
+      '<span class="boss-eye boss-eye-right"></span>' +
+      '<span class="boss-mouth"></span>';
+    fallback.appendChild(fallbackBoss);
+
     const homeVideo = document.createElement('video');
     homeVideo.className = 'cinematic-home-video';
     homeVideo.src = HOME_VIDEO;
@@ -186,7 +195,17 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       '#cinematic-home{position:fixed;inset:0;z-index:99990;overflow:hidden;background:#09090d;color:#fff;font-family:Inter,system-ui,sans-serif;touch-action:none;isolation:isolate;}',
       '#cinematic-home *{box-sizing:border-box;}',
       '.cinematic-fallback,.cinematic-home-video,.cinematic-transition-video{position:absolute;inset:-4%;width:108%;height:108%;object-fit:cover;object-position:center;will-change:transform,opacity;transform:translate3d(var(--cin-x,0px),var(--cin-y,0px),0) scale(1.06) rotateX(var(--cin-rx,0deg)) rotateY(var(--cin-ry,0deg));transition:transform 160ms cubic-bezier(.2,.8,.2,1);}',
-      '.cinematic-fallback{background-image:linear-gradient(180deg,rgba(5,6,12,.08),rgba(5,6,12,.2)),url("' + FALLBACK_BG + '");background-position:center;background-size:cover;}',
+      '.cinematic-fallback{overflow:hidden;background:radial-gradient(circle at 50% 42%,rgba(255,82,24,.24),transparent 24%),radial-gradient(circle at 24% 38%,rgba(25,120,255,.18),transparent 28%),radial-gradient(circle at 76% 38%,rgba(182,44,255,.18),transparent 28%),linear-gradient(180deg,#111828 0%,#180d12 46%,#07080d 100%);}',
+      '.cinematic-fallback::before{content:"";position:absolute;left:-10%;right:-10%;bottom:-8%;height:48%;background:repeating-linear-gradient(90deg,rgba(34,211,238,.12) 0 1px,transparent 1px 82px),repeating-linear-gradient(0deg,rgba(255,138,61,.1) 0 1px,transparent 1px 70px);transform:perspective(500px) rotateX(66deg);transform-origin:bottom;mask-image:linear-gradient(to top,#000,transparent);}',
+      '.cinematic-fallback::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 18% 18%,rgba(255,118,32,.35) 0 2px,transparent 3px),radial-gradient(circle at 78% 22%,rgba(34,211,238,.28) 0 2px,transparent 3px),radial-gradient(circle at 66% 66%,rgba(255,209,102,.28) 0 2px,transparent 3px);background-size:130px 130px,170px 170px,210px 210px;animation:cinematic-embers 8s linear infinite;opacity:.7;}',
+      '.cinematic-fallback-boss{position:absolute;left:50%;top:43%;width:min(44vw,430px);aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle at 40% 32%,#3d4149 0 5%,#17171c 36%,#07080b 70%);border:4px solid rgba(255,116,29,.55);box-shadow:0 0 24px rgba(255,86,20,.7),0 0 80px rgba(255,70,10,.36),inset 0 -28px 50px rgba(255,62,8,.18);animation:boss-float 3.2s ease-in-out infinite;z-index:1;}',
+      '.cinematic-fallback-boss::before{content:"";position:absolute;inset:8%;border-radius:50%;background:repeating-conic-gradient(from 25deg,transparent 0 14deg,rgba(255,70,16,.55) 15deg 16deg,transparent 17deg 33deg);mask-image:radial-gradient(circle,transparent 0 34%,#000 40% 100%);opacity:.55;}',
+      '.boss-crown{position:absolute;left:50%;top:-20%;transform:translateX(-50%);font-size:clamp(68px,9vw,120px);line-height:1;color:#d99028;text-shadow:0 0 18px rgba(255,133,28,.45);}',
+      '.boss-eye{position:absolute;top:36%;width:24%;height:11%;background:#ff7b25;box-shadow:0 0 20px #ff5a10,0 0 38px rgba(255,70,5,.78);clip-path:polygon(0 10%,100% 0,78% 100%,12% 74%);}',
+      '.boss-eye-left{left:18%;transform:rotate(7deg)}.boss-eye-right{right:18%;transform:scaleX(-1) rotate(7deg)}',
+      '.boss-mouth{position:absolute;left:27%;right:27%;top:58%;height:16%;background:linear-gradient(#ffb13b,#ff4a10);filter:drop-shadow(0 0 12px #ff5a10);clip-path:polygon(0 30%,12% 0,22% 38%,34% 2%,48% 42%,60% 0,72% 40%,84% 5%,100% 34%,88% 100%,73% 64%,60% 100%,48% 66%,35% 100%,22% 62%,9% 100%);}',
+      '@keyframes boss-float{0%,100%{transform:translate(-50%,-50%) translateY(0) scale(1)}50%{transform:translate(-50%,-50%) translateY(-10px) scale(1.02)}}',
+      '@keyframes cinematic-embers{from{background-position:0 0,0 0,0 0}to{background-position:40px -160px,-30px -130px,20px -180px}}',
       '.cinematic-home-video{opacity:0;z-index:2;}',
       '#cinematic-home.has-home-video .cinematic-home-video{opacity:1;}',
       '#cinematic-home.has-home-video .cinematic-fallback{opacity:0;}',
