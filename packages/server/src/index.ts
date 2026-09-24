@@ -79,6 +79,10 @@ async function main() {
   app.use(adminApiRouter({ game, getDemo, mode: MODE, connector }));
 
   const publicDir = path.join(__dirname, '../public');
+  // Gate brand assets (/assets/ball-arena/*) — exempt from password middleware
+  if (fs.existsSync(publicDir)) {
+    app.use(express.static(publicDir));
+  }
   app.get('/admin', (_req, res) => {
     res.sendFile(path.join(publicDir, 'admin.html'));
   });

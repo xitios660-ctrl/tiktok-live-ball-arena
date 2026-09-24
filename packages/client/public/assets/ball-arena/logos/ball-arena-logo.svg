@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 220" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFD166"/>
+      <stop offset="45%" stop-color="#FF4E45"/>
+      <stop offset="100%" stop-color="#FF8A3D"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <circle cx="260" cy="118" r="86" stroke="url(#g)" stroke-width="6" opacity="0.85"/>
+  <circle cx="260" cy="118" r="72" stroke="#22D3EE" stroke-width="2" opacity="0.35"/>
+  <path d="M220 52 L240 72 L260 40 L280 72 L300 52 L292 88 L228 88 Z" fill="#FFD166" filter="url(#glow)"/>
+  <text x="260" y="125" text-anchor="middle" font-family="Georgia, serif" font-size="42" font-weight="700" fill="url(#g)" letter-spacing="2">BALL</text>
+  <text x="260" y="168" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="36" fill="#F2EBD7" letter-spacing="8">ARENA</text>
+  <polygon points="120,118 132,114 136,118 132,122" fill="#FFD166"/>
+  <polygon points="400,118 388,114 384,118 388,122" fill="#FFD166"/>
+</svg>
