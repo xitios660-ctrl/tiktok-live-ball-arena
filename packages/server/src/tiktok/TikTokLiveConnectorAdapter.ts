@@ -57,8 +57,8 @@ function pickAvatar(u: Record<string, unknown> | undefined): string | undefined 
   const medium = u.avatarMedium as { urlList?: string[] } | undefined;
   return (
     (u.profilePictureUrl as string | undefined) ||
-    thumb?.urlList?.[0] ||
     medium?.urlList?.[0] ||
+    thumb?.urlList?.[0] ||
     undefined
   );
 }
