@@ -12,7 +12,7 @@ import {
   DAMAGE_MAX,
   DAMAGE_IMPACT_THRESHOLD,
   SPAWN_PROTECTION_MS,
-  killStrengthMult,
+  combatStrengthMult,
   killSizeMult,
   titanSizeMult,
   titanMassMult,
@@ -93,8 +93,10 @@ export interface BallBody {
   hp: number;
   maxHp: number;
   strength: number;
-  /** Round kill count — drives killStrengthMult in activeStrength */
+  /** Round kill count — drives combatStrengthMult in activeStrength */
   kills: number;
+  /** Round-permanent damaging hits landed — adds to combatStrengthMult */
+  hitPower: number;
   /** External slow (lightning / freeze aura) */
   slowUntil: number;
   freezeAuraUntil: number;
@@ -202,7 +204,7 @@ function activeSpeedMult(b: BallBody, now: number): number {
 }
 
 function activeStrength(b: BallBody, now: number): number {
-  let s = b.baseStrength * killStrengthMult(b.kills);
+  let s = b.baseStrength * combatStrengthMult(b.kills, b.hitPower);
   if (now < b.dinoRageUntil && b.dinoStacks > 0) s *= dinoStrengthMult(b.dinoStacks);
   if (now < b.titanUntil && b.titanStacks > 0) s *= titanStrengthMult(b.titanStacks);
   if (b.galaxy) s *= GALAXY_STRENGTH_MULT;
@@ -331,6 +333,14 @@ export class PhysicsWorld {
     const b = this.balls.get(userId);
     if (!b) return;
     b.kills = Math.max(0, Math.floor(kills));
+    recomputeGeometry(b, Date.now());
+  }
+
+  /** Sync round hitPower onto the live ball (strength on hit). */
+  setHitPower(userId: string, hitPower: number): void {
+    const b = this.balls.get(userId);
+    if (!b) return;
+    b.hitPower = Math.max(0, Math.floor(hitPower));
     recomputeGeometry(b, Date.now());
   }
 
@@ -679,6 +689,7 @@ export class PhysicsWorld {
       maxHp: DEFAULT_BALL_HP,
       strength: 1,
       kills: 0,
+      hitPower: 0,
       slowUntil: 0,
       freezeAuraUntil: 0,
       magnetPulseUntil: 0,
@@ -1031,7 +1042,8 @@ export class PhysicsWorld {
         stompFlash: b.stompFlashTicks > 0,
         galaxyImpactFlash: b.galaxyImpactFlashTicks > 0,
         kills: b.kills,
-        strengthMult: killStrengthMult(b.kills),
+        hitPower: b.hitPower,
+        strengthMult: combatStrengthMult(b.kills, b.hitPower),
         killSizeMult: killSizeMult(b.kills),
         titanStacks: now < b.titanUntil ? b.titanStacks : 0,
         dinoStacks: now < b.dinoRageUntil ? b.dinoStacks : 0,

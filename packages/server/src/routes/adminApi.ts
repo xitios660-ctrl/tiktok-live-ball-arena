@@ -112,6 +112,7 @@ export function adminApiRouter(deps: {
         sizeScale: b.sizeScale ?? 1,
         isKing: !!b.isKing,
         kills: b.kills ?? 0,
+        hitPower: b.hitPower ?? 0,
         strengthMult: b.strengthMult ?? 1,
       })),
       recentCombat: deps.game.getRecentCombat().slice(-20),

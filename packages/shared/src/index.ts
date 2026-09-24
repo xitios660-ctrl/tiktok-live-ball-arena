@@ -147,7 +147,9 @@ export interface BallState {
   galaxyImpactFlash?: boolean;
   /** Round kills (for strength / size cue) */
   kills?: number;
-  /** Kill → strength mult (capped) — collision damage power */
+  /** Round-permanent damaging hits landed (strength on hit) */
+  hitPower?: number;
+  /** Combined kill+hit → strength mult (capped) — collision damage power */
   strengthMult?: number;
   /** Kill → size mult (capped) */
   killSizeMult?: number;
@@ -543,9 +545,9 @@ export const RANDOM_EVENT_INTERVAL_SEC = 45;
 export const RANDOM_EVENT_CHANCE = 0.35; // per tick check
 
 
-/** —— Kill → strength + size (round-permanent on ball; resets next round) ——
- * Strength: 1 + kills * KILL_STRENGTH_PER, capped at KILL_STRENGTH_CAP (2.0 ⇒ ~12 kills).
- * Size:     1 + kills * KILL_SIZE_PER,     capped at KILL_SIZE_CAP   (1.75 ⇒ ~15 kills).
+/** —— Kill + hit → strength + size (round-permanent on ball; resets next round) ——
+ * Additive combat strength: 1 + kills*KILL_STRENGTH_PER + hitPower*HIT_STRENGTH_PER,
+ * capped at COMBAT_STRENGTH_CAP (~2.5). Size still kill-only.
  * Free-to-play can grow big without gifts; gift stacks multiply on top (then MAX_BALL_RADIUS clamp).
  */
 export const KILL_STRENGTH_PER = 0.08;
@@ -553,6 +555,14 @@ export const KILL_STRENGTH_PER = 0.08;
 export const KILL_STRENGTH_CAP = 2.0;
 /** @deprecated alias — prefer KILL_STRENGTH_CAP */
 export const KILL_STRENGTH_BONUS_CAP = KILL_STRENGTH_CAP - 1;
+/** +1% damage mult per successful damaging hit landed */
+export const HIT_STRENGTH_PER = 0.01;
+/** Max bonus mult from hits alone (+50%) */
+export const HIT_STRENGTH_BONUS_CAP = 0.5;
+/** Soft overall combat mult cap (kills + hits): 2.0 + 0.5 */
+export const COMBAT_STRENGTH_CAP = KILL_STRENGTH_CAP + HIT_STRENGTH_BONUS_CAP;
+/** Throttle hitPower grants per attacker→victim pair (ms) */
+export const HIT_POWER_COOLDOWN_MS = 200;
 export const KILL_SIZE_PER = 0.05;
 /** Absolute size mult cap from kills alone (~+75% at 15 kills) */
 export const KILL_SIZE_CAP = 1.75;
@@ -563,9 +573,31 @@ export const KILL_STRENGTH_ANNOUNCE_EVERY = 3;
 export const MAX_BALL_RADIUS_FRAC = 0.35;
 export const MAX_BALL_RADIUS = Math.floor(CANVAS_WIDTH * MAX_BALL_RADIUS_FRAC);
 
+/** Kill-only mult (legacy / size-adjacent callers). Prefer combatStrengthMult. */
 export function killStrengthMult(kills: number): number {
   const k = Math.max(0, Math.floor(kills || 0));
   return Math.min(1 + k * KILL_STRENGTH_PER, KILL_STRENGTH_CAP);
+}
+
+/**
+ * Additive combat strength from kills + hitPower.
+ * 1 + kills*0.08 + hitPower*0.01, soft-capped at COMBAT_STRENGTH_CAP (2.5).
+ */
+export function combatStrengthMult(kills: number, hitPower = 0): number {
+  const k = Math.max(0, Math.floor(kills || 0));
+  const h = Math.max(0, Math.floor(hitPower || 0));
+  const hitBonus = Math.min(h * HIT_STRENGTH_PER, HIT_STRENGTH_BONUS_CAP);
+  return Math.min(1 + k * KILL_STRENGTH_PER + hitBonus, COMBAT_STRENGTH_CAP);
+}
+
+/**
+ * Livestream HUD integer — rises with kills (+8) and hits (+1).
+ * Matches uncapped (mult-1)*100 while under the soft cap.
+ */
+export function displayStrengthScore(kills: number, hitPower = 0): number {
+  const k = Math.max(0, Math.floor(kills || 0));
+  const h = Math.max(0, Math.floor(hitPower || 0));
+  return k * Math.round(KILL_STRENGTH_PER * 100) + h;
 }
 
 export function killSizeMult(kills: number): number {

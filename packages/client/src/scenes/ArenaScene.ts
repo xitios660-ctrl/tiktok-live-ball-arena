@@ -3,6 +3,7 @@ import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
   SOCKET_EVENTS,
+  displayStrengthScore,
   type RoundState,
   type ArenaLiveEvent,
   type GameSnapshot,
@@ -91,6 +92,7 @@ interface BallView {
   lastHp: number;
   lastHealFlash: boolean;
   lastStrengthTier: number;
+  lastStrengthScore: number;
   prevX: number;
   prevY: number;
   lastBuffFxAt: number;
@@ -841,15 +843,15 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5, 0);
 
     const strengthMark = this.add
-      .text(0, -b.radius - 28, '', {
+      .text(0, -b.radius - 36, '💪0', {
         fontFamily: FONT_BLACK,
-        fontSize: '14px',
+        fontSize: '15px',
         color: THEME_HEX.gold,
         backgroundColor: '#14110ecc',
-        padding: { x: 4, y: 1 },
+        padding: { x: 5, y: 2 },
       })
       .setOrigin(0.5)
-      .setVisible(false);
+      .setVisible(true);
 
     // Order: shadow → aura/shield/ring → circle → gloss → avatar chrome → initials → HUD → crown
     container.add([
@@ -895,6 +897,7 @@ export class ArenaScene extends Phaser.Scene {
       lastHp: b.hp,
       lastHealFlash: false,
       lastStrengthTier: 0,
+      lastStrengthScore: -1,
       prevX: b.x,
       prevY: b.y,
       lastBuffFxAt: 0,
@@ -1044,28 +1047,63 @@ export class ArenaScene extends Phaser.Scene {
       this.syncAvatarChrome(view, b.radius, stroke, !!b.isKing, isGalaxy, protected_);
     }
 
-    // Kill-strength cue (tier = floor(bonus% / 24) roughly every 3 kills)
+    // Always-visible strength score above HP (kills*8 + hitPower)
     const sm = b.strengthMult ?? 1;
     const kills = b.kills ?? 0;
+    const hitPower = b.hitPower ?? 0;
+    const score = displayStrengthScore(kills, hitPower);
     const tier = Math.floor(Math.max(0, sm - 1) / 0.24); // 0..4
-    if (kills >= 3 && sm > 1.01) {
-      view.strengthMark.setVisible(true);
-      view.strengthMark.setText(`💪×${sm.toFixed(2)}`);
-      view.strengthMark.setY(b.isKing ? -b.radius - 58 : -b.radius - 30);
+    const shHp = b.shieldHp ?? 0;
+    const strY = b.isKing
+      ? -b.radius - 56
+      : shHp > 0
+        ? -b.radius - 44
+        : -b.radius - 36;
+    view.strengthMark.setVisible(true);
+    view.strengthMark.setText(`💪${score}`);
+    view.strengthMark.setY(strY);
+    if (view.lastStrengthScore >= 0 && score > view.lastStrengthScore) {
+      const delta = score - view.lastStrengthScore;
+      this.tweens.add({
+        targets: view.strengthMark,
+        scaleX: 1.45,
+        scaleY: 1.45,
+        duration: 110,
+        yoyo: true,
+      });
       if (tier > view.lastStrengthTier) {
-        view.lastStrengthTier = tier;
         this.tweens.add({
           targets: view.container,
-          scaleX: 1.25,
-          scaleY: 1.25,
+          scaleX: 1.2,
+          scaleY: 1.2,
           duration: 120,
           yoyo: true,
         });
       }
-    } else {
-      view.strengthMark.setVisible(false);
-      view.lastStrengthTier = tier;
+      // Tiny +N float when power rises (skip on phoneLite to save budget)
+      if (!this.phoneLite && delta > 0) {
+        const floater = this.add
+          .text(b.x, b.y - b.radius - 50, `+${delta}`, {
+            fontFamily: FONT_BLACK,
+            fontSize: '18px',
+            color: THEME_HEX.gold,
+            stroke: '#14110e',
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5)
+          .setDepth(60);
+        this.tweens.add({
+          targets: floater,
+          y: floater.y - 36,
+          alpha: 0,
+          duration: 520,
+          ease: 'Cubic.easeOut',
+          onComplete: () => floater.destroy(),
+        });
+      }
     }
+    view.lastStrengthScore = score;
+    view.lastStrengthTier = tier;
 
     const icons: string[] = [];
     const stackLabel = (emoji: string, n: number | undefined) =>

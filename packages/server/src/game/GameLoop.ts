@@ -7,7 +7,9 @@ import {
   KING_ANNOUNCE_COOLDOWN_MS,
   compareRanking,
   KILL_STRENGTH_ANNOUNCE_EVERY,
-  killStrengthMult,
+  combatStrengthMult,
+  displayStrengthScore,
+  HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
   isPickupAbility,
   type RoundState,
@@ -42,6 +44,8 @@ interface PlayerRecord {
   username: string;
   nickname?: string;
   kills: number;
+  /** Round-permanent damaging hits landed */
+  hitPower: number;
   deaths: number;
   alive: boolean;
   deadAt: number | null;
@@ -90,6 +94,8 @@ export class GameLoop {
   private readonly globalEvents = new GlobalArenaEvents();
   private readonly pickups = new PickupSystem();
   private readonly autoBots: AutoBotSpawner;
+  /** attackerId:victimId → last hitPower grant ms */
+  private hitPowerCooldown = new Map<string, number>();
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -257,6 +263,7 @@ export class GameLoop {
     this.stopRoundTimer();
     this.physics.clear();
     this.players.clear();
+    this.hitPowerCooldown.clear();
     this.recentCombat = [];
     this.lastSpawnedUserId = null;
     this.globalEvents.resetRound();
@@ -301,6 +308,7 @@ export class GameLoop {
     this.stopPhysics();
     this.physics.clear();
     this.players.clear();
+    this.hitPowerCooldown.clear();
     this.pickups.clear();
     this.recentCombat = [];
     this.tick = 0;
@@ -516,6 +524,7 @@ export class GameLoop {
     rec.alive = true;
     rec.deadAt = null;
     this.physics.setKills(user.userId, rec.kills);
+    this.physics.setHitPower(user.userId, rec.hitPower);
     this.state = { ...this.state, playerCount: this.physics.count };
     this.ensurePhysicsRunning();
     this.emitRound();
@@ -550,8 +559,9 @@ export class GameLoop {
 
     // Never two balls — respawn replaces
     this.physics.respawn(user);
-    // Preserve round kills → strength on the new body
+    // Preserve round kills + hitPower → strength on the new body
     this.physics.setKills(user.userId, rec.kills);
+    this.physics.setHitPower(user.userId, rec.hitPower);
 
     const emitted: CombatEvent[] = [];
 
@@ -605,6 +615,7 @@ export class GameLoop {
         username,
         nickname,
         kills: 0,
+        hitPower: 0,
         deaths: 0,
         alive: true,
         deadAt: null,
@@ -687,6 +698,21 @@ export class GameLoop {
     }
   }
 
+  /** +1 hitPower for attacker, throttled per attacker→victim pair. */
+  private grantHitPower(attackerId: string, victimId: string, attackerName: string): void {
+    const now = Date.now();
+    const key = `${attackerId}:${victimId}`;
+    const last = this.hitPowerCooldown.get(key) || 0;
+    if (now - last < HIT_POWER_COOLDOWN_MS) return;
+    this.hitPowerCooldown.set(key, now);
+
+    const atk = this.players.get(attackerId);
+    if (!atk) return;
+    atk.hitPower += 1;
+    this.physics.setHitPower(attackerId, atk.hitPower);
+    void attackerName;
+  }
+
   private processDamages(damages: DamageApplication[]): CombatEvent[] {
     const emitted: CombatEvent[] = [];
     const killedIds = new Set<string>();
@@ -710,6 +736,16 @@ export class GameLoop {
       const victim = this.players.get(d.victimId);
       if (attacker) attacker.damageDealt += d.damage;
       if (victim) victim.damageTaken += d.damage;
+
+      // Strength-on-hit: +1 hitPower when dealing real damage to an opponent
+      if (
+        d.damage > 0 &&
+        d.attackerId &&
+        d.attackerId !== d.victimId &&
+        d.attackerId !== 'admin'
+      ) {
+        this.grantHitPower(d.attackerId, d.victimId, d.attackerName);
+      }
 
       const hit: HitEvent = {
         type: 'hit',
@@ -831,15 +867,16 @@ export class GameLoop {
         atk.kills > 0 &&
         atk.kills % KILL_STRENGTH_ANNOUNCE_EVERY === 0
       ) {
-        const mult = killStrengthMult(atk.kills);
+        const score = displayStrengthScore(atk.kills, atk.hitPower);
+        const mult = combatStrengthMult(atk.kills, atk.hitPower);
         const pct = Math.round((mult - 1) * 100);
         this.pushCombat({
           type: 'announce',
           kind: 'strength_up',
-          message: `💪 FORÇA +${pct}% — @${attackerName} (${atk.kills}☠)`,
+          message: `💪 FORÇA ${score} (+${pct}%) — @${attackerName} (${atk.kills}☠)`,
           userId: attackerId,
           username: attackerName,
-          value: atk.kills,
+          value: score,
           timestamp: Date.now(),
         });
       }
