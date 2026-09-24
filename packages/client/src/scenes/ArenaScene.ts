@@ -54,6 +54,7 @@ import {
   toneFromColors,
   type NeonFeedItem,
 } from '../ui/NeonKillFeed';
+import { createEventCard, cardFromKind, type EventCardHandles } from '../ui/EventCard';
 
 interface BallView {
   container: Phaser.GameObjects.Container;
@@ -119,6 +120,7 @@ export class ArenaScene extends Phaser.Scene {
   private pendingAvatars = new Set<string>();
   private killFeed: NeonFeedItem[] = [];
   private toastUntil = 0;
+  private eventCard: EventCardHandles | null = null;
   private intensity = false;
   private fpsAcc = 0;
   private fpsFrames = 0;
@@ -246,6 +248,9 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(300)
       .setAlpha(0);
+
+    // Cinematic glass event cards (gifts / duel / round / big moments)
+    this.eventCard = createEventCard(this, top + 248, 305);
 
     this.bigCountdown = this.add
       .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, '', {
@@ -411,6 +416,7 @@ export class ArenaScene extends Phaser.Scene {
       this.toastText.setAlpha(0);
       this.toastUntil = 0;
     }
+    // EventCard manages its own fade timer
 
     this.rimSpin += delta * 0.04;
     const urgent = this.lastPhase === 'running' && this.lastRemaining <= 30;
@@ -471,23 +477,23 @@ export class ArenaScene extends Phaser.Scene {
       this.spawnHitSparks(event.x, event.y, revenge ? THEME.gold : THEME.coral, 10);
       this.spawnDeathFlash(event.x, event.y, revenge);
       audio.play(revenge ? 'revenge' : 'death');
-      if (revenge) this.showToast(event.message);
+      if (revenge) this.showToast(event.message, 'revenge_respawn');
     } else if (event.type === 'announce') {
       if (event.kind === 'countdown' && event.value != null) {
         this.showBigCountdown(event.value);
         audio.play('countdown');
       } else if (event.kind === 'last_minute') {
-        this.showToast('ÚLTIMO MINUTO!');
+        this.showToast('ÚLTIMO MINUTO!', 'last_minute');
         this.pushKillFeed(event.message, THEME_HEX.coral, '#1E1E1Ecc');
       } else if (event.kind === 'new_king') {
-        this.showToast(event.message);
+        this.showToast(event.message, event.kind);
         this.pushKillFeed(event.message, THEME_HEX.gold, '#3d2e10ee');
       } else if (event.kind === 'winner' || event.kind === 'next_round') {
-        this.showToast(event.message);
+        this.showToast(event.message, event.kind);
         this.pushKillFeed(event.message, THEME_HEX.gold, '#1E1E1Ecc');
         if (event.kind === 'winner') audio.play('victory');
       } else if (event.kind === 'pickup') {
-        this.showToast(event.message);
+        this.showToast(event.message, event.kind);
         this.pushKillFeed(event.message, THEME_HEX.teal, '#1a3040ee');
         audio.play('gift');
       } else if (
@@ -498,7 +504,7 @@ export class ArenaScene extends Phaser.Scene {
         event.kind === 'stomp' ||
         event.kind === 'shield_expire'
       ) {
-        this.showToast(event.message);
+        this.showToast(event.message, event.kind);
         const feedColor =
           event.kind === 'cosmic_duel'
             ? THEME_HEX.gold
@@ -514,13 +520,13 @@ export class ArenaScene extends Phaser.Scene {
         event.kind === 'likes_threshold' ||
         event.kind === 'share_boost'
       ) {
-        this.showToast(event.message);
+        this.showToast(event.message, event.kind);
         this.pushKillFeed(event.message, THEME_HEX.sage, '#1a3d2aee');
         if (event.kind === 'speed_storm') audio.play('speed_storm');
         else if (event.kind === 'share_boost') audio.play('share');
         else audio.play('heal_rain');
       } else if (event.kind === 'strength_up') {
-        this.showToast(event.message);
+        this.showToast(event.message, event.kind);
         this.pushKillFeed(event.message, THEME_HEX.gold, '#3d2e10ee');
         if (event.userId) {
           const view = this.views.get(event.userId);
@@ -531,7 +537,7 @@ export class ArenaScene extends Phaser.Scene {
       } else {
         this.pushKillFeed(event.message, THEME_HEX.gold, '#1E1E1Ecc');
         if (event.kind === 'respawn' || event.kind === 'revenge_respawn' || event.kind === 'eliminated') {
-          this.showToast(event.message);
+          this.showToast(event.message, event.kind);
           if (event.kind === 'respawn' || event.kind === 'revenge_respawn') audio.play('respawn');
           if (event.kind === 'revenge_respawn') audio.play('revenge');
         }
@@ -675,7 +681,11 @@ export class ArenaScene extends Phaser.Scene {
     this.winnerPanel.setAlpha(0);
   }
 
-  private showToast(msg: string): void {
+  private showToast(msg: string, kind?: string): void {
+    if (this.eventCard) {
+      this.eventCard.show(cardFromKind(kind, msg));
+      return;
+    }
     this.toastText.setText(msg);
     this.toastText.setAlpha(1).setScale(0.85);
     this.toastUntil = Date.now() + 3400;
