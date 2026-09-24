@@ -28,6 +28,8 @@ export interface EventCardOpts {
 
 export interface EventCardHandles {
   root: Phaser.GameObjects.Container;
+  /** Update the reusable card anchor without rebuilding it. */
+  setPresentation: (x: number, y: number, rotation?: number) => void;
   /** Show a card; replaces any active card. */
   show: (opts: EventCardOpts) => void;
   /** Hide immediately. */
@@ -156,7 +158,10 @@ export function createEventCard(
   y = SAFE.top + 210,
   depth = DEPTH
 ): EventCardHandles {
-  const root = scene.add.container(CANVAS_WIDTH / 2, y).setDepth(depth).setAlpha(0);
+  let anchorX = CANVAS_WIDTH / 2;
+  let anchorY = y;
+  let anchorRotation = 0;
+  const root = scene.add.container(anchorX, anchorY).setDepth(depth).setAlpha(0);
   root.setVisible(false);
 
   let hideTimer: Phaser.Time.TimerEvent | null = null;
@@ -258,12 +263,13 @@ export function createEventCard(
     root.setVisible(true);
     root.setAlpha(0);
     root.setScale(0.86);
-    root.setY(y - 28);
+    root.setRotation(anchorRotation);
+    root.setPosition(anchorX, anchorY - 28);
     activeTween = scene.tweens.add({
       targets: root,
       alpha: 1,
       scale: 1,
-      y,
+      y: anchorY,
       duration: 340,
       ease: 'Back.Out',
     });
@@ -273,7 +279,7 @@ export function createEventCard(
         targets: root,
         alpha: 0,
         scale: 0.94,
-        y: y - 16,
+        y: anchorY - 16,
         duration: 280,
         ease: 'Cubic.In',
         onComplete: () => {
@@ -293,6 +299,13 @@ export function createEventCard(
 
   return {
     root,
+    setPresentation(x: number, nextY: number, rotation = 0) {
+      anchorX = x;
+      anchorY = nextY;
+      anchorRotation = rotation;
+      root.setPosition(anchorX, anchorY);
+      root.setRotation(anchorRotation);
+    },
     show,
     hide,
     destroy() {
