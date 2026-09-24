@@ -97,6 +97,8 @@ function setupAudioUnlockGate(): void {
     return;
   }
 
+  gate?.classList.remove('hidden');
+
   if (!gate) {
     // Fallback: invisible gesture unlock if DOM banner missing
     const unlock = async () => {
@@ -259,7 +261,12 @@ void fontsReady.then(async () => {
   // state are already warm when the player presses JOGAR.
   boot();
 
-  if (shouldShowCinematicIntro(opts)) {
+  const wantsCinematicIntro = shouldShowCinematicIntro(opts);
+  if (wantsCinematicIntro) {
+    // The stock mobile audio gate exists in index.html and is visible by default.
+    // Hide it while the cinematic home owns the screen; JOGAR itself is the
+    // first user gesture and attempts the audio unlock.
+    document.getElementById('audio-unlock-gate')?.classList.add('hidden');
     await runCinematicIntro({
       onPlayGesture: async () => {
         tryEnterPhoneFullscreen();
