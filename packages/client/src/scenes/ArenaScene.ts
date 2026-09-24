@@ -44,6 +44,12 @@ import {
   type PremiumTop5Handles,
 } from '../ui/PremiumTop5';
 import { PickupsLayer } from '../ui/PickupsLayer';
+import {
+  pushNeonKillFeed,
+  tickNeonKillFeed,
+  toneFromColors,
+  type NeonFeedItem,
+} from '../ui/NeonKillFeed';
 
 interface BallView {
   container: Phaser.GameObjects.Container;
@@ -74,12 +80,6 @@ interface BallView {
   hadFreeze: boolean;
   hadReflect: boolean;
   hadDash: boolean;
-}
-
-interface FeedItem {
-  row: Phaser.GameObjects.Container;
-  text: Phaser.GameObjects.Text;
-  born: number;
 }
 
 export class ArenaScene extends Phaser.Scene {
@@ -113,8 +113,7 @@ export class ArenaScene extends Phaser.Scene {
   private killFeedLayer!: Phaser.GameObjects.Container;
   private views = new Map<string, BallView>();
   private pendingAvatars = new Set<string>();
-  private killFeed: FeedItem[] = [];
-  private readonly killFeedTtl = 5000;
+  private killFeed: NeonFeedItem[] = [];
   private toastUntil = 0;
   private intensity = false;
   private fpsAcc = 0;
@@ -221,7 +220,7 @@ export class ArenaScene extends Phaser.Scene {
         fontFamily: FONT_BLACK,
         fontSize: '32px',
         color: THEME_HEX.gold,
-        backgroundColor: '#1E1E1Edd',
+        backgroundColor: '#14110eee',
         padding: { x: 20, y: 12 },
         align: 'center',
         stroke: '#000000',
@@ -384,17 +383,7 @@ export class ArenaScene extends Phaser.Scene {
       this.premiumTop5.root.y = this.top5BaseY + bob;
       tickPremiumTop5(this.premiumTop5, t);
     }
-    this.killFeed = this.killFeed.filter((item) => {
-      const age = now - item.born;
-      if (age > this.killFeedTtl) {
-        item.row.destroy(true);
-        return false;
-      }
-      const fade = age > this.killFeedTtl - 900 ? 1 - (age - (this.killFeedTtl - 900)) / 900 : 1;
-      item.row.setAlpha(fade);
-      return true;
-    });
-    this.layoutKillFeed();
+    this.killFeed = tickNeonKillFeed(this.killFeed, now);
 
     if (this.toastUntil && now > this.toastUntil) {
       this.toastText.setAlpha(0);
@@ -668,44 +657,8 @@ export class ArenaScene extends Phaser.Scene {
     this.toastUntil = Date.now() + 3200;
   }
 
-  private pushKillFeed(message: string, color: string = THEME_HEX.cream, bg: string = '#FF6B6Bcc'): void {
-    const row = this.add.container(0, 0);
-    const text = this.add
-      .text(0, 0, message, {
-        fontFamily: FONT_BLACK,
-        fontSize: '22px',
-        color,
-        backgroundColor: bg,
-        padding: { x: 14, y: 9 },
-        wordWrap: { width: 500 },
-      })
-      .setOrigin(1, 0);
-    row.add(text);
-    row.setScale(1.22);
-    this.killFeedLayer.add(row);
-    this.killFeed.unshift({ row, text, born: Date.now() });
-    this.tweens.add({
-      targets: row,
-      scale: 1,
-      duration: 220,
-      ease: 'Back.Out',
-    });
-    // Cap; destroy overflow
-    while (this.killFeed.length > 6) {
-      const old = this.killFeed.pop();
-      old?.row.destroy(true);
-    }
-    this.layoutKillFeed();
-  }
-
-  private layoutKillFeed(): void {
-    const x = CANVAS_WIDTH - SAFE.side;
-    let y = CANVAS_HEIGHT - SAFE.bottom - 20;
-    for (const item of this.killFeed) {
-      y -= item.text.height;
-      item.row.setPosition(x, y);
-      y -= 10;
-    }
+  private pushKillFeed(message: string, color: string = THEME_HEX.cream, bg: string = '#ff5a36cc'): void {
+    pushNeonKillFeed(this, this.killFeedLayer, this.killFeed, message, toneFromColors(color, bg));
   }
 
   private spawnHitSparks(x: number, y: number, color: number, n = 8): void {
