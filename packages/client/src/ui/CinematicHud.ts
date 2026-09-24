@@ -152,7 +152,7 @@ export function createBottomCtaStrip(
   bg.lineStyle(1, THEME.emberOrange, 0.5);
   bg.strokeRoundedRect(-294, -16, 588, 32, 12);
   const label = scene.add
-    .text(0, 0, '💬 COMENTE PARA JOGAR  •  ❤️ 10 LIKES = +2 HP  •  100 LIKES = +10 HP GERAL', {
+    .text(0, 0, '💬 COMENTE PARA JOGAR  •  ❤️ 100 LIKES SEUS = +20 HP +1 FORÇA', {
       fontFamily: FONT_ACCENT,
       fontSize: '20px',
       color: THEME_HEX.light,
