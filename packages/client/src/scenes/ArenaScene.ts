@@ -568,39 +568,52 @@ export class ArenaScene extends Phaser.Scene {
     const side = SAFE.side;
     const bottom = SAFE.bottom;
 
-    // Main HUD. Keep everything inside the visible center band because
-    // cover-fill can crop a few pixels on very wide Android screens.
-    pose(this.cinematicHud?.root, 960, 125, CANVAS_WIDTH / 2, top + 28);
-    pose(this.aoVivoPill, 120, 120, side + 56, top + 20);
-    pose(this.timerCapsule?.root, 960, 245, CANVAS_WIDTH / 2, top + 118);
-    pose(this.playersText, 960, 330, CANVAS_WIDTH / 2, top + 178);
+    // Main HUD. Cover-fill crops the top/bottom on ultra-wide phones.
+    // Derive the actually visible landscape band so HUD never lands under
+    // that crop (or under Android's very wide fullscreen aspect ratios).
+    const vv = window.visualViewport;
+    const viewportW = Math.max(1, vv?.width ?? window.innerWidth);
+    const viewportH = Math.max(1, vv?.height ?? window.innerHeight);
+    const visibleLandscapeH = Math.min(
+      CANVAS_WIDTH,
+      (CANVAS_HEIGHT * viewportH) / viewportW
+    );
+    const landscapeCropY = Math.max(0, (CANVAS_WIDTH - visibleLandscapeH) / 2);
+    const landTop = landscapeCropY + 34;
+    const landBottom = CANVAS_WIDTH - landscapeCropY - 34;
+    const landMid = (landTop + landBottom) / 2;
 
-    pose(this.premiumTop5?.root, 48, 175, side, top + 200);
+    pose(this.cinematicHud?.root, 960, landTop + 54, CANVAS_WIDTH / 2, top + 28);
+    pose(this.aoVivoPill, 118, landTop + 18, side + 56, top + 20);
+    pose(this.timerCapsule?.root, 960, landTop + 168, CANVAS_WIDTH / 2, top + 118);
+    pose(this.playersText, 960, landTop + 252, CANVAS_WIDTH / 2, top + 178);
+
+    pose(this.premiumTop5?.root, 48, landTop + 92, side, top + 200);
     this.top5BaseY = this.premiumTop5?.root.y ?? this.top5BaseY;
 
-    pose(this.giftLegend?.root, 1550, 175, CANVAS_WIDTH - side - 318, top + 200);
+    pose(this.giftLegend?.root, 1550, landTop + 92, CANVAS_WIDTH - side - 318, top + 200);
     this.giftLegendBaseY = this.giftLegend?.root.y ?? this.giftLegendBaseY;
 
-    pose(this.eventCard?.root, 960, 355, CANVAS_WIDTH / 2, top + 248);
-    pose(this.toastText, 960, 370, CANVAS_WIDTH / 2, top + 250);
-    pose(this.bigCountdown, 960, 540, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-    pose(this.winnerPanel, 960, 540, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    pose(this.eventCard?.root, 960, landTop + 322, CANVAS_WIDTH / 2, top + 248);
+    pose(this.toastText, 960, landTop + 338, CANVAS_WIDTH / 2, top + 250);
+    pose(this.bigCountdown, 960, landMid, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    pose(this.winnerPanel, 960, landMid, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
 
     if (this.bottomCta) {
       pose(
         this.bottomCta.root,
         960,
-        950,
+        landBottom - 38,
         CANVAS_WIDTH / 2,
         CANVAS_HEIGHT - SAFE.bottom + 36
       );
     }
 
-    pose(this.likesText, 54, 118, side, top + 16);
+    pose(this.likesText, 54, landTop + 18, side, top + 16);
     pose(
       this.muteBtn,
       1855,
-      118,
+      landTop + 18,
       CANVAS_WIDTH - side,
       top + (getOverlayOptions().debug ? 32 : 8)
     );
