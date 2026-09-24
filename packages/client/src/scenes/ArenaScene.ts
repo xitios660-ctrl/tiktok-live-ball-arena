@@ -29,6 +29,12 @@ import { paintArenaFloor, paintArenaRim } from '../fx/ArenaFloor';
 import { createArenaEnergyRings, type ArenaEnergyRingsHandles } from '../fx/ArenaEnergyRings';
 import { paintBallShield, type ShieldChromeMode } from '../fx/BallShieldChrome';
 import {
+  createWinnerRevealChrome,
+  tickWinnerReveal,
+  burstWinnerReveal,
+  type WinnerRevealHandles,
+} from '../fx/WinnerRevealFx';
+import {
   createGlossParts,
   syncGlossParts,
   skinFromBall,
@@ -144,6 +150,9 @@ export class ArenaScene extends Phaser.Scene {
   private toastText!: Phaser.GameObjects.Text;
   private bigCountdown!: Phaser.GameObjects.Text;
   private winnerPanel!: Phaser.GameObjects.Container;
+  private winnerReveal!: WinnerRevealHandles;
+  /** Entrance + burst only once per results phase */
+  private winnerRevealPlayed = false;
   private winnerTitle!: Phaser.GameObjects.Text;
   private winnerBody!: Phaser.GameObjects.Text;
   private resultsHint!: Phaser.GameObjects.Text;
@@ -324,8 +333,9 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
     this.redrawFeedCard();
 
-    // Winner panel (hidden) — premium gold-framed glass card
+    // Winner panel (hidden) — premium gold-framed glass card + cinematic reveal chrome
     this.winnerPanel = this.add.container(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2).setDepth(400).setAlpha(0);
+    this.winnerReveal = createWinnerRevealChrome(this, 860, 700);
     this.winnerFrame = this.add.graphics();
     this.drawWinnerFrame(this.winnerFrame, 860, 700);
     this.winnerTitle = this.add
@@ -353,7 +363,13 @@ export class ArenaScene extends Phaser.Scene {
         color: THEME_HEX.teal,
       })
       .setOrigin(0.5);
-    this.winnerPanel.add([this.winnerFrame, this.winnerTitle, this.winnerBody, this.resultsHint]);
+    this.winnerPanel.add([
+      this.winnerReveal.chrome,
+      this.winnerFrame,
+      this.winnerTitle,
+      this.winnerBody,
+      this.resultsHint,
+    ]);
 
     // FPS only in ?debug=1
     this.fpsText = this.add
@@ -474,6 +490,17 @@ export class ArenaScene extends Phaser.Scene {
       tickPremiumTop5(this.premiumTop5, t);
     }
     this.killFeed = tickNeonKillFeed(this.killFeed, now);
+    if (this.winnerReveal?.active) {
+      tickWinnerReveal(this.winnerReveal, t, {
+        budget: this.particleBudget ?? 1,
+        phoneLite: this.phoneLite,
+      });
+      // Soft title gold pulse while results card is up
+      if (!this.phoneLite && this.winnerTitle) {
+        const pulse = 0.5 + 0.5 * Math.sin(t / 420);
+        this.winnerTitle.setAlpha(0.82 + pulse * 0.18);
+      }
+    }
 
     if (this.toastUntil && now > this.toastUntil) {
       this.toastText.setAlpha(0);
@@ -702,7 +729,6 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private showWinner(winner: WinnerInfo | null, resultsLeft: number, top5: PlayerStats[]): void {
-    this.winnerPanel.setAlpha(1);
     if (winner) {
       this.winnerTitle.setText('🏆 REI DA ARENA');
       this.winnerBody.setText(
@@ -725,10 +751,42 @@ export class ArenaScene extends Phaser.Scene {
       this.winnerBody.setText('Nenhum vencedor');
     }
     this.resultsHint.setText(`▶  Próxima rodada em ${resultsLeft}s`);
+
+    if (this.winnerReveal) this.winnerReveal.active = true;
+
+    // Entrance + gold/cyan burst only once per results phase (snapshots re-call this)
+    if (!this.winnerRevealPlayed) {
+      this.winnerRevealPlayed = true;
+      this.winnerPanel.setAlpha(0).setScale(0.82);
+      this.tweens.killTweensOf(this.winnerPanel);
+      this.tweens.add({
+        targets: this.winnerPanel,
+        alpha: 1,
+        scale: 1,
+        duration: 420,
+        ease: 'Back.Out',
+      });
+      burstWinnerReveal(
+        this,
+        this.winnerPanel.x,
+        this.winnerPanel.y,
+        this.particleBudget ?? 1,
+        this.phoneLite
+      );
+    } else {
+      this.winnerPanel.setAlpha(1);
+    }
   }
 
   private hideWinner(): void {
-    this.winnerPanel.setAlpha(0);
+    if (this.winnerReveal) {
+      this.winnerReveal.active = false;
+      this.winnerReveal.chrome.clear();
+    }
+    this.winnerRevealPlayed = false;
+    this.tweens.killTweensOf(this.winnerPanel);
+    this.winnerPanel.setAlpha(0).setScale(1);
+    if (this.winnerTitle) this.winnerTitle.setAlpha(1);
   }
 
   private showToast(msg: string, kind?: string): void {
