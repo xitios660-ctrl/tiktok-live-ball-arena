@@ -22,6 +22,7 @@ import {
   spawnReflectActivate,
   tickBuffParticles,
 } from '../fx/AbilityFx';
+import { playKillImpact } from '../fx/KillImpactFx';
 import { paintArenaFloor, paintArenaRim } from '../fx/ArenaFloor';
 import {
   createGlossParts,
@@ -466,8 +467,9 @@ export class ArenaScene extends Phaser.Scene {
     } else if (event.type === 'kill') {
       const revenge = !!event.isRevenge;
       this.pushKillFeed(event.message, revenge ? THEME_HEX.gold : THEME_HEX.cream, revenge ? '#5c2020ee' : '#FF6B6Bcc');
-      this.spawnHitSparks(event.x, event.y, revenge ? THEME.gold : THEME.coral, 18);
-      this.spawnDeathFlash(event.x, event.y);
+      // Lighter hit sparks — KillImpactFx adds smoke/rings/callout + modest embers
+      this.spawnHitSparks(event.x, event.y, revenge ? THEME.gold : THEME.coral, 10);
+      this.spawnDeathFlash(event.x, event.y, revenge);
       audio.play(revenge ? 'revenge' : 'death');
       if (revenge) this.showToast(event.message);
     } else if (event.type === 'announce') {
@@ -741,14 +743,10 @@ export class ArenaScene extends Phaser.Scene {
     }
   }
 
-  private spawnDeathFlash(x: number, y: number): void {
-    const ring = this.add.circle(x, y, 10, THEME.coral, 0.6).setDepth(60);
-    this.tweens.add({
-      targets: ring,
-      scale: 4,
-      alpha: 0,
-      duration: 450,
-      onComplete: () => ring.destroy(),
+  private spawnDeathFlash(x: number, y: number, revenge = false): void {
+    playKillImpact(this, x, y, {
+      revenge,
+      budget: this.particleBudget ?? 1,
     });
   }
 
