@@ -101,7 +101,7 @@ export function ensureGlossTexture(
   // Thin cream rim hint (not king gold)
   ctx.beginPath();
   ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(244,239,228,0.35)';
+  ctx.strokeStyle = 'rgba(242,235,215,0.4)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -128,11 +128,11 @@ function paintSkinAccent(
         const d = r * (0.15 + (i % 5) * 0.12);
         ctx.beginPath();
         ctx.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 1.2 + (i % 3), 0, Math.PI * 2);
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(126,182,255,0.85)' : 'rgba(244,239,228,0.7)';
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(34,211,238,0.85)' : 'rgba(242,235,215,0.7)';
         ctx.fill();
       }
       const neb = ctx.createRadialGradient(cx + r * 0.2, cy - r * 0.1, 0, cx, cy, r);
-      neb.addColorStop(0, 'rgba(126,182,255,0.35)');
+      neb.addColorStop(0, 'rgba(34,211,238,0.35)');
       neb.addColorStop(0.5, 'rgba(160,100,255,0.15)');
       neb.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = neb;
@@ -230,14 +230,14 @@ function paintSkinAccent(
       break;
     }
     case 'rocket': {
-      ctx.fillStyle = 'rgba(255,102,170,0.35)';
+      ctx.fillStyle = 'rgba(255,78,69,0.35)';
       ctx.beginPath();
       ctx.moveTo(cx, cy - r * 0.7);
       ctx.lineTo(cx + r * 0.35, cy + r * 0.2);
       ctx.lineTo(cx - r * 0.35, cy + r * 0.2);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = 'rgba(255,90,54,0.8)';
+      ctx.fillStyle = 'rgba(255,138,61,0.85)';
       ctx.beginPath();
       ctx.moveTo(cx - r * 0.2, cy + r * 0.25);
       ctx.lineTo(cx, cy + r * 0.75);
@@ -247,7 +247,7 @@ function paintSkinAccent(
       break;
     }
     case 'magnet': {
-      ctx.strokeStyle = 'rgba(244,114,182,0.85)';
+      ctx.strokeStyle = 'rgba(34,211,238,0.85)';
       ctx.lineWidth = 8;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -256,7 +256,7 @@ function paintSkinAccent(
       ctx.beginPath();
       ctx.arc(cx, cy, r * 0.45, Math.PI * 1.15, Math.PI * 1.85);
       ctx.stroke();
-      ctx.fillStyle = 'rgba(244,114,182,0.9)';
+      ctx.fillStyle = 'rgba(34,211,238,0.9)';
       ctx.fillRect(cx - r * 0.55, cy - r * 0.2, 10, r * 0.4);
       ctx.fillRect(cx + r * 0.55 - 10, cy - r * 0.2, 10, r * 0.4);
       break;

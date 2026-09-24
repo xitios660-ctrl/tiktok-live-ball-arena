@@ -1,10 +1,10 @@
 /**
  * Cinematic title / phase chrome for the OBS overlay.
- * Futuristic neon energy on cozy Ticulinho palette — homage only.
+ * Futuristic neon energy on Ball Arena cinematic palette.
  */
 import Phaser from 'phaser';
 import { CANVAS_WIDTH } from '@arena/shared';
-import { THEME, THEME_HEX, FONT_BLACK } from '../theme';
+import { THEME, THEME_HEX, FONT_BLACK, FONT_ACCENT } from '../theme';
 
 export interface CinematicHudHandles {
   root: Phaser.GameObjects.Container;
@@ -34,8 +34,8 @@ export function createCinematicTitle(
     .text(0, 0, 'BALL ARENA', {
       fontFamily: FONT_BLACK,
       fontSize: '50px',
-      color: THEME_HEX.lavender,
-      stroke: THEME_HEX.lavender,
+      color: THEME_HEX.electricCyan,
+      stroke: THEME_HEX.electricCyan,
       strokeThickness: 14,
     })
     .setOrigin(0.5)
@@ -46,7 +46,7 @@ export function createCinematicTitle(
       fontFamily: FONT_BLACK,
       fontSize: '46px',
       color: THEME_HEX.gold,
-      stroke: THEME_HEX.coral,
+      stroke: THEME_HEX.arenaRed,
       strokeThickness: 12,
     })
     .setOrigin(0.5)
@@ -56,8 +56,8 @@ export function createCinematicTitle(
     .text(0, 0, 'BALL ARENA', {
       fontFamily: FONT_BLACK,
       fontSize: '44px',
-      color: THEME_HEX.cream,
-      stroke: THEME_HEX.charcoal,
+      color: THEME_HEX.light,
+      stroke: THEME_HEX.arenaDark,
       strokeThickness: 8,
     })
     .setOrigin(0.5);
@@ -95,13 +95,13 @@ export function createCinematicTitle(
   neonFrame.fillRoundedRect(-160, 18, 320, 14, 6);
 
   const scanline = scene.add
-    .rectangle(0, -8, 420, 3, THEME.cream, 0.12)
+    .rectangle(0, -8, 420, 3, THEME.light, 0.12)
     .setOrigin(0.5);
 
   const phaseLabel = scene.add
     .text(0, 50, 'RODADA', {
-      fontFamily: FONT_BLACK,
-      fontSize: '20px',
+      fontFamily: FONT_ACCENT,
+      fontSize: '24px',
       color: THEME_HEX.muted,
       stroke: '#000000',
       strokeThickness: 3,
@@ -154,12 +154,12 @@ function drawAccentLine(
   g.lineStyle(2.5, THEME.gold, a);
   g.lineBetween(cx - halfW, cy, cx - 18, cy);
   g.lineBetween(cx + 18, cy, cx + halfW, cy);
-  g.lineStyle(1, THEME.teal, a * 0.7);
+  g.lineStyle(1, THEME.electricCyan, a * 0.7);
   g.lineBetween(cx - halfW + 8, cy + 3, cx - 24, cy + 3);
   g.lineBetween(cx + 24, cy + 3, cx + halfW - 8, cy + 3);
-  g.fillStyle(THEME.coral, 0.95);
+  g.fillStyle(THEME.arenaRed, 0.95);
   g.fillCircle(cx, cy, 4.5);
-  g.fillStyle(THEME.lavender, 0.75);
+  g.fillStyle(THEME.emberOrange, 0.75);
   g.fillCircle(cx - halfW * 0.55, cy, 2.5);
   g.fillCircle(cx + halfW * 0.55, cy, 2.5);
 }
@@ -251,7 +251,7 @@ export function setPhaseChrome(
     hud.starsLeft.setColor(THEME_HEX.gold);
     hud.starsRight.setColor(THEME_HEX.gold);
   } else {
-    hud.titleMain.setColor(THEME_HEX.cream);
+    hud.titleMain.setColor(THEME_HEX.light);
     hud.starsLeft.setColor(THEME_HEX.gold);
     hud.starsRight.setColor(THEME_HEX.gold);
   }
@@ -266,8 +266,8 @@ export function styleWinnerPanelDramatic(
   hint: Phaser.GameObjects.Text
 ): void {
   title.setFontSize('56px').setColor(THEME_HEX.gold);
-  body.setFontSize('30px').setColor(THEME_HEX.cream);
-  hint.setFontSize('26px').setColor(THEME_HEX.teal);
+  body.setFontSize('30px').setColor(THEME_HEX.light);
+  hint.setFontSize('26px').setColor(THEME_HEX.electricCyan);
   void scene;
   void panel;
 }
@@ -291,7 +291,7 @@ export function createAmbientTwinkles(
     const x = 40 + Math.random() * (CANVAS_WIDTH - 80);
     const y = 80 + Math.random() * (1920 - 200);
     const r = 1.2 + Math.random() * 2.2;
-    const color = i % 3 === 0 ? THEME.gold : i % 3 === 1 ? THEME.lavender : THEME.teal;
+    const color = i % 3 === 0 ? THEME.gold : i % 3 === 1 ? THEME.emberOrange : THEME.electricCyan;
     const g = scene.add.circle(x, y, r, color, 0.35);
     root.add(g);
     stars.push({ g, phase: Math.random() * Math.PI * 2, speed: 1.2 + Math.random() * 2 });

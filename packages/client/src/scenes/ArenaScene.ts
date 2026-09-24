@@ -13,7 +13,7 @@ import {
 } from '@arena/shared';
 import { audio } from '../audio/AudioManager';
 import { getOverlayOptions, SAFE } from '../overlayConfig';
-import { THEME, THEME_HEX, FONT, FONT_BLACK } from '../theme';
+import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT } from '../theme';
 import {
   playAbilityFx,
   spawnStrengthSparkles,
@@ -158,18 +158,18 @@ export class ArenaScene extends Phaser.Scene {
     // Timer glow (behind) + main timer
     this.timerGlow = this.add
       .text(CANVAS_WIDTH / 2, top + 108, this.formatTime(data?.round?.remainingSec ?? 300), {
-        fontFamily: FONT_BLACK,
-        fontSize: '64px',
-        color: THEME_HEX.sage,
+        fontFamily: FONT_ACCENT,
+        fontSize: '72px',
+        color: THEME_HEX.electricCyan,
       })
       .setOrigin(0.5)
       .setDepth(99)
-      .setAlpha(0.25);
+      .setAlpha(0.28);
     this.timerText = this.add
       .text(CANVAS_WIDTH / 2, top + 108, this.formatTime(data?.round?.remainingSec ?? 300), {
-        fontFamily: FONT_BLACK,
-        fontSize: '58px',
-        color: THEME_HEX.sage,
+        fontFamily: FONT_ACCENT,
+        fontSize: '66px',
+        color: THEME_HEX.electricCyan,
         stroke: '#000000',
         strokeThickness: 8,
       })
@@ -178,8 +178,8 @@ export class ArenaScene extends Phaser.Scene {
 
     this.playersText = this.add
       .text(CANVAS_WIDTH / 2, top + 168, `● VIVOS  ${data?.round?.playerCount ?? 0}`, {
-        fontFamily: FONT_BLACK,
-        fontSize: '24px',
+        fontFamily: FONT_ACCENT,
+        fontSize: '28px',
         color: THEME_HEX.muted,
         stroke: '#000000',
         strokeThickness: 4,
@@ -190,10 +190,10 @@ export class ArenaScene extends Phaser.Scene {
     // Likes meter — pill
     this.likesText = this.add
       .text(side, top + 16, '❤️  0 / 100', {
-        fontFamily: FONT_BLACK,
-        fontSize: '22px',
-        color: THEME_HEX.coral,
-        backgroundColor: '#1E1E1E99',
+        fontFamily: FONT_ACCENT,
+        fontSize: '24px',
+        color: THEME_HEX.arenaRed,
+        backgroundColor: '#1E1A16aa',
         padding: { x: 12, y: 6 },
       })
       .setDepth(200)
@@ -217,14 +217,14 @@ export class ArenaScene extends Phaser.Scene {
 
     this.toastText = this.add
       .text(CANVAS_WIDTH / 2, top + 250, '', {
-        fontFamily: FONT_BLACK,
-        fontSize: '32px',
+        fontFamily: FONT_ACCENT,
+        fontSize: '36px',
         color: THEME_HEX.gold,
-        backgroundColor: '#14110eee',
-        padding: { x: 20, y: 12 },
+        backgroundColor: '#1E1A16dd',
+        padding: { x: 24, y: 14 },
         align: 'center',
-        stroke: '#000000',
-        strokeThickness: 2,
+        stroke: THEME_HEX.arenaRed,
+        strokeThickness: 3,
       })
       .setOrigin(0.5)
       .setDepth(300)
@@ -232,10 +232,10 @@ export class ArenaScene extends Phaser.Scene {
 
     this.bigCountdown = this.add
       .text(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, '', {
-        fontFamily: FONT_BLACK,
-        fontSize: '260px',
-        color: THEME_HEX.coral,
-        stroke: THEME_HEX.cream,
+        fontFamily: FONT_ACCENT,
+        fontSize: '280px',
+        color: THEME_HEX.arenaRed,
+        stroke: THEME_HEX.light,
         strokeThickness: 14,
       })
       .setOrigin(0.5)
@@ -265,8 +265,8 @@ export class ArenaScene extends Phaser.Scene {
     this.drawWinnerFrame(this.winnerFrame, 860, 700);
     this.winnerTitle = this.add
       .text(0, -268, '★ REI DA ARENA ★', {
-        fontFamily: FONT_BLACK,
-        fontSize: '56px',
+        fontFamily: FONT_ACCENT,
+        fontSize: '58px',
         color: THEME_HEX.gold,
         stroke: '#000000',
         strokeThickness: 10,
@@ -371,7 +371,7 @@ export class ArenaScene extends Phaser.Scene {
     const now = Date.now();
     const t = this.time.now;
     if (this.cinematicHud) tickCinematicHud(this.cinematicHud, t);
-    this.ambientTwinkles?.tick(t);
+    if (this.ambientTwinkles && (this.particleBudget ?? 1) > 0.2) this.ambientTwinkles.tick(t);
     this.pickupsLayer?.tick(t);
     if (this.giftLegend) {
       tickGiftLegend(this.giftLegend, t);
@@ -523,39 +523,39 @@ export class ArenaScene extends Phaser.Scene {
     this.lastPhase = phase;
     if (this.cinematicHud) setPhaseChrome(this.cinematicHud, phase, remaining, this);
     if (phase === 'results') {
-      this.timerText.setColor(THEME_HEX.gold).setFontSize('64px');
+      this.timerText.setColor(THEME_HEX.gold).setFontSize('68px');
       this.timerText.setText('RESULTADOS');
       if (this.timerGlow) {
-        this.timerGlow.setText('RESULTADOS').setColor(THEME_HEX.gold).setFontSize('70px');
+        this.timerGlow.setText('RESULTADOS').setColor(THEME_HEX.gold).setFontSize('74px');
       }
       this.intensity = false;
       return;
     }
     if (remaining <= 30) {
       this.intensity = true;
-      const size = remaining <= 10 ? '82px' : '66px';
-      this.timerText.setColor(THEME_HEX.coral).setFontSize(size);
-      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.coral).setFontSize(size).setAlpha(0.45);
-      if (remaining <= 10 && this.titleText) this.titleText.setColor(THEME_HEX.coral);
+      const size = remaining <= 10 ? '88px' : '72px';
+      this.timerText.setColor(THEME_HEX.arenaRed).setFontSize(size);
+      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.arenaRed).setFontSize(size).setAlpha(0.45);
+      if (remaining <= 10 && this.titleText) this.titleText.setColor(THEME_HEX.arenaRed);
     } else if (remaining <= 60) {
       this.intensity = false;
-      this.timerText.setColor(THEME_HEX.gold).setFontSize('60px');
-      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.gold).setFontSize('66px').setAlpha(0.3);
-      if (this.titleText) this.titleText.setColor(THEME_HEX.cream);
+      this.timerText.setColor(THEME_HEX.gold).setFontSize('68px');
+      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.gold).setFontSize('74px').setAlpha(0.3);
+      if (this.titleText) this.titleText.setColor(THEME_HEX.light);
     } else {
       this.intensity = false;
-      this.timerText.setColor(THEME_HEX.sage).setFontSize('58px');
-      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.sage).setFontSize('64px').setAlpha(0.22);
+      this.timerText.setColor(THEME_HEX.electricCyan).setFontSize('66px');
+      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.electricCyan).setFontSize('72px').setAlpha(0.25);
       if (this.border) this.border.setStrokeStyle(0);
-      if (this.titleText) this.titleText.setColor(THEME_HEX.cream);
+      if (this.titleText) this.titleText.setColor(THEME_HEX.light);
     }
     this.lastRemaining = remaining;
   }
 
   private showBigCountdown(n: number): void {
     this.bigCountdown.setText(String(n));
-    this.bigCountdown.setColor(n <= 3 ? THEME_HEX.coral : THEME_HEX.cream);
-    this.bigCountdown.setStroke(n <= 3 ? THEME_HEX.gold : THEME_HEX.cream, n <= 3 ? 18 : 14);
+    this.bigCountdown.setColor(n <= 3 ? THEME_HEX.arenaRed : THEME_HEX.light);
+    this.bigCountdown.setStroke(n <= 3 ? THEME_HEX.gold : THEME_HEX.light, n <= 3 ? 18 : 14);
     this.bigCountdown.setAlpha(1).setScale(0.28);
     this.tweens.add({
       targets: this.bigCountdown,
@@ -576,13 +576,13 @@ export class ArenaScene extends Phaser.Scene {
     const g = this.feedCard;
     g.clear();
     if (!this.feed.length) return;
-    g.fillStyle(THEME.ink, 0.78);
+    g.fillStyle(THEME.stone, 0.55);
     g.fillRoundedRect(x, y, tw, th, 12);
-    g.lineStyle(1.5, THEME.cream, 0.2);
+    g.lineStyle(1.5, THEME.light, 0.2);
     g.strokeRoundedRect(x, y, tw, th, 12);
-    g.lineStyle(2.5, THEME.teal, 0.55);
+    g.lineStyle(2.5, THEME.electricCyan, 0.55);
     g.lineBetween(x, y + 8, x, y + th - 8);
-    g.lineStyle(1, THEME.lavender, 0.35);
+    g.lineStyle(1, THEME.emberOrange, 0.3);
     g.strokeRoundedRect(x + 2, y + 2, tw - 4, th - 4, 10);
   }
 
@@ -598,14 +598,14 @@ export class ArenaScene extends Phaser.Scene {
     // Gold outer frame (layered)
     g.lineStyle(8, THEME.gold, 0.95);
     g.strokeRoundedRect(-hw, -hh, w, h, 28);
-    g.lineStyle(3, THEME.cream, 0.45);
+    g.lineStyle(3, THEME.light, 0.45);
     g.strokeRoundedRect(-hw + 8, -hh + 8, w - 16, h - 16, 22);
-    g.lineStyle(2, THEME.lavender, 0.35);
+    g.lineStyle(2, THEME.electricCyan, 0.35);
     g.strokeRoundedRect(-hw + 14, -hh + 14, w - 28, h - 28, 18);
-    // Coral / teal accent rails
-    g.fillStyle(THEME.coral, 1);
+    // Arena Red / Cyan accent rails
+    g.fillStyle(THEME.arenaRed, 1);
     g.fillRoundedRect(-hw + 24, -hh + 4, w - 48, 10, 4);
-    g.fillStyle(THEME.teal, 1);
+    g.fillStyle(THEME.electricCyan, 1);
     g.fillRoundedRect(-hw + 24, hh - 14, w - 48, 10, 4);
     // Corner jewels
     for (const [cx, cy] of [
@@ -616,7 +616,7 @@ export class ArenaScene extends Phaser.Scene {
     ] as const) {
       g.fillStyle(THEME.gold, 0.95);
       g.fillCircle(cx, cy, 6);
-      g.fillStyle(THEME.cream, 0.7);
+      g.fillStyle(THEME.light, 0.7);
       g.fillCircle(cx, cy, 2.5);
     }
   }
@@ -653,8 +653,14 @@ export class ArenaScene extends Phaser.Scene {
 
   private showToast(msg: string): void {
     this.toastText.setText(msg);
-    this.toastText.setAlpha(1);
-    this.toastUntil = Date.now() + 3200;
+    this.toastText.setAlpha(1).setScale(0.85);
+    this.toastUntil = Date.now() + 3400;
+    this.tweens.add({
+      targets: this.toastText,
+      scale: 1,
+      duration: 280,
+      ease: 'Back.Out',
+    });
   }
 
   private pushKillFeed(message: string, color: string = THEME_HEX.cream, bg: string = '#ff5a36cc'): void {

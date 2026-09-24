@@ -44,7 +44,7 @@ export function playAbilityFx(
       spawnSparks(scene, event.x, event.y, THEME.coral, 6, budget);
       break;
     default:
-      if (budget > 0.4) spawnSparks(scene, event.x, event.y, THEME.lavender, 6, budget);
+      if (budget > 0.4) spawnSparks(scene, event.x, event.y, THEME.electricCyan, 6, budget);
       break;
   }
 }
@@ -135,8 +135,8 @@ export function spawnMagnetPulse(
   const rings = Math.max(2, Math.floor(4 * Math.max(0.25, budget)));
   for (let i = 0; i < rings; i++) {
     const ring = scene.add
-      .circle(x, y, 30 + i * 28, 0xf472b6, 0)
-      .setStrokeStyle(3, 0xf472b6, 0.7 - i * 0.12)
+      .circle(x, y, 30 + i * 28, THEME.electricCyan, 0)
+      .setStrokeStyle(3, THEME.electricCyan, 0.7 - i * 0.12)
       .setDepth(65);
     scene.tweens.add({
       targets: ring,
@@ -154,7 +154,7 @@ export function spawnMagnetPulse(
     const lx = x + Math.cos(ang) * dist;
     const ly = y + Math.sin(ang) * dist;
     const g = scene.add.graphics().setDepth(64);
-    g.lineStyle(2, 0xf9a8d4, 0.7);
+    g.lineStyle(2, THEME.electricCyan, 0.7);
     g.beginPath();
     g.moveTo(lx, ly);
     g.lineTo(x, y);
@@ -216,7 +216,7 @@ export function spawnDashBurst(
   const ghosts = Math.max(2, Math.floor(5 * Math.max(0.25, budget)));
   for (let i = 0; i < ghosts; i++) {
     const ghost = scene.add
-      .circle(x - nx * i * 18, y - ny * i * 18, 22 - i * 3, 0xff66aa, 0.35 - i * 0.05)
+      .circle(x - nx * i * 18, y - ny * i * 18, 22 - i * 3, THEME.emberOrange, 0.35 - i * 0.05)
       .setDepth(62);
     scene.tweens.add({
       targets: ghost,
@@ -226,7 +226,7 @@ export function spawnDashBurst(
       onComplete: () => ghost.destroy(),
     });
   }
-  spawnSparks(scene, x, y, 0xff66aa, 6, budget);
+  spawnSparks(scene, x, y, THEME.emberOrange, 6, budget);
 }
 
 export function spawnReflectActivate(scene: Phaser.Scene, x: number, y: number): void {
@@ -341,7 +341,7 @@ export function tickBuffParticles(
   }
   if (opts.isDash) {
     const ghost = scene.add
-      .circle(opts.prevX, opts.prevY, opts.radius * 0.85, 0xff66aa, 0.22)
+      .circle(opts.prevX, opts.prevY, opts.radius * 0.85, THEME.emberOrange, 0.22)
       .setDepth(40);
     scene.tweens.add({
       targets: ghost,

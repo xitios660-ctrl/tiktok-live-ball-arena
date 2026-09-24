@@ -11,11 +11,11 @@ import {
 import { THEME, FONT_BLACK } from '../theme';
 
 const GLOW: Record<PickupAbilityKey, number> = {
-  lightning_zap: 0xffe066, // yellow
-  magnet_pulse: THEME.teal,
-  freeze_aura: 0x7fe9ff, // cyan
-  dash_burst: THEME.coral,
-  reflect_shield: 0xd0d6e0, // silver
+  lightning_zap: THEME.gold,
+  magnet_pulse: THEME.electricCyan,
+  freeze_aura: 0x7fe9ff,
+  dash_burst: THEME.arenaRed,
+  reflect_shield: 0xd0d6e0,
 };
 
 interface PickupView {
@@ -66,13 +66,13 @@ export class PickupsLayer {
       const t = (time - view.born) / 1000;
       const bob = Math.sin(t * 3.2) * 4;
       view.emoji.setY(bob);
-      view.glow.setScale(1 + Math.sin(t * 2.4) * 0.08);
-      view.glow.setAlpha(0.28 + Math.sin(t * 2.4) * 0.1);
+      view.glow.setScale(1 + Math.sin(t * 2.4) * 0.12);
+      view.glow.setAlpha(0.32 + Math.sin(t * 2.4) * 0.14);
       view.ring.setRotation(t * 1.6);
       view.ring2.setRotation(-t * 1.1);
-      const pulse = 1 + Math.sin(t * 4) * 0.06;
+      const pulse = 1 + Math.sin(t * 4) * 0.09;
       view.ring.setScale(pulse);
-      view.ring2.setScale(1.15 - (pulse - 1));
+      view.ring2.setScale(1.18 - (pulse - 1));
     }
   }
 
@@ -86,15 +86,14 @@ export class PickupsLayer {
     const meta = PICKUP_META[p.ability];
     const root = this.scene.add.container(p.x, p.y);
 
-    const glow = this.scene.add.circle(0, 0, p.radius * 1.55, color, 0.32);
-    const disc = this.scene.add.circle(0, 0, p.radius, THEME.ink, 0.72);
-    disc.setStrokeStyle(2, color, 0.9);
+    const glow = this.scene.add.circle(0, 0, p.radius * 1.7, color, 0.38);
+    const disc = this.scene.add.circle(0, 0, p.radius, THEME.stone, 0.78);
+    disc.setStrokeStyle(2.5, color, 0.95);
 
-    const ring = this.scene.add.circle(0, 0, p.radius + 6, color, 0);
-    ring.setStrokeStyle(2.5, color, 0.85);
-    // dashed feel via scale — second ring offset
-    const ring2 = this.scene.add.circle(0, 0, p.radius + 14, color, 0);
-    ring2.setStrokeStyle(1.5, color, 0.45);
+    const ring = this.scene.add.circle(0, 0, p.radius + 7, color, 0);
+    ring.setStrokeStyle(2.75, color, 0.9);
+    const ring2 = this.scene.add.circle(0, 0, p.radius + 16, color, 0);
+    ring2.setStrokeStyle(1.5, THEME.gold, 0.4);
 
     const emoji = this.scene.add
       .text(0, 0, meta?.emoji || '✦', {

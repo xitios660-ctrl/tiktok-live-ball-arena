@@ -3,7 +3,7 @@
  * Compact glass card — right side under title / opposite TOP5.
  */
 import Phaser from 'phaser';
-import { THEME, THEME_HEX, FONT, FONT_BLACK } from '../theme';
+import { THEME, THEME_HEX, FONT, FONT_ACCENT } from '../theme';
 
 export const GIFT_GABARITO_LINES: readonly string[] = [
   '🎁 PRESENTES',
@@ -51,8 +51,8 @@ export function createGiftLegend(
   const neon = scene.add.graphics();
 
   const title = scene.add.text(padX, padY, '★ GABARITO', {
-    fontFamily: FONT_BLACK,
-    fontSize: titleSize,
+    fontFamily: FONT_ACCENT,
+    fontSize: titleSize === '17px' ? '20px' : '24px',
     color: THEME_HEX.gold,
     stroke: '#000000',
     strokeThickness: 3,
@@ -61,7 +61,7 @@ export function createGiftLegend(
   const body = scene.add.text(padX, padY + 26, GIFT_GABARITO_LINES.join('\n'), {
     fontFamily: FONT,
     fontSize,
-    color: THEME_HEX.cream,
+    color: THEME_HEX.light,
     lineSpacing: compact ? 1 : 3,
     wordWrap: { width: maxWidth - padX * 2 },
   });
@@ -85,18 +85,18 @@ function drawGlassCard(
   g.clear();
   g.fillStyle(THEME.ink, 0.40);
   g.fillRoundedRect(0, 0, w, h, 14);
-  g.lineStyle(2, THEME.cream, 0.22);
+  g.lineStyle(2, THEME.light, 0.2);
   g.strokeRoundedRect(0, 0, w, h, 14);
-  g.lineStyle(3, THEME.lavender, 0.75);
+  g.lineStyle(3, THEME.emberOrange, 0.7);
   g.lineBetween(0, 12, 0, h - 12);
   g.lineStyle(1, THEME.gold, 0.4);
   g.lineBetween(14, 28, w - 14, 28);
 
   neon.clear();
   const a = 0.35 + pulse * 0.35;
-  neon.lineStyle(2, THEME.teal, a);
+  neon.lineStyle(2, THEME.electricCyan, a);
   neon.strokeRoundedRect(1, 1, w - 2, h - 2, 13);
-  neon.lineStyle(1, THEME.lavender, a * 0.7);
+  neon.lineStyle(1, THEME.emberOrange, a * 0.55);
   neon.strokeRoundedRect(3, 3, w - 6, h - 6, 11);
 }
 

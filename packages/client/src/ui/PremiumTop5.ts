@@ -4,7 +4,7 @@
  */
 import Phaser from 'phaser';
 import type { PlayerStats } from '@arena/shared';
-import { THEME, THEME_HEX, FONT, FONT_BLACK } from '../theme';
+import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT, RANK_HEX } from '../theme';
 
 const CARD_W = 340;
 const HEADER_H = 42;
@@ -16,13 +16,13 @@ const MAX_NAME = 12;
 
 const MEDALS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'] as const;
 const RANK_COLORS = [
-  THEME_HEX.gold,
-  '#C0C8D4',
-  '#D4A574',
-  THEME_HEX.teal,
+  RANK_HEX.gold,
+  RANK_HEX.silver,
+  RANK_HEX.bronze,
+  THEME_HEX.electricCyan,
   THEME_HEX.muted,
 ] as const;
-const RANK_BORDER = [THEME.gold, 0xb8c0cc, 0xc9956c, THEME.teal, 0x6a655c] as const;
+const RANK_BORDER = [THEME.gold, 0xc0c7d4, 0xcd7f32, THEME.electricCyan, THEME.steel] as const;
 
 export interface PremiumTop5Handles {
   root: Phaser.GameObjects.Container;
@@ -70,8 +70,8 @@ export function createPremiumTop5(
 
   const headerTitle = scene.add
     .text(PAD + 34, PAD + HEADER_H / 2, '◆  TOP 5', {
-      fontFamily: FONT_BLACK,
-      fontSize: '22px',
+      fontFamily: FONT_ACCENT,
+      fontSize: '26px',
       color: THEME_HEX.gold,
       stroke: '#000000',
       strokeThickness: 4,
@@ -136,9 +136,9 @@ function createRow(scene: Phaser.Scene, rank: number): Top5Row {
     .setOrigin(0, 0.5);
   const kills = scene.add
     .text(CARD_W - PAD * 2 - 52, 0, '0', {
-      fontFamily: FONT_BLACK,
-      fontSize: rank === 0 ? '18px' : '16px',
-      color: THEME_HEX.cream,
+      fontFamily: FONT_ACCENT,
+      fontSize: rank === 0 ? '22px' : '20px',
+      color: THEME_HEX.light,
       stroke: '#000000',
       strokeThickness: 3,
     })
@@ -180,9 +180,11 @@ function drawCard(
   bg.fillRoundedRect(2, 2, w - 4, Math.min(h - 4, 56), RADIUS - 2);
   bg.fillStyle(0x000000, 0.10);
   bg.fillRoundedRect(3, HEADER_H + 4, w - 6, Math.max(0, h - HEADER_H - 8), 10);
-  // Outer cream edge
-  bg.lineStyle(1.5, THEME.cream, 0.22);
+  // Outer light edge
+  bg.lineStyle(1.5, THEME.light, 0.22);
   bg.strokeRoundedRect(0, 0, w, h, RADIUS);
+  bg.lineStyle(1, THEME.steel, 0.35);
+  bg.strokeRoundedRect(2, 2, w - 4, h - 4, RADIUS - 2);
   // Gold left rail
   bg.lineStyle(3.5, THEME.gold, 0.95);
   bg.lineBetween(0, 12, 0, h - 12);
@@ -198,9 +200,9 @@ function drawCard(
 
   neon.clear();
   const a = 0.3 + pulse * 0.4;
-  neon.lineStyle(2.2, THEME.teal, a);
+  neon.lineStyle(2.2, THEME.electricCyan, a);
   neon.strokeRoundedRect(1, 1, w - 2, h - 2, RADIUS - 1);
-  neon.lineStyle(1, THEME.lavender, a * 0.7);
+  neon.lineStyle(1, THEME.emberOrange, a * 0.55);
   neon.strokeRoundedRect(4, 4, w - 8, h - 8, RADIUS - 4);
   neon.lineStyle(1.5, THEME.gold, a * 0.45);
   neon.strokeRoundedRect(0, 0, w, h, RADIUS);
@@ -303,7 +305,7 @@ export function updatePremiumTop5(
       .setAlpha(alive ? 1 : 0.55);
     row.kills
       .setText(`☠${stats.kills}`)
-      .setColor(i === 0 ? THEME_HEX.gold : THEME_HEX.cream)
+      .setColor(i === 0 ? THEME_HEX.gold : THEME_HEX.light)
       .setAlpha(alive ? 1 : 0.5);
 
     const ratio = stats.maxHp > 0 ? stats.hp / stats.maxHp : 0;

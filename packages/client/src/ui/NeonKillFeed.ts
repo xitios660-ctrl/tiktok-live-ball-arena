@@ -4,7 +4,7 @@
  */
 import Phaser from 'phaser';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '@arena/shared';
-import { THEME, THEME_HEX, FONT_BLACK } from '../theme';
+import { THEME, THEME_HEX, FONT_ACCENT } from '../theme';
 import { SAFE } from '../overlayConfig';
 
 export type KillTone = 'kill' | 'revenge' | 'gift' | 'power' | 'info' | 'gold';
@@ -24,12 +24,12 @@ const TONE: Record<
   KillTone,
   { accent: number; fill: number; fillA: number; text: string; icon: string }
 > = {
-  kill: { accent: THEME.coral, fill: 0x1a1210, fillA: 0.72, text: THEME_HEX.cream, icon: '⚔' },
-  revenge: { accent: THEME.gold, fill: 0x2a1810, fillA: 0.78, text: THEME_HEX.gold, icon: '🎯' },
-  gift: { accent: THEME.lavender, fill: 0x16141f, fillA: 0.72, text: THEME_HEX.lavender, icon: '✦' },
-  power: { accent: THEME.teal, fill: 0x101816, fillA: 0.72, text: THEME_HEX.teal, icon: '⚡' },
-  info: { accent: THEME.cream, fill: 0x14110e, fillA: 0.68, text: THEME_HEX.cream, icon: '·' },
-  gold: { accent: THEME.gold, fill: 0x1c1610, fillA: 0.75, text: THEME_HEX.gold, icon: '★' },
+  kill: { accent: THEME.arenaRed, fill: THEME.stone, fillA: 0.68, text: THEME_HEX.light, icon: '⚔' },
+  revenge: { accent: THEME.gold, fill: 0x2a1c10, fillA: 0.72, text: THEME_HEX.gold, icon: '🎯' },
+  gift: { accent: THEME.emberOrange, fill: THEME.stone, fillA: 0.68, text: THEME_HEX.emberOrange, icon: '✦' },
+  power: { accent: THEME.electricCyan, fill: 0x10181c, fillA: 0.68, text: THEME_HEX.electricCyan, icon: '⚡' },
+  info: { accent: THEME.light, fill: THEME.stone, fillA: 0.62, text: THEME_HEX.light, icon: '·' },
+  gold: { accent: THEME.gold, fill: 0x1c1610, fillA: 0.7, text: THEME_HEX.gold, icon: '★' },
 };
 
 /** Map legacy color/bg pairs from ArenaScene combat handlers onto tones. */
@@ -48,7 +48,14 @@ export function toneFromColors(color: string, bg: string): KillTone {
     return 'power';
   }
   if (c.includes('f0b429') || c.includes('ffc857')) return 'gold';
-  if (c.includes('ff5a36') || c.includes('ff6b6b') || b.includes('ff6b6b') || b.includes('ff5a36')) {
+  if (
+    c.includes('ff5a36') ||
+    c.includes('ff6b6b') ||
+    c.includes('ff4e45') ||
+    b.includes('ff6b6b') ||
+    b.includes('ff5a36') ||
+    b.includes('ff4e45')
+  ) {
     return 'kill';
   }
   return 'info';
@@ -67,8 +74,8 @@ export function pushNeonKillFeed(
 
   const text = scene.add
     .text(0, 0, `${style.icon}  ${message}`, {
-      fontFamily: FONT_BLACK,
-      fontSize: '20px',
+      fontFamily: FONT_ACCENT,
+      fontSize: '22px',
       color: style.text,
       wordWrap: { width: CARD_W - 36 },
       lineSpacing: 2,
@@ -85,11 +92,13 @@ export function pushNeonKillFeed(
   g.fillRoundedRect(-tw - 4, -th / 2 - 4, tw + 8, th + 8, 14);
   g.fillStyle(style.fill, style.fillA);
   g.fillRoundedRect(-tw, -th / 2, tw, th, 12);
-  g.lineStyle(1.25, THEME.cream, 0.22);
+  g.lineStyle(1.25, THEME.light, 0.22);
   g.strokeRoundedRect(-tw, -th / 2, tw, th, 12);
+  g.lineStyle(1, THEME.steel, 0.4);
+  g.strokeRoundedRect(-tw + 2, -th / 2 + 2, tw - 4, th - 4, 10);
   g.fillStyle(style.accent, 0.95);
   g.fillRoundedRect(-tw + 3, -th / 2 + 6, 4, th - 12, 2);
-  g.fillStyle(THEME.cream, 0.06);
+  g.fillStyle(THEME.light, 0.06);
   g.fillRoundedRect(-tw + 10, -th / 2 + 3, tw - 16, th * 0.38, 8);
 
   text.setPosition(-padX, 0);
