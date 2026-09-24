@@ -794,7 +794,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
     this.load.image(key, b.avatarUrl);
     this.load.once(Phaser.Loader.Events.COMPLETE, apply);
-    this.load.once(Phaser.Loader.Events.LOAD_ERROR, () => {
+    this.load.once('loaderror', () => {
       this.pendingAvatars.delete(b.id);
     });
     if (!this.load.isLoading()) this.load.start();
