@@ -15,6 +15,7 @@ import {
   TITAN_STACK_MAX,
   resolveAbilityKey,
   PICKUP_META,
+  PICKUP_HEAL_HP,
   type AbilityKey,
   type PickupAbilityKey,
   type ArenaGiftEvent,
@@ -24,7 +25,7 @@ import {
 import type { PhysicsWorld, DamageApplication } from './PhysicsWorld';
 
 export interface GiftApplyResult {
-  ability: AbilityKey;
+  ability: AbilityKey | PickupAbilityKey;
   times: number;
   announces: AnnounceEvent[];
   damages: DamageApplication[];
@@ -445,6 +446,29 @@ export function applyPickupAbility(
           timestamp: Date.now(),
         });
       }
+      break;
+    }
+    case 'heal_orb': {
+      const healed = physics.heal(userId, PICKUP_HEAL_HP);
+      const b = physics.getBall(userId)!;
+      announces.push({
+        type: 'announce',
+        kind: 'pickup',
+        message: `💚 @${name} recuperou +${PICKUP_HEAL_HP} HP`,
+        userId,
+        username: name,
+        value: healed,
+        timestamp: Date.now(),
+      });
+      fx.push({
+        type: 'ability_fx',
+        ability: 'heal_orb',
+        userId,
+        x: b.x,
+        y: b.y,
+        value: healed,
+        timestamp: Date.now(),
+      });
       break;
     }
   }

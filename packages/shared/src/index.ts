@@ -214,7 +214,8 @@ export type PickupAbilityKey =
   | 'magnet_pulse'
   | 'freeze_aura'
   | 'dash_burst'
-  | 'reflect_shield';
+  | 'reflect_shield'
+  | 'heal_orb';
 
 export const PICKUP_ABILITY_KEYS: readonly PickupAbilityKey[] = [
   'lightning_zap',
@@ -222,6 +223,7 @@ export const PICKUP_ABILITY_KEYS: readonly PickupAbilityKey[] = [
   'freeze_aura',
   'dash_burst',
   'reflect_shield',
+  'heal_orb',
 ] as const;
 
 export function isPickupAbility(key: string): key is PickupAbilityKey {
@@ -319,7 +321,8 @@ export interface AnnounceEvent {
 /** One-shot ability / combat feedback FX for the overlay (lightweight payloads) */
 export type AbilityFxKind =
   | AbilityKey
-  | 'reflect_hit';
+  | 'reflect_hit'
+  | 'heal_orb';
 
 export interface AbilityFxEvent {
   type: 'ability_fx';
@@ -507,15 +510,20 @@ export const PICKUP_META: Record<
   freeze_aura: { emoji: '❄️', label: 'Gelo', giftId: 'gelo' },
   dash_burst: { emoji: '🚀', label: 'Foguete', giftId: 'foguete' },
   reflect_shield: { emoji: '🪞', label: 'Espelho', giftId: 'espelho' },
+  heal_orb: { emoji: '💚', label: 'Cura', giftId: 'cura' },
 };
 
-/** Slight bias toward dash/reflect for fun movement plays */
+/** HP restored when collecting heal_orb floor pickup */
+export const PICKUP_HEAL_HP = 25;
+
+/** Slight bias toward dash/reflect for fun movement plays; heal appears often enough */
 export const PICKUP_SPAWN_WEIGHTS: Record<PickupAbilityKey, number> = {
   lightning_zap: 1,
   magnet_pulse: 1,
   freeze_aura: 1,
   dash_burst: 1.35,
   reflect_shield: 1.35,
+  heal_orb: 1.2,
 };
 
 /** —— Likes / Shares / Random arena events —— */

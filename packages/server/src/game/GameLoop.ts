@@ -30,6 +30,7 @@ import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
 import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
 import { GlobalArenaEvents } from './GlobalArenaEvents';
 import { PickupSystem, pickupAbilityFromGiftId } from './PickupSystem';
+import { AutoBotSpawner } from './AutoBotSpawner';
 
 export type RoundListener = (state: RoundState) => void;
 export type LiveListener = (event: ArenaLiveEvent) => void;
@@ -88,6 +89,7 @@ export class GameLoop {
   private lastSpawnedUserId: string | null = null;
   private readonly globalEvents = new GlobalArenaEvents();
   private readonly pickups = new PickupSystem();
+  private readonly autoBots: AutoBotSpawner;
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -99,6 +101,25 @@ export class GameLoop {
       mode,
       playerCount: 0,
     };
+    this.autoBots = new AutoBotSpawner({
+      getPlayerCount: () => this.physics.count,
+      canAcceptJoin: () => {
+        const phase = this.state.phase;
+        // Mirror handleJoin / spawnNewOrNudge: joins allowed in waiting & running
+        return phase === 'waiting' || phase === 'running';
+      },
+      injectJoin: (user) => {
+        this.handleLiveEvent({ type: 'join', user, timestamp: Date.now() });
+      },
+    });
+    this.autoBots.start();
+  }
+
+  /** Clear timers (tests / graceful shutdown) */
+  destroy(): void {
+    this.autoBots.stop();
+    this.stopRoundTimer();
+    this.stopPhysics();
   }
 
   getState(): RoundState {

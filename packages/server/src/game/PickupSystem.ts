@@ -242,6 +242,10 @@ export function pickupAbilityFromGiftId(giftId: string | number): PickupAbilityK
     rocket: 'dash_burst',
     espelho: 'reflect_shield',
     mirror: 'reflect_shield',
+    cura: 'heal_orb',
+    heal: 'heal_orb',
+    regen: 'heal_orb',
+    heal_orb: 'heal_orb',
   };
   return aliases[id] ?? null;
 }

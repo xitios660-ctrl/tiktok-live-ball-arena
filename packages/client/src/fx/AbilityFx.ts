@@ -43,10 +43,44 @@ export function playAbilityFx(
     case 'heal_pulse':
       spawnSparks(scene, event.x, event.y, THEME.coral, 6, budget);
       break;
+    case 'heal_orb':
+      spawnHealOrbFlash(scene, event.x, event.y, budget);
+      break;
     default:
       if (budget > 0.4) spawnSparks(scene, event.x, event.y, THEME.electricCyan, 6, budget);
       break;
   }
+}
+
+/** Soft green heal flash for floor Cura pickup */
+function spawnHealOrbFlash(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  budget: FxBudget
+): void {
+  const ring = scene.add
+    .circle(x, y, 28, THEME.sage, 0)
+    .setStrokeStyle(3, THEME.sage, 0.95)
+    .setDepth(70);
+  scene.tweens.add({
+    targets: ring,
+    scale: 2.4,
+    alpha: 0,
+    duration: 420,
+    ease: 'Cubic.easeOut',
+    onComplete: () => ring.destroy(),
+  });
+  const glow = scene.add.circle(x, y, 22, THEME.sage, 0.45).setDepth(69);
+  scene.tweens.add({
+    targets: glow,
+    scale: 0.2,
+    alpha: 0,
+    duration: 280,
+    ease: 'Cubic.easeIn',
+    onComplete: () => glow.destroy(),
+  });
+  spawnSparks(scene, x, y, THEME.sage, 8, budget);
 }
 
 export function spawnSparks(

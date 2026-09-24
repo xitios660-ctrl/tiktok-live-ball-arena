@@ -18,6 +18,7 @@ const GLOW: Record<PickupAbilityKey, number> = {
   freeze_aura: 0x7fe9ff,
   dash_burst: THEME.arenaRed,
   reflect_shield: 0xd0d6e0,
+  heal_orb: THEME.sage,
 };
 
 interface PickupView {

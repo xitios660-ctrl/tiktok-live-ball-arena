@@ -19,6 +19,7 @@ const POWER_ICONS: PowerIcon[] = [
   { emoji: '❄️', ring: 0x7dd3fc, label: 'Gelo' },
   { emoji: '🚀', ring: THEME.emberOrange, label: 'Dash' },
   { emoji: '🪞', ring: 0xe0e7ff, label: 'Espelho' },
+  { emoji: '💚', ring: THEME.sage, label: 'Cura' },
   { emoji: '🌌', ring: 0xa78bfa, label: 'Galáxia' },
 ];
 
@@ -29,6 +30,7 @@ export const GIFT_GABARITO_LINES: readonly string[] = [
   '🍩 Donut — escudo',
   '🦫 Capy — gigante',
   '🌌 Galáxia — deus cósmico / Duelo Cósmico (2ª)',
+  '💚 Cura — recupera vida',
   '💬 Comente p/ entrar',
 ];
 

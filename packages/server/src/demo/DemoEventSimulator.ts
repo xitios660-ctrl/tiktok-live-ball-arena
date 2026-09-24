@@ -25,6 +25,7 @@ export const DEMO_PICKUP_PRESETS = [
   { giftId: 'gelo', giftName: 'Gelo', ability: 'freeze_aura', emoji: '❄️' },
   { giftId: 'foguete', giftName: 'Foguete', ability: 'dash_burst', emoji: '🚀' },
   { giftId: 'espelho', giftName: 'Espelho', ability: 'reflect_shield', emoji: '🪞' },
+  { giftId: 'cura', giftName: 'Cura', ability: 'heal_orb', emoji: '💚' },
 ] as const;
 
 export type DemoGiftId = (typeof DEMO_GIFT_PRESETS)[number]['giftId'];
