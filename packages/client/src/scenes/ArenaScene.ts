@@ -260,7 +260,7 @@ export class ArenaScene extends Phaser.Scene {
 
     // Likes meter — pill
     this.likesText = this.add
-      .text(side, top + 16, '❤️  0 / 100', {
+      .text(side, top + 16, '❤️ 100 LIKES = +20 HP +1 FORÇA', {
         fontFamily: FONT_ACCENT,
         fontSize: '24px',
         color: THEME_HEX.arenaRed,
@@ -545,9 +545,8 @@ export class ArenaScene extends Phaser.Scene {
     this.playersText.setText(`PLAYERS NA ARENA: ${snap.playerCount}`);
     this.syncBalls(snap.balls);
     this.pickupsLayer?.sync(snap.pickups);
-    if (snap.global && this.likesText) {
-      const g = snap.global;
-      this.likesText.setText(`❤️  ${g.likesAccumulated} / ${g.likesThreshold}` + (g.activeEffect ? `  ·  ${g.activeEffect}` : ''));
+    if (this.likesText) {
+      this.likesText.setText('❤️ 100 LIKES = +20 HP +1 FORÇA');
     }
     updatePremiumTop5(this, this.premiumTop5, snap.top5 || snap.stats.slice(0, 5));
 
