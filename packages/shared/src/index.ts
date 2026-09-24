@@ -109,11 +109,13 @@ export interface BallState {
   hp: number;
   maxHp: number;
   label: string;
-  /** Flash client on recent hit */
   hitFlash?: boolean;
+  /** Semi-transparent — no damage/push */
+  spawnProtected?: boolean;
+  /** 🎯 revenge mark (visual only) */
+  revengeMarked?: boolean;
 }
 
-/** Per-player round stats (alive or dead). Respawn = Etapa 8. */
 export interface PlayerStats {
   userId: string;
   username: string;
@@ -123,6 +125,16 @@ export interface PlayerStats {
   alive: boolean;
   hp: number;
   maxHp: number;
+  damageDealt: number;
+  damageTaken: number;
+  collisions: number;
+  highestSpeed: number;
+  /** Who eliminated them last (while dead / for UI) */
+  lastKillerId?: string | null;
+  lastKillerName?: string | null;
+  /** Active revenge target after respawn */
+  revengeTargetId?: string | null;
+  revengeTargetName?: string | null;
 }
 
 export interface GameSnapshot {
@@ -132,11 +144,9 @@ export interface GameSnapshot {
   remainingSec: number;
   playerCount: number;
   balls: BallState[];
-  /** Leaderboard-ish kill list (top / all) */
   stats: PlayerStats[];
 }
 
-/** Collision hit for VFX / feed */
 export interface HitEvent {
   type: 'hit';
   attackerId: string;
@@ -156,14 +166,27 @@ export interface KillEvent {
   attackerName: string | null;
   victimId: string;
   victimName: string;
-  /** "@attacker eliminou @victim" */
   message: string;
   x: number;
   y: number;
   timestamp: number;
+  isRevenge?: boolean;
+  rivalryCount?: number;
 }
 
-export type CombatEvent = HitEvent | KillEvent;
+/** Respawn / toast announcements */
+export interface AnnounceEvent {
+  type: 'announce';
+  kind: 'eliminated' | 'respawn' | 'revenge_respawn' | 'rivalry';
+  message: string;
+  userId?: string;
+  username?: string;
+  targetId?: string;
+  targetName?: string;
+  timestamp: number;
+}
+
+export type CombatEvent = HitEvent | KillEvent | AnnounceEvent;
 
 export const CANVAS_WIDTH = 1080;
 export const CANVAS_HEIGHT = 1920;
@@ -174,26 +197,20 @@ export const SPEED_BOOST_ON_COLLISION = 1.015;
 
 export const DEFAULT_BALL_RADIUS = 36;
 export const DEFAULT_BALL_HP = 100;
-/** Soft cap for future heals (Etapa gifts) */
 export const MAX_BALL_HP = 150;
 export const MAX_BALL_SPEED = 900;
 export const MIN_SPAWN_SPEED = 80;
 export const MAX_SPAWN_SPEED = 160;
 
-/**
- * Damage formula (player-player, approaching collisions only):
- *   impact = closing speed along normal (−velAlongNormal)
- *   shareA = massB / (massA + massB)   // heavier opponent → more dmg to you
- *   raw = impact * DAMAGE_SPEED_FACTOR * share * strength(1)
- *   damage = clamp(round(raw), DAMAGE_MIN, DAMAGE_MAX)
- * Both balls take damage (mutual), weighted by the other's mass share.
- * Last hitter who dealt damage to you gets the kill credit.
- */
 export const DAMAGE_SPEED_FACTOR = 0.085;
 export const DAMAGE_MIN = 2;
 export const DAMAGE_MAX = 28;
-/** Ignore glancing blows below this closing speed (px/s) */
 export const DAMAGE_IMPACT_THRESHOLD = 40;
+
+/** Respawn spawn protection (ms) — no damage dealt/received, no ball-ball push */
+export const SPAWN_PROTECTION_MS = 2000;
+/** How long 🎯 stays on revenge target (ms) — visual only */
+export const REVENGE_MARK_MS = 10000;
 
 export const SOCKET_EVENTS = {
   ROUND_STATE: 'round:state',

@@ -34,11 +34,14 @@ export function adminApiRouter(deps: {
       mode: deps.mode,
       round: deps.game.getState(),
       stats: snap.stats,
+      dead: deps.game.getDeadPlayers(),
       balls: snap.balls.map((b) => ({
         userId: b.userId,
         username: b.username,
         hp: b.hp,
         maxHp: b.maxHp,
+        spawnProtected: b.spawnProtected,
+        revengeMarked: b.revengeMarked,
       })),
       recentCombat: deps.game.getRecentCombat().slice(-20),
       recentEvents: deps.game.getRecentEvents().slice(-20),
@@ -155,6 +158,49 @@ export function adminApiRouter(deps: {
     const attackerId = req.body?.attackerId as string | undefined;
     const events = deps.game.adminKill(victimId, attackerId);
     res.json({ ok: true, victimId, events, stats: deps.game.getStats() });
+  });
+
+
+  /** List dead + respawn via simulated comment */
+  router.get('/admin/dead', (_req, res) => {
+    res.json({ ok: true, dead: deps.game.getDeadPlayers() });
+  });
+
+  router.post('/admin/combat/respawn', (req, res) => {
+    const userId = req.body?.userId as string;
+    if (!userId) {
+      const dead = deps.game.getDeadPlayers();
+      if (!dead.length) {
+        res.status(400).json({ ok: false, error: 'No dead players / missing userId' });
+        return;
+      }
+      const events = deps.game.adminRespawnComment(dead[0].userId);
+      res.json({ ok: true, userId: dead[0].userId, events, stats: deps.game.getStats() });
+      return;
+    }
+    const events = deps.game.adminRespawnComment(userId);
+    if (!events.length) {
+      res.status(400).json({ ok: false, error: 'Player not dead or unknown' });
+      return;
+    }
+    res.json({ ok: true, userId, events, stats: deps.game.getStats() });
+  });
+
+  /** Simulate comment from a specific userId (respawns if dead) */
+  router.post('/admin/sim/comment-as', requireDemo, (req, res) => {
+    const demo = deps.getDemo()!;
+    const userId = req.body?.userId as string;
+    if (!userId) {
+      res.status(400).json({ ok: false, error: 'userId required' });
+      return;
+    }
+    const stats = deps.game.getStats().find((s) => s.userId === userId);
+    const event = demo.injectComment(req.body?.comment || 'volto!', {
+      userId,
+      username: stats?.username || req.body?.username || userId,
+      nickname: stats?.nickname,
+    });
+    res.json({ ok: true, event, stats: deps.game.getStats() });
   });
 
   return router;

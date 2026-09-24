@@ -3,7 +3,6 @@ import {
   CANVAS_HEIGHT,
   DEFAULT_BALL_RADIUS,
   DEFAULT_BALL_HP,
-  MAX_BALL_HP,
   MAX_BALL_SPEED,
   MIN_SPAWN_SPEED,
   MAX_SPAWN_SPEED,
@@ -12,6 +11,7 @@ import {
   DAMAGE_MIN,
   DAMAGE_MAX,
   DAMAGE_IMPACT_THRESHOLD,
+  SPAWN_PROTECTION_MS,
   type ArenaUser,
   type BallState,
 } from '@arena/shared';
@@ -31,15 +31,17 @@ export interface BallBody {
   color: number;
   hp: number;
   maxHp: number;
-  /** Strength multiplier (gifts later); default 1 */
   strength: number;
-  /** Frames remaining to show hit flash on client */
   hitFlashTicks: number;
   lastHitterId: string | null;
   lastHitterName: string | null;
+  /** ms timestamp — protected until */
+  spawnProtectedUntil: number;
+  /** ms timestamp — 🎯 mark until */
+  revengeMarkedUntil: number;
+  highestSpeed: number;
 }
 
-/** One-sided damage applied during a ball-ball collision */
 export interface DamageApplication {
   victimId: string;
   victimName: string;
@@ -87,6 +89,8 @@ function capSpeed(b: BallBody): void {
     b.vx *= k;
     b.vy *= k;
   }
+  const capped = speedOf(b);
+  if (capped > b.highestSpeed) b.highestSpeed = capped;
 }
 
 function boostSpeed(b: BallBody): void {
@@ -97,15 +101,15 @@ function boostSpeed(b: BallBody): void {
 
 function calcDamage(impact: number, attackerMass: number, victimMass: number, strength: number): number {
   const total = attackerMass + victimMass || 1;
-  // Heavier attacker / lighter victim → more damage to victim
   const share = attackerMass / total;
   const raw = impact * DAMAGE_SPEED_FACTOR * share * strength;
   return clamp(Math.round(raw), DAMAGE_MIN, DAMAGE_MAX);
 }
 
-/**
- * Authoritative circle physics + collision damage for 1080×1920 arena.
- */
+function isProtected(b: BallBody, now = Date.now()): boolean {
+  return now < b.spawnProtectedUntil;
+}
+
 export class PhysicsWorld {
   private balls = new Map<string, BallBody>();
   private readonly width = CANVAS_WIDTH;
@@ -138,15 +142,26 @@ export class PhysicsWorld {
     return b;
   }
 
-  /** Admin / test: apply flat damage. Returns application or null. */
+  markRevengeTarget(userId: string, untilMs: number): void {
+    const b = this.balls.get(userId);
+    if (b) b.revengeMarkedUntil = Math.max(b.revengeMarkedUntil, untilMs);
+  }
+
+  clearRevengeMark(userId: string): void {
+    const b = this.balls.get(userId);
+    if (b) b.revengeMarkedUntil = 0;
+  }
+
   applyDirectDamage(victimId: string, damage: number, attackerId?: string): DamageApplication | null {
     const victim = this.balls.get(victimId);
     if (!victim) return null;
+    if (isProtected(victim)) return null;
+
     let attacker = attackerId ? this.balls.get(attackerId) : undefined;
+    if (attacker && isProtected(attacker)) attacker = undefined;
     if (!attacker) {
-      // pick any other ball as attacker for kill credit, else self/null
       for (const b of this.balls.values()) {
-        if (b.userId !== victimId) {
+        if (b.userId !== victimId && !isProtected(b)) {
           attacker = b;
           break;
         }
@@ -159,7 +174,6 @@ export class PhysicsWorld {
       victim.lastHitterId = attacker.userId;
       victim.lastHitterName = attacker.nickname || attacker.username;
     }
-    const killed = victim.hp <= 0;
     return {
       victimId: victim.userId,
       victimName: victim.nickname || victim.username,
@@ -169,67 +183,91 @@ export class PhysicsWorld {
       victimHpAfter: victim.hp,
       x: victim.x,
       y: victim.y,
-      killed,
+      killed: victim.hp <= 0,
     };
   }
 
-  spawnOrNudge(user: ArenaUser, radius = DEFAULT_BALL_RADIUS): BallBody {
+  /** First join / comment while alive-missing — create ball (optional short protection for first spawn too) */
+  spawnOrNudge(user: ArenaUser, radius = DEFAULT_BALL_RADIUS, withProtection = false): BallBody {
     const existing = this.balls.get(user.userId);
     if (existing) {
-      const angle = Math.random() * Math.PI * 2;
-      const impulse = 40 + Math.random() * 60;
-      existing.vx += Math.cos(angle) * impulse;
-      existing.vy += Math.sin(angle) * impulse;
+      if (!isProtected(existing)) {
+        const angle = Math.random() * Math.PI * 2;
+        const impulse = 40 + Math.random() * 60;
+        existing.vx += Math.cos(angle) * impulse;
+        existing.vy += Math.sin(angle) * impulse;
+        capSpeed(existing);
+      }
       if (user.avatarUrl) existing.avatarUrl = user.avatarUrl;
       if (user.nickname) existing.nickname = user.nickname;
       existing.username = user.username;
-      capSpeed(existing);
       return existing;
     }
+    return this.createBall(user, radius, withProtection ? SPAWN_PROTECTION_MS : 0);
+  }
 
+  /** Respawn after death — always new ball, HP 100, spawn protection */
+  respawn(user: ArenaUser, radius = DEFAULT_BALL_RADIUS): BallBody {
+    this.balls.delete(user.userId);
+    return this.createBall(user, radius, SPAWN_PROTECTION_MS);
+  }
+
+  private createBall(user: ArenaUser, radius: number, protectionMs: number): BallBody {
     const r = radius;
-    const x = clamp(
-      this.margin + r + Math.random() * (this.width - 2 * (this.margin + r)),
-      this.margin + r,
-      this.width - this.margin - r
-    );
-    const y = clamp(
-      this.margin + r + Math.random() * (this.height - 2 * (this.margin + r)),
-      this.margin + r,
-      this.height - this.margin - r
-    );
+    const pos = this.findSafeSpawn(r);
     const angle = Math.random() * Math.PI * 2;
     const speed = MIN_SPAWN_SPEED + Math.random() * (MAX_SPAWN_SPEED - MIN_SPAWN_SPEED);
+    const now = Date.now();
     const body: BallBody = {
       id: user.userId,
       userId: user.userId,
       username: user.username,
       nickname: user.nickname,
       avatarUrl: user.avatarUrl,
-      x,
-      y,
+      x: pos.x,
+      y: pos.y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       radius: r,
       mass: r * r,
       color: hashColor(user.userId),
       hp: DEFAULT_BALL_HP,
-      maxHp: Math.min(MAX_BALL_HP, DEFAULT_BALL_HP),
+      maxHp: DEFAULT_BALL_HP,
       strength: 1,
       hitFlashTicks: 0,
       lastHitterId: null,
       lastHitterName: null,
+      spawnProtectedUntil: protectionMs > 0 ? now + protectionMs : 0,
+      revengeMarkedUntil: 0,
+      highestSpeed: speed,
     };
-    // Fresh spawn: maxHp starts at 100; heals can raise toward MAX_BALL_HP later
-    body.maxHp = DEFAULT_BALL_HP;
     this.balls.set(user.userId, body);
     return body;
+  }
+
+  /** Prefer empty space away from other balls */
+  private findSafeSpawn(r: number): { x: number; y: number } {
+    const minX = this.margin + r;
+    const maxX = this.width - this.margin - r;
+    const minY = this.margin + r;
+    const maxY = this.height - this.margin - r;
+    const others = [...this.balls.values()];
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const x = minX + Math.random() * (maxX - minX);
+      const y = minY + Math.random() * (maxY - minY);
+      const ok = others.every((o) => Math.hypot(o.x - x, o.y - y) > o.radius + r + 20);
+      if (ok) return { x, y };
+    }
+    return {
+      x: clamp(minX + Math.random() * (maxX - minX), minX, maxX),
+      y: clamp(minY + Math.random() * (maxY - minY), minY, maxY),
+    };
   }
 
   step(dt: number): StepResult {
     const damages: DamageApplication[] = [];
     if (dt <= 0 || !Number.isFinite(dt)) return { damages };
-
+    const now = Date.now();
     const list = [...this.balls.values()];
 
     for (const b of list) {
@@ -247,8 +285,11 @@ export class PhysicsWorld {
 
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
-        const hitDmgs = this.resolveBallBall(list[i], list[j]);
-        damages.push(...hitDmgs);
+        const a = list[i];
+        const b = list[j];
+        // Spawn protection: no push, no damage with either party
+        if (isProtected(a, now) || isProtected(b, now)) continue;
+        damages.push(...this.resolveBallBall(a, b));
       }
     }
 
@@ -261,6 +302,7 @@ export class PhysicsWorld {
   }
 
   toPublicStates(): BallState[] {
+    const now = Date.now();
     const out: BallState[] = [];
     for (const b of this.balls.values()) {
       out.push({
@@ -277,6 +319,8 @@ export class PhysicsWorld {
         maxHp: b.maxHp,
         label: b.nickname || b.username,
         hitFlash: b.hitFlashTicks > 0,
+        spawnProtected: isProtected(b, now),
+        revengeMarked: now < b.revengeMarkedUntil,
       });
     }
     return out;
@@ -343,18 +387,15 @@ export class PhysicsWorld {
     const rvy = b.vy - a.vy;
     const velAlongNormal = rvx * nx + rvy * ny;
 
-    // Separating — no damage, mild boost only
     if (velAlongNormal > 0) {
       boostSpeed(a);
       boostSpeed(b);
       return out;
     }
 
-    const impact = -velAlongNormal; // closing speed
+    const impact = -velAlongNormal;
 
-    // Damage before impulse (use pre-bounce closing speed)
     if (impact >= DAMAGE_IMPACT_THRESHOLD) {
-      // Mutual: each takes damage weighted by the OTHER's mass (heavier hits harder)
       const dmgToA = calcDamage(impact, b.mass * b.strength, a.mass, b.strength);
       const dmgToB = calcDamage(impact, a.mass * a.strength, b.mass, a.strength);
 
@@ -400,12 +441,10 @@ export class PhysicsWorld {
     let j = -(1 + restitution) * velAlongNormal;
     j /= invMassA + invMassB;
 
-    const ix = j * nx;
-    const iy = j * ny;
-    a.vx -= ix * invMassA;
-    a.vy -= iy * invMassA;
-    b.vx += ix * invMassB;
-    b.vy += iy * invMassB;
+    a.vx -= j * nx * invMassA;
+    a.vy -= j * ny * invMassA;
+    b.vx += j * nx * invMassB;
+    b.vy += j * ny * invMassB;
 
     boostSpeed(a);
     boostSpeed(b);

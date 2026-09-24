@@ -18,27 +18,29 @@ interface BallView {
   label: Phaser.GameObjects.Text;
   hpBg: Phaser.GameObjects.Rectangle;
   hpFg: Phaser.GameObjects.Rectangle;
+  revengeMark: Phaser.GameObjects.Text;
   lastHp: number;
 }
 
-interface KillFeedItem {
+interface FeedItem {
   text: Phaser.GameObjects.Text;
   born: number;
 }
 
-/** Renders server snapshots + kill feed. No local physics. */
 export class ArenaScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private playersText!: Phaser.GameObjects.Text;
   private kdaText!: Phaser.GameObjects.Text;
   private feedText!: Phaser.GameObjects.Text;
+  private toastText!: Phaser.GameObjects.Text;
   private feed: string[] = [];
   private ballsLayer!: Phaser.GameObjects.Container;
   private killFeedLayer!: Phaser.GameObjects.Container;
   private views = new Map<string, BallView>();
   private pendingAvatars = new Set<string>();
-  private killFeed: KillFeedItem[] = [];
-  private readonly killFeedTtl = 4500;
+  private killFeed: FeedItem[] = [];
+  private readonly killFeedTtl = 5000;
+  private toastUntil = 0;
 
   constructor() {
     super('ArenaScene');
@@ -78,12 +80,21 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.kdaText = this.add
-      .text(40, 220, '', {
-        fontFamily: 'monospace',
-        fontSize: '20px',
-        color: '#888888',
-      })
+      .text(40, 220, '', { fontFamily: 'monospace', fontSize: '20px', color: '#888888' })
       .setDepth(100);
+
+    this.toastText = this.add
+      .text(CANVAS_WIDTH / 2, 240, '', {
+        fontFamily: 'Arial Black, Arial',
+        fontSize: '32px',
+        color: '#ffd60a',
+        backgroundColor: '#000000cc',
+        padding: { x: 16, y: 10 },
+        align: 'center',
+      })
+      .setOrigin(0.5)
+      .setDepth(300)
+      .setAlpha(0);
 
     this.ballsLayer = this.add.container(0, 0).setDepth(10);
     this.killFeedLayer = this.add.container(0, 0).setDepth(200);
@@ -110,7 +121,7 @@ export class ArenaScene extends Phaser.Scene {
     });
   }
 
-  update(_t: number, _dt: number): void {
+  update(): void {
     const now = Date.now();
     this.killFeed = this.killFeed.filter((item) => {
       const age = now - item.born;
@@ -123,6 +134,11 @@ export class ArenaScene extends Phaser.Scene {
       return true;
     });
     this.layoutKillFeed();
+
+    if (this.toastUntil && now > this.toastUntil) {
+      this.toastText.setAlpha(0);
+      this.toastUntil = 0;
+    }
   }
 
   private onRound = (state: RoundState) => {
@@ -134,12 +150,9 @@ export class ArenaScene extends Phaser.Scene {
     let line = `${event.type}`;
     if (event.type === 'gift') line = `🎁 ${event.user.username} → ${event.giftName}`;
     else if (event.type === 'comment') line = `💬 ${event.user.username}: ${event.comment}`;
-    else if (event.type === 'like') line = `❤️ ${event.user.username}`;
     else if (event.type === 'join') line = `👋 ${event.user.username}`;
-    else if (event.type === 'follow') line = `➕ ${event.user.username}`;
-    else if (event.type === 'share') line = `📤 ${event.user.username}`;
     this.feed.unshift(line);
-    this.feed = this.feed.slice(0, 6);
+    this.feed = this.feed.slice(0, 5);
     this.feedText.setText(this.feed.join('\n'));
   };
 
@@ -154,32 +167,48 @@ export class ArenaScene extends Phaser.Scene {
     if (event.type === 'hit') {
       this.spawnHitSparks(event.x, event.y, 0xffffff);
     } else if (event.type === 'kill') {
-      this.pushKillFeed(event.message);
-      this.spawnHitSparks(event.x, event.y, 0xfe2c55, 18);
+      const revenge = !!event.isRevenge;
+      this.pushKillFeed(event.message, revenge ? '#ffd60a' : '#ffffff', revenge ? '#8b0000cc' : '#fe2c55cc');
+      this.spawnHitSparks(event.x, event.y, revenge ? 0xffd60a : 0xfe2c55, 18);
       this.spawnDeathFlash(event.x, event.y);
+      if (revenge) this.showToast(event.message);
+    } else if (event.type === 'announce') {
+      this.pushKillFeed(event.message, '#ffd60a', '#000000aa');
+      if (event.kind === 'respawn' || event.kind === 'revenge_respawn' || event.kind === 'eliminated') {
+        this.showToast(event.message);
+      }
     }
   };
 
+  private showToast(msg: string): void {
+    this.toastText.setText(msg);
+    this.toastText.setAlpha(1);
+    this.toastUntil = Date.now() + 3200;
+  }
+
   private updateKda(stats: PlayerStats[]): void {
-    const top = stats.slice(0, 5);
     this.kdaText.setText(
-      top.map((s) => `${s.alive ? '●' : '✗'} ${s.username.slice(0, 10)} ${s.kills}/${s.deaths}`).join('\n')
+      stats
+        .slice(0, 5)
+        .map((s) => `${s.alive ? '●' : '✗'} ${s.username.slice(0, 10)} ${s.kills}/${s.deaths}`)
+        .join('\n')
     );
   }
 
-  private pushKillFeed(message: string): void {
+  private pushKillFeed(message: string, color = '#ffffff', bg = '#fe2c55cc'): void {
     const text = this.add
       .text(CANVAS_WIDTH - 40, 260, message, {
         fontFamily: 'Arial',
-        fontSize: '26px',
-        color: '#ffffff',
-        backgroundColor: '#fe2c55cc',
+        fontSize: '24px',
+        color,
+        backgroundColor: bg,
         padding: { x: 12, y: 8 },
+        wordWrap: { width: 520 },
       })
       .setOrigin(1, 0);
     this.killFeedLayer.add(text);
     this.killFeed.unshift({ text, born: Date.now() });
-    this.killFeed = this.killFeed.slice(0, 6);
+    this.killFeed = this.killFeed.slice(0, 7);
     this.layoutKillFeed();
   }
 
@@ -187,7 +216,7 @@ export class ArenaScene extends Phaser.Scene {
     let y = 260;
     for (const item of this.killFeed) {
       item.text.setPosition(CANVAS_WIDTH - 40, y);
-      y += 48;
+      y += item.text.height + 8;
     }
   }
 
@@ -232,7 +261,6 @@ export class ArenaScene extends Phaser.Scene {
     }
     for (const [id, view] of this.views) {
       if (!seen.has(id)) {
-        // Death removal — brief flash already handled by combat event
         view.container.destroy(true);
         this.views.delete(id);
       }
@@ -266,21 +294,31 @@ export class ArenaScene extends Phaser.Scene {
     const hpBg = this.add.rectangle(0, -b.radius - 12, barW, 8, 0x333333).setOrigin(0.5);
     const hpFg = this.add.rectangle(-barW / 2, -b.radius - 12, barW, 8, 0x20d68a).setOrigin(0, 0.5);
 
-    container.add([circle, initials, hpBg, hpFg, label]);
+    const revengeMark = this.add
+      .text(0, -b.radius - 28, '🎯', { fontSize: '28px' })
+      .setOrigin(0.5)
+      .setVisible(false);
 
-    if (b.avatarUrl) {
-      this.tryLoadAvatar(b, circle, initials, container);
-    }
+    container.add([circle, initials, hpBg, hpFg, label, revengeMark]);
 
-    return { container, circle, initials, label, hpBg, hpFg, lastHp: b.hp };
+    if (b.avatarUrl) this.tryLoadAvatar(b, circle, initials, container);
+
+    return { container, circle, initials, label, hpBg, hpFg, revengeMark, lastHp: b.hp };
   }
 
   private updateBallView(view: BallView, b: BallState): void {
     view.container.setPosition(b.x, b.y);
     view.circle.setRadius(b.radius);
-    const flash = b.hitFlash;
-    view.circle.setFillStyle(flash ? 0xffffff : b.color, flash ? 0.9 : 1);
-    view.circle.setStrokeStyle(3, flash ? 0xfe2c55 : 0xffffff, 0.85);
+
+    const protected_ = !!b.spawnProtected;
+    const flash = !!b.hitFlash;
+    view.circle.setFillStyle(flash ? 0xffffff : b.color, protected_ ? 0.35 : flash ? 0.9 : 1);
+    view.circle.setStrokeStyle(3, protected_ ? 0x25f4ee : flash ? 0xfe2c55 : 0xffffff, protected_ ? 0.5 : 0.85);
+    view.container.setAlpha(protected_ ? 0.55 : 1);
+
+    view.revengeMark.setVisible(!!b.revengeMarked);
+    view.revengeMark.setY(-b.radius - 28);
+
     view.label.setText(this.truncate(b.label, 14));
     view.label.setY(b.radius + 14);
     const barW = b.radius * 2;
@@ -292,7 +330,6 @@ export class ArenaScene extends Phaser.Scene {
     view.hpFg.setFillStyle(ratio > 0.3 ? 0x20d68a : 0xfe2c55);
 
     if (b.hp < view.lastHp) {
-      // micro punch on damage
       this.tweens.add({
         targets: view.container,
         scaleX: 1.15,

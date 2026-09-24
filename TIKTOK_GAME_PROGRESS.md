@@ -1,44 +1,39 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Etapas 4–5 + 7-lite concluídas** (HP, dano, morte, kill feed)
+## Etapa atual: **Etapas 8–9 concluídas** (respawn por comentário + vingança)
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
 ## Decisões
 
-1. **DEMO-first** + conector isolado + Phaser 1080×1920 (mantidos).
-2. **Física 30 Hz** server-authoritative; speed × **1.015** em colisão (Etapa 6 leve já ativa).
-3. **HP:** start **100**, `maxHp` 100 (cap soft `MAX_BALL_HP=150` para heals futuros).
-4. **Dano (mútuo, mass-weighted):**
-   - Só em colisões **aproximando** (`velAlongNormal < 0`) com closing speed ≥ `DAMAGE_IMPACT_THRESHOLD` (40).
-   - `impact = −velAlongNormal`
-   - `damage_to_victim = clamp(round(impact × 0.085 × (attackerMass/totalMass) × strength), 2, 28)`
-   - Ambos levam dano; quem acerta mais forte (mais massa) causa mais.
-   - `lastHitter` = o outro na última aplicação de dano → crédito do kill.
-5. **Morte:** HP ≤ 0 → remove da física, `deaths++`, killer `kills++`, emit `combat:event` kill `"@attacker eliminou @victim"`.
-6. **Respawn:** **não** nesta etapa. Mortos ficam em `stats` (`alive:false`); comentário de morto é ignorado (hook Etapa 8).
-7. **Admin:** `/admin/combat/damage`, `/admin/combat/kill` + painel com K/D.
+1. **Respawn:** só **novo comentário** após morte (`deadAt`). Join **não** respawna.
+2. **1 bola / userId** — `physics.respawn()` remove e recria.
+3. **Stats preservados** na rodada: kills, deaths, damageDealt/Taken, collisions, highestSpeed, rivalry map.
+4. **Spawn protection 2s:** sem dano dado/recebido, sem push bola-bola; semi-transparente no client.
+5. **Revenge:** ao morrer guarda `lastKiller`; no respawn se killer válido → `"VOLTOU POR VINGANÇA!"` + 🎯 no alvo ~10s (só visual).
+6. **Revenge kill:** se eliminar o alvo → `"VINGANÇA! @A se vingou de @B"`; +1 kill normal (sem bônus).
+7. **Rivalidade:** contagem A→B na rodada; anúncio a partir da 2ª eliminação do mesmo alvo.
+8. **Admin:** lista de mortos + “Comentar / respawn” + `/admin/combat/respawn`.
 
 ## Arquivos (desta entrega)
 
-- `packages/shared/src/index.ts` — dano constants, `PlayerStats`, `HitEvent`/`KillEvent`, `COMBAT_EVENT`
-- `packages/server/src/game/PhysicsWorld.ts` — dano em bola-bola
-- `packages/server/src/game/GameLoop.ts` — stats, morte, adminDamage/Kill, anti-respawn morto
+- `packages/shared` — `SPAWN_PROTECTION_MS`, `REVENGE_MARK_MS`, `AnnounceEvent`, flags em `BallState`/`PlayerStats`
+- `packages/server/src/game/PhysicsWorld.ts` — protection, safe spawn, revenge mark
+- `packages/server/src/game/GameLoop.ts` — respawn, revenge, rivalry, stats
 - `packages/server/src/routes/adminApi.ts` + `public/admin.html`
-- `packages/client/src/scenes/ArenaScene.ts` — HP bars, kill feed, sparks/death flash
-- `packages/client/src/socket.ts` — `combat:event`
+- `packages/client/src/scenes/ArenaScene.ts` — alpha proteção, 🎯, toasts, feed vingança
 
 ## Como testar DEMO
 
 ```bash
-# server :3000
-# Admin → Spawn bots (8–12) → esperar colisões (HP cai) OU
-#   "Dano 25/50" / "Kill (1ª bola)"
-# Overlay: kill feed à direita, K/D no canto, bolas somem ao morrer
+# Admin http://localhost:3000/admin
+# 1) Spawn bots → Kill (1ª bola)
+# 2) Em Mortos: "💬 Comentar / respawn" no morto
+# 3) Overlay: bola semi-transparente 2s, 🎯 no killer, toast vingança
+# 4) Após 2s: Kill do alvo → feed "VINGANÇA! ..."
 ```
 
-## Next: **Etapa 8 — respawn por comentário + revenge**
+## Next: **Etapa 10–11 — ranking TOP5 + rodada 5 min + vencedor + auto next**
 
-- Morto comenta → respawna (talvez HP reduzido / revenge mark no killer)
-- Ranking / top killers overlay
-- Gifts → abilityKey (tamanhos, heal até 150, boosts)
+- Overlay TOP 5
+- Fim de rodada: winner, placar, countdown próxima

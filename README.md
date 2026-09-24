@@ -2,7 +2,7 @@
 
 Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live spawnam bolas e habilidades na arena.
 
-> **Etapas 1–5 + 7-lite:** DEMO + arena + física 30 Hz + **HP/dano/morte/kill feed**. Respawn = Etapa 8.
+> **Etapas 1–9:** DEMO + física + HP/morte + **respawn por comentário + vingança**. Ranking/rodadas = Etapa 10–11.
 
 ## DEMO vs PRODUCTION
 
@@ -44,6 +44,13 @@ docs/             pesquisa de integração TikTok
 ```
 
 
+
+
+## Respawn & Vingança (Etapa 8–9)
+
+- Morto: comente de novo para voltar (join não respawna)
+- Stats da rodada preservados; HP 100 + 2s proteção
+- Vingança: 🎯 no killer 10s; kill especial no feed (sem kill extra)
 
 ## Combate (Etapa 5)
 

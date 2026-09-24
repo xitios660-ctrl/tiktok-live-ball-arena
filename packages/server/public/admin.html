@@ -21,26 +21,28 @@
     button.gift:hover { background:#3d2a55; }
     button.danger { background:#4a1520; }
     button.ok { background:#0d3d2a; }
+    button.revenge { background:#5a3a00; }
     input[type=number], input[type=text] { background:#111; border:1px solid #333; color:var(--text); border-radius:6px; padding:8px; width:80px; }
     #log { font-family: ui-monospace, monospace; font-size:.75rem; max-height:280px; overflow:auto; background:#0a0c10; padding:10px; border-radius:8px; white-space:pre-wrap; }
     .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; }
     a { color:#7ab7ff; }
+    .dead-btn { font-size:.8rem; }
   </style>
 </head>
 <body>
   <h1>Ball Arena — Painel DEMO</h1>
   <p class="sub">
-    Eventos são <strong>simulados</strong> (não TikTok real). Comentário/bots <strong>spawnam bolas</strong> e auto-iniciam a rodada (física 30&nbsp;Hz).
+    Eventos <strong>simulados</strong>. Morto → <strong>comentário</strong> respawna (vingança se tiver killer).
     Overlay: <a href="/overlay" target="_blank">/overlay</a> ·
     Health: <a href="/health" target="_blank">/health</a>
-    <span id="badge" class="badge demo">DEMO</span>
+    <span class="badge demo">DEMO</span>
   </p>
 
   <div class="grid">
     <div class="card">
       <h2>Rodada</h2>
       <div class="row">
-        <button class="ok" onclick="post('/admin/round/start')">▶ Iniciar (5 min)</button>
+        <button class="ok" onclick="post('/admin/round/start')">▶ Iniciar</button>
         <button onclick="post('/admin/round/end')">⏹ Encerrar</button>
         <button onclick="post('/admin/round/reset')">↺ Waiting</button>
       </div>
@@ -49,11 +51,11 @@
 
     <div class="card">
       <h2>Presentes</h2>
-      <button class="gift" onclick="gift('rosa')">🌹 Rosa (1)</button>
-      <button class="gift" onclick="gift('mini_dino')">🦕 Mini Dino (5)</button>
-      <button class="gift" onclick="gift('rosquinha')">🍩 Rosquinha (30)</button>
-      <button class="gift" onclick="gift('capivara')">🦫 Capivara (99)</button>
-      <button class="gift" onclick="gift('galaxia')">🌌 Galaxia (1000)</button>
+      <button class="gift" onclick="gift('rosa')">🌹 Rosa</button>
+      <button class="gift" onclick="gift('mini_dino')">🦕 Dino</button>
+      <button class="gift" onclick="gift('rosquinha')">🍩 Rosquinha</button>
+      <button class="gift" onclick="gift('capivara')">🦫 Capivara</button>
+      <button class="gift" onclick="gift('galaxia')">🌌 Galaxia</button>
     </div>
 
     <div class="card">
@@ -63,18 +65,21 @@
         <button onclick="comment()">💬 Comentário</button>
       </div>
       <button onclick="post('/admin/sim/like', { likeCount: 10 })">❤️ Likes</button>
-      <button onclick="post('/admin/sim/share')">📤 Share</button>
       <button onclick="post('/admin/sim/join')">👋 Join</button>
-      <button onclick="post('/admin/sim/follow')">➕ Follow</button>
     </div>
 
-
     <div class="card">
-      <h2>Combate (HP / kill)</h2>
-      <button class="danger" onclick="post('/admin/combat/damage', { damage: 25 })">💥 Dano 25 (1ª bola)</button>
+      <h2>Combate</h2>
+      <button class="danger" onclick="post('/admin/combat/damage', { damage: 25 })">💥 Dano 25</button>
       <button class="danger" onclick="post('/admin/combat/damage', { damage: 50 })">💥 Dano 50</button>
       <button class="danger" onclick="post('/admin/combat/kill')">☠️ Kill (1ª bola)</button>
-      <div id="kills" style="margin-top:8px;font-size:.85rem;color:var(--muted)">kills: —</div>
+      <div id="kills" style="margin-top:8px;font-size:.85rem;color:var(--muted)">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Mortos / Respawn</h2>
+      <button class="revenge" onclick="post('/admin/combat/respawn')">♻️ Respawn 1º morto</button>
+      <div id="dead" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
@@ -82,17 +87,14 @@
       <div class="row">
         <label>N <input id="bots" type="number" value="5" min="1" max="50" /></label>
         <button onclick="bots(false)">👥 Spawn bots</button>
-        <button onclick="bots(true)">🎁 Bots + gift</button>
       </div>
-      <button class="danger" onclick="post('/admin/sim/disconnect')">Disconnect</button>
-      <button class="ok" onclick="post('/admin/sim/reconnect')">Reconnect</button>
-      <button onclick="post('/admin/sim/auto', { enabled: true })">Auto ON</button>
       <button onclick="post('/admin/sim/auto', { enabled: false })">Auto OFF</button>
+      <button onclick="post('/admin/sim/auto', { enabled: true })">Auto ON</button>
     </div>
   </div>
 
   <div class="card" style="margin-top:12px">
-    <h2>Log recente</h2>
+    <h2>Log</h2>
     <div id="log"></div>
   </div>
 
@@ -104,43 +106,54 @@
         body: JSON.stringify(body),
       });
       const j = await r.json();
-      log(JSON.stringify(j));
+      log(JSON.stringify(j).slice(0, 400));
       refresh();
       return j;
     }
     function gift(giftId) { return post('/admin/sim/gift', { giftId }); }
     function comment() {
-      const c = document.getElementById('comment').value;
-      return post('/admin/sim/comment', { comment: c || undefined });
+      return post('/admin/sim/comment', { comment: document.getElementById('comment').value || undefined });
     }
     function bots(withGift) {
-      const count = Number(document.getElementById('bots').value) || 5;
-      return post('/admin/sim/bots', { count, withGift });
+      return post('/admin/sim/bots', { count: Number(document.getElementById('bots').value) || 5, withGift });
+    }
+    function respawnAs(userId) {
+      return post('/admin/sim/comment-as', { userId, comment: 'volto por vinganca!' });
     }
     function log(msg) {
       const el = document.getElementById('log');
       el.textContent = new Date().toLocaleTimeString() + ' ' + msg + '\n' + el.textContent;
     }
     async function refresh() {
-      const r = await fetch('/admin/status');
-      const j = await r.json();
+      const j = await fetch('/admin/status').then(r => r.json());
       const rd = j.round || {};
       document.getElementById('round').textContent =
-        `phase=${rd.phase} remaining=${rd.remainingSec}s players=${rd.playerCount||0} id=${(rd.roundId||'').slice(0,8)}`;
-      const killsEl = document.getElementById('kills');
-      if (killsEl && j.stats) {
-        killsEl.textContent = j.stats.slice(0, 8).map(s =>
-          `${s.alive?'🟢':'💀'} ${s.username} K:${s.kills} D:${s.deaths} HP:${s.hp}`
-        ).join(' · ') || 'sem jogadores';
+        `phase=${rd.phase} rem=${rd.remainingSec}s vivos=${rd.playerCount||0}`;
+      if (j.stats) {
+        document.getElementById('kills').textContent = j.stats.slice(0, 8).map(s =>
+          `${s.alive?'🟢':'💀'} ${s.username} K:${s.kills} D:${s.deaths} HP:${s.hp}` +
+          (s.revengeTargetName ? ` 🎯→${s.revengeTargetName}` : '')
+        ).join(' · ') || '—';
       }
-      const combat = (j.recentCombat||[]).filter(e => e.type==='kill').slice(-5).reverse();
-      const evLines = (j.recentEvents||[]).slice().reverse().slice(0,10).map(e =>
-        `${e.type} ${e.user?.username||''} ${e.giftName||e.comment||''}`);
-      const killLines = combat.map(e => e.message);
-      document.getElementById('log').textContent = [...killLines, ...evLines].join('\n');
+      const deadEl = document.getElementById('dead');
+      const dead = j.dead || [];
+      if (!dead.length) deadEl.textContent = 'Nenhum morto';
+      else {
+        deadEl.innerHTML = dead.map(d =>
+          `<div class="row">💀 <b>${d.username}</b> (K${d.kills}/D${d.deaths})` +
+          (d.lastKillerName ? ` ← ${d.lastKillerName}` : '') +
+          ` <button class="dead-btn ok" onclick="respawnAs('${d.userId}')">💬 Comentar / respawn</button></div>`
+        ).join('');
+      }
+      const combat = (j.recentCombat||[]).slice(-8).reverse().map(e =>
+        e.type === 'kill' ? (e.isRevenge ? '⚔️ ' : '☠️ ') + e.message
+        : e.type === 'announce' ? '📢 ' + e.message
+        : e.type === 'hit' ? `hit ${e.damage}` : e.type
+      );
+      document.getElementById('log').textContent = combat.join('\n');
     }
     refresh();
-    setInterval(refresh, 2000);
+    setInterval(refresh, 1500);
   </script>
 </body>
 </html>
