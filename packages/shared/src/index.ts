@@ -57,6 +57,7 @@ export function isBotUser(user: { userId?: string; username?: string }): boolean
   return (
     userId.startsWith('bot-') ||
     userId.startsWith('autobot-') ||
+    userId.startsWith('boss-') ||
     /^bot[_-]/i.test(username) ||
     username.startsWith('bot_auto_')
   );
@@ -169,6 +170,10 @@ export interface BallState {
   titanStacks?: number;
   dinoStacks?: number;
   donutStacks?: number;
+  /** Special server-controlled boss NPC. */
+  isBoss?: boolean;
+  /** Kill-points awarded to the player who defeats this boss. */
+  bossRewardKills?: number;
 }
 
 export interface PlayerStats {
@@ -322,7 +327,9 @@ export interface AnnounceEvent {
     | 'share_boost'
     | 'likes_threshold'
     | 'strength_up'
-    | 'pickup';
+    | 'pickup'
+    | 'boss_spawn'
+    | 'boss_defeated';
   message: string;
   userId?: string;
   username?: string;
