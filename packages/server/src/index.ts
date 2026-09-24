@@ -16,7 +16,12 @@ import { DemoEventSimulator } from './demo/DemoEventSimulator';
 import { GameLoop } from './game/GameLoop';
 import { healthRouter } from './routes/health';
 import { adminApiRouter } from './routes/adminApi';
-import { accessGateMiddleware, createAccessRouter, getAccessPassword } from './accessGate';
+import {
+  accessGateMiddleware,
+  createAccessRouter,
+  getAccessPassword,
+  hasAccessFromCookieHeader,
+} from './accessGate';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
@@ -111,6 +116,29 @@ a{color:#fe2c55}</style></head>
     app.use('/overlay', express.static(clientDist));
     app.use(express.static(clientDist));
   }
+
+  // Socket.IO requires the same access cookie as the protected pages.
+  io.use((socket, next) => {
+    const pwd = getAccessPassword();
+    if (!pwd || hasAccessFromCookieHeader(socket.handshake.headers.cookie || '')) {
+      next();
+      return;
+    }
+
+    const authToken = socket.handshake.auth?.access_token;
+    const queryToken = socket.handshake.query?.access_token;
+    const token = typeof authToken === 'string'
+      ? authToken
+      : typeof queryToken === 'string'
+        ? queryToken
+        : undefined;
+    if (token === pwd) {
+      next();
+      return;
+    }
+
+    next(new Error('unauthorized'));
+  });
 
   io.on('connection', (socket) => {
     console.log(`[Socket] client ${socket.id}`);

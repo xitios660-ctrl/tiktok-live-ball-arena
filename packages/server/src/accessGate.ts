@@ -43,9 +43,13 @@ export function setAccessCookie(res: Response): void {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-export function hasAccessCookie(req: Request): boolean {
-  const cookies = parseCookies(req.headers.cookie || '');
+export function hasAccessFromCookieHeader(cookieHeader: string): boolean {
+  const cookies = parseCookies(cookieHeader);
   return cookies[ACCESS_COOKIE] === '1';
+}
+
+export function hasAccessCookie(req: Request): boolean {
+  return hasAccessFromCookieHeader(req.headers.cookie || '');
 }
 
 function tokenMatches(req: Request, pwd: string): boolean {
