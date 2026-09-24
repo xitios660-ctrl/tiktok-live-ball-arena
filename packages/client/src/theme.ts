@@ -1,34 +1,65 @@
 /**
- * Arena glossy visual tokens — warm charcoal + cream arena look.
+ * Ball Arena — cinematic arcade / esports design tokens.
+ * Source of truth for Phaser colors + CSS variables in index.html.
+ * Reference boards: brand/ball-arena/refs/
  */
 
+/** Phaser-friendly numeric colors */
 export const THEME = {
-  charcoal: 0x14110e as number,
-  cream: 0xf4efe4 as number,
-  teal: 0x3dbea0 as number,
-  coral: 0xff5a36 as number,
-  gold: 0xf0b429 as number,
-  lavender: 0x7eb6ff as number,
-  sage: 0x3dbea0 as number,
-  card: 0x231e19 as number,
-  ink: 0x100e0c as number,
+  // Brand
+  arenaRed: 0xff4e45 as number,
+  emberOrange: 0xff8a3d as number,
+  gold: 0xffd166 as number,
+  electricCyan: 0x22d3ee as number,
+  arenaDark: 0x0b0b0f as number,
+  stone: 0x1e1a16 as number,
+  steel: 0x2e3440 as number,
+  light: 0xf2ebd7 as number,
+
+  // Aliases used across existing UI (map to new identity)
+  charcoal: 0x0b0b0f as number,
+  cream: 0xf2ebd7 as number,
+  coral: 0xff4e45 as number,
+  teal: 0x22d3ee as number,
+  sage: 0x22d3ee as number,
+  lavender: 0x22d3ee as number,
+  card: 0x1e1a16 as number,
+  ink: 0x0b0b0f as number,
 };
 
 export const THEME_HEX = {
-  charcoal: '#14110e',
-  cream: '#f4efe4',
-  teal: '#3dbea0',
-  coral: '#ff5a36',
-  gold: '#f0b429',
-  lavender: '#7eb6ff',
-  sage: '#3dbea0',
-  muted: '#a89f93',
-  cardBg: '#231e19cc',
-  ink: '#100e0c',
-  card: '#231e19',
+  arenaRed: '#FF4E45',
+  emberOrange: '#FF8A3D',
+  gold: '#FFD166',
+  electricCyan: '#22D3EE',
+  arenaDark: '#0B0B0F',
+  stone: '#1E1A16',
+  steel: '#2E3440',
+  light: '#F2EBD7',
+
+  // Aliases
+  charcoal: '#0B0B0F',
+  cream: '#F2EBD7',
+  coral: '#FF4E45',
+  teal: '#22D3EE',
+  sage: '#22D3EE',
+  lavender: '#22D3EE',
+  muted: '#8B8794',
+  cardBg: '#1E1A16cc',
+  ink: '#0B0B0F',
+  card: '#1E1A16',
 };
 
-/** Body / UI stack — Outfit primary, Nunito fallback */
-export const FONT = 'Outfit, Nunito, sans-serif';
-/** Display / titles — Fraunces primary */
-export const FONT_BLACK = 'Fraunces, Outfit, sans-serif';
+/** Body / HUD — Inter */
+export const FONT = 'Inter, Outfit, Nunito, system-ui, sans-serif';
+/** Logo / big titles — Bevan */
+export const FONT_BLACK = 'Bevan, Fraunces, Georgia, serif';
+/** Condensed highlights / CTAs — Bebas Neue */
+export const FONT_ACCENT = 'Bebas Neue, Inter, sans-serif';
+
+/** Rank medal tones */
+export const RANK_HEX = {
+  gold: '#FFD166',
+  silver: '#C0C7D4',
+  bronze: '#CD7F32',
+} as const;
