@@ -43,10 +43,17 @@
       <h2>Rodada</h2>
       <div class="row">
         <button class="ok" onclick="post('/admin/round/start')">▶ Iniciar</button>
-        <button onclick="post('/admin/round/end')">⏹ Encerrar</button>
+        <button class="danger" onclick="post('/admin/round/force-end')">⏹ Force end</button>
+        <button onclick="post('/admin/round/next')">⏭ Next round</button>
         <button onclick="post('/admin/round/reset')">↺ Waiting</button>
       </div>
+      <div class="row">
+        <button onclick="post('/admin/round/set-time', { seconds: 15 })">⏱ 15s</button>
+        <button onclick="post('/admin/round/set-time', { seconds: 65 })">⏱ 65s</button>
+        <button onclick="post('/admin/round/set-time', { seconds: 300 })">⏱ 5:00</button>
+      </div>
       <div id="round">—</div>
+      <div id="winner" style="margin-top:6px;color:#ffd60a;font-size:.85rem"></div>
     </div>
 
     <div class="card">
@@ -128,7 +135,11 @@
       const j = await fetch('/admin/status').then(r => r.json());
       const rd = j.round || {};
       document.getElementById('round').textContent =
-        `phase=${rd.phase} rem=${rd.remainingSec}s vivos=${rd.playerCount||0}`;
+        `phase=${rd.phase} rem=${rd.remainingSec}s results=${rd.resultsRemainingSec??'-'} vivos=${rd.playerCount||0} king=${j.kingUserId||'-'}`;
+      const w = j.winner;
+      document.getElementById('winner').textContent = w
+        ? `🏆 ${w.username} K${w.kills}/D${w.deaths} dmg${w.damageDealt} spd${Math.round(w.highestSpeed)}`
+        : (j.top5||[]).slice(0,3).map((s,i)=>`#${i+1} ${s.username} ${s.kills}☠`).join(' · ');
       if (j.stats) {
         document.getElementById('kills').textContent = j.stats.slice(0, 8).map(s =>
           `${s.alive?'🟢':'💀'} ${s.username} K:${s.kills} D:${s.deaths} HP:${s.hp}` +

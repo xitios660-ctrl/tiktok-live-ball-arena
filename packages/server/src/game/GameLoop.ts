@@ -1,8 +1,11 @@
 import {
   DEFAULT_ROUND_DURATION_SEC,
+  RESULTS_DURATION_SEC,
   PHYSICS_TICK_HZ,
   DEFAULT_BALL_HP,
   REVENGE_MARK_MS,
+  KING_ANNOUNCE_COOLDOWN_MS,
+  compareRanking,
   type RoundState,
   type TikTokMode,
   type ArenaLiveEvent,
@@ -13,6 +16,8 @@ import {
   type HitEvent,
   type KillEvent,
   type AnnounceEvent,
+  type WinnerInfo,
+  type HistoricalStats,
 } from '@arena/shared';
 import { randomUUID } from 'crypto';
 import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
@@ -62,6 +67,14 @@ export class GameLoop {
   private tick = 0;
   private readonly dt = 1 / PHYSICS_TICK_HZ;
   private autoStartOnSpawn = true;
+  private winner: WinnerInfo | null = null;
+  private resultsRemainingSec = 0;
+  private kingUserId: string | null = null;
+  private lastKingAnnounceAt = 0;
+  private lastMinuteAnnounced = false;
+  private countdownAnnounced = new Set<number>();
+  /** Persistent across rounds (in-memory stub for DB) */
+  private historical = new Map<string, HistoricalStats>();
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -76,19 +89,35 @@ export class GameLoop {
   }
 
   getState(): RoundState {
-    return { ...this.state, playerCount: this.physics.count };
+    return {
+      ...this.state,
+      playerCount: this.physics.count,
+      resultsRemainingSec: this.state.phase === 'results' ? this.resultsRemainingSec : undefined,
+      kingUserId: this.kingUserId,
+    };
   }
 
   getSnapshot(): GameSnapshot {
     this.syncSpeedStats();
+    const stats = this.getStats();
+    const top5 = stats.slice(0, 5);
+    const kingUserId = this.kingUserId;
+    const balls = this.physics.toPublicStates().map((b) => ({
+      ...b,
+      isKing: !!kingUserId && b.userId === kingUserId,
+    }));
     return {
       tick: this.tick,
       tickHz: PHYSICS_TICK_HZ,
       phase: this.state.phase,
       remainingSec: this.state.remainingSec,
+      resultsRemainingSec: this.state.phase === 'results' ? this.resultsRemainingSec : undefined,
       playerCount: this.physics.count,
-      balls: this.physics.toPublicStates(),
-      stats: this.getStats(),
+      balls,
+      stats,
+      top5,
+      kingUserId,
+      winner: this.winner,
     };
   }
 
@@ -115,7 +144,45 @@ export class GameLoop {
         revengeTargetName: p.revengeTargetName,
       });
     }
-    return list.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+    list.sort(compareRanking);
+    list.forEach((s, i) => {
+      s.rank = i + 1;
+    });
+    return list;
+  }
+
+  getHistorical(): HistoricalStats[] {
+    return [...this.historical.values()].sort((a, b) => b.wins - a.wins || b.totalKills - a.totalKills);
+  }
+
+  /** Admin: jump timer for fast testing */
+  setRemainingSec(sec: number): RoundState {
+    if (this.state.phase !== 'running') {
+      return this.getState();
+    }
+    this.state = {
+      ...this.state,
+      remainingSec: Math.max(0, Math.floor(sec)),
+    };
+    this.lastMinuteAnnounced = this.state.remainingSec > 60 ? false : this.lastMinuteAnnounced;
+    this.countdownAnnounced.clear();
+    this.emitRound();
+    this.emitSnapshot();
+    return this.getState();
+  }
+
+  /** Admin: force end → results */
+  forceEndRound(): RoundState {
+    if (this.state.phase === 'running') {
+      this.enterResults();
+    }
+    return this.getState();
+  }
+
+  /** Admin: skip results / start next immediately */
+  forceNextRound(): RoundState {
+    this.beginNextRound();
+    return this.getState();
   }
 
   getDeadPlayers(): PlayerStats[] {
@@ -156,6 +223,12 @@ export class GameLoop {
     this.players.clear();
     this.recentCombat = [];
     this.tick = 0;
+    this.winner = null;
+    this.resultsRemainingSec = 0;
+    this.kingUserId = null;
+    this.lastKingAnnounceAt = 0;
+    this.lastMinuteAnnounced = false;
+    this.countdownAnnounced.clear();
     this.state = {
       ...this.state,
       phase: 'running',
@@ -163,20 +236,25 @@ export class GameLoop {
       remainingSec: this.state.durationSec,
       startedAt: Date.now(),
       playerCount: 0,
+      resultsRemainingSec: undefined,
+      kingUserId: null,
     };
     this.emitRound();
     this.roundTimer = setInterval(() => this.secondTick(), 1000);
     this.ensurePhysicsRunning();
-    console.log(`[Game] Round ${this.state.roundId} started`);
+    this.pushCombat({
+      type: 'announce',
+      kind: 'next_round',
+      message: 'NOVA RODADA! Comentem para entrar na arena!',
+      timestamp: Date.now(),
+    });
+    console.log(`[Game] Round ${this.state.roundId} started (${this.state.durationSec}s)`);
     return this.getState();
   }
 
+  /** @deprecated use forceEndRound — kept for admin compat → results */
   endRound(): RoundState {
-    this.stopRoundTimer();
-    this.state = { ...this.state, phase: 'ended', remainingSec: 0, playerCount: this.physics.count };
-    this.emitRound();
-    this.emitSnapshot();
-    return this.getState();
+    return this.forceEndRound();
   }
 
   resetToWaiting(): RoundState {
@@ -186,6 +264,9 @@ export class GameLoop {
     this.players.clear();
     this.recentCombat = [];
     this.tick = 0;
+    this.winner = null;
+    this.kingUserId = null;
+    this.resultsRemainingSec = 0;
     this.state = {
       ...this.state,
       phase: 'waiting',
@@ -193,6 +274,7 @@ export class GameLoop {
       remainingSec: this.state.durationSec,
       startedAt: null,
       playerCount: 0,
+      kingUserId: null,
     };
     this.emitRound();
     this.emitSnapshot();
@@ -260,7 +342,7 @@ export class GameLoop {
       console.log('[Game] Auto-starting round on first spawn (DEMO)');
       this.startRoundWithoutClear();
     }
-    if (this.state.phase === 'ended') return;
+    if (this.state.phase === 'ended' || this.state.phase === 'results') return;
 
     this.physics.spawnOrNudge(user);
     this.ensurePlayerRecord(user.userId, user.username, user.nickname);
@@ -273,9 +355,9 @@ export class GameLoop {
   }
 
   private respawnPlayer(user: ArenaUser): CombatEvent[] {
-    if (this.state.phase === 'ended' || this.state.phase === 'waiting') {
-      if (this.state.phase === 'waiting') this.startRoundWithoutClear();
-      else return [];
+    if (this.state.phase === 'results' || this.state.phase === 'ended') return [];
+    if (this.state.phase === 'waiting') {
+      this.startRoundWithoutClear();
     }
 
     const rec = this.ensurePlayerRecord(user.userId, user.username, user.nickname);
@@ -378,6 +460,10 @@ export class GameLoop {
   private startRoundWithoutClear(): void {
     this.stopRoundTimer();
     this.tick = 0;
+    this.winner = null;
+    this.resultsRemainingSec = 0;
+    this.lastMinuteAnnounced = false;
+    this.countdownAnnounced.clear();
     this.state = {
       ...this.state,
       phase: 'running',
@@ -461,6 +547,7 @@ export class GameLoop {
 
     if (killedIds.size) {
       this.state = { ...this.state, playerCount: this.physics.count };
+      this.updateKing();
       this.emitRound();
     }
     return emitted;
@@ -581,11 +668,167 @@ export class GameLoop {
   }
 
   private secondTick(): void {
+    if (this.state.phase === 'results') {
+      this.resultsRemainingSec = Math.max(0, this.resultsRemainingSec - 1);
+      this.state = {
+        ...this.state,
+        resultsRemainingSec: this.resultsRemainingSec,
+        playerCount: this.physics.count,
+      };
+      this.emitRound();
+      this.emitSnapshot();
+      if (this.resultsRemainingSec <= 0) {
+        this.beginNextRound();
+      }
+      return;
+    }
+
     if (this.state.phase !== 'running') return;
+
     const next = Math.max(0, this.state.remainingSec - 1);
     this.state = { ...this.state, remainingSec: next, playerCount: this.physics.count };
+
+    // Timer announcements
+    if (next === 60 && !this.lastMinuteAnnounced) {
+      this.lastMinuteAnnounced = true;
+      this.pushCombat({
+        type: 'announce',
+        kind: 'last_minute',
+        message: 'ÚLTIMO MINUTO!',
+        timestamp: Date.now(),
+      });
+    }
+    if (next <= 10 && next >= 1 && !this.countdownAnnounced.has(next)) {
+      this.countdownAnnounced.add(next);
+      this.pushCombat({
+        type: 'announce',
+        kind: 'countdown',
+        message: String(next),
+        value: next,
+        timestamp: Date.now(),
+      });
+    }
+
+    this.updateKing();
     this.emitRound();
-    if (next <= 0) this.endRound();
+    this.emitSnapshot();
+
+    if (next <= 0) {
+      this.enterResults();
+    }
+  }
+
+  private enterResults(): void {
+    // Freeze: stop physics stepping
+    this.stopPhysics();
+    const stats = this.getStats();
+    const best = stats[0] || null;
+    this.winner = best
+      ? {
+          userId: best.userId,
+          username: best.username,
+          nickname: best.nickname,
+          kills: best.kills,
+          deaths: best.deaths,
+          damageDealt: best.damageDealt,
+          highestSpeed: best.highestSpeed,
+        }
+      : null;
+
+    // Roll into historical
+    for (const s of stats) {
+      this.accumulateHistorical(s, this.winner?.userId === s.userId);
+    }
+
+    this.resultsRemainingSec = RESULTS_DURATION_SEC;
+    this.state = {
+      ...this.state,
+      phase: 'results',
+      remainingSec: 0,
+      resultsRemainingSec: this.resultsRemainingSec,
+      playerCount: this.physics.count,
+    };
+
+    const wname = this.winner?.nickname || this.winner?.username;
+    this.pushCombat({
+      type: 'announce',
+      kind: 'winner',
+      message: wname
+        ? `🏆 VENCEDOR: @${wname} — ${this.winner!.kills}☠ ${this.winner!.deaths}💀`
+        : 'Rodada encerrada — sem vencedor',
+      userId: this.winner?.userId,
+      username: wname,
+      timestamp: Date.now(),
+    });
+
+    // Ensure round timer keeps ticking for results countdown
+    if (!this.roundTimer) {
+      this.roundTimer = setInterval(() => this.secondTick(), 1000);
+    }
+
+    this.emitRound();
+    this.emitSnapshot();
+    console.log(`[Game] Results — winner=${wname || 'none'} (${RESULTS_DURATION_SEC}s)`);
+  }
+
+  /**
+   * Decision (Etapa 11): wipe arena balls + clear round player records,
+   * keep historical map, start fresh 5:00 running round.
+   * Players re-enter via comment (cleanest).
+   */
+  private beginNextRound(): void {
+    console.log('[Game] Auto-starting next round (wipe + reset temp state)');
+    this.startRound();
+  }
+
+  private accumulateHistorical(s: PlayerStats, won: boolean): void {
+    let h = this.historical.get(s.userId);
+    if (!h) {
+      h = {
+        userId: s.userId,
+        username: s.username,
+        totalKills: 0,
+        totalDeaths: 0,
+        totalDamage: 0,
+        wins: 0,
+        roundsPlayed: 0,
+      };
+      this.historical.set(s.userId, h);
+    }
+    h.username = s.username;
+    h.totalKills += s.kills;
+    h.totalDeaths += s.deaths;
+    h.totalDamage += s.damageDealt;
+    h.roundsPlayed += 1;
+    if (won) h.wins += 1;
+  }
+
+  private updateKing(): void {
+    const stats = this.getStats();
+    const top = stats[0];
+    if (!top || (top.kills === 0 && top.damageDealt === 0)) {
+      this.kingUserId = null;
+      return;
+    }
+    const nextKing = top.userId;
+    if (nextKing !== this.kingUserId) {
+      this.kingUserId = nextKing;
+      const now = Date.now();
+      // Announce first crown + changes; throttle spam with KING_ANNOUNCE_COOLDOWN_MS
+      if (now - this.lastKingAnnounceAt >= KING_ANNOUNCE_COOLDOWN_MS) {
+        this.lastKingAnnounceAt = now;
+        const name = top.nickname || top.username;
+        this.pushCombat({
+          type: 'announce',
+          kind: 'new_king',
+          message: `👑 NOVO REI DA ARENA: @${name}!`,
+          userId: top.userId,
+          username: name,
+          timestamp: now,
+        });
+      }
+    }
+    this.state = { ...this.state, kingUserId: this.kingUserId };
   }
 
   private stopRoundTimer(): void {

@@ -84,7 +84,8 @@ export type ArenaLiveEvent =
   | ArenaJoinEvent
   | ArenaFollowEvent;
 
-export type RoundPhase = 'waiting' | 'countdown' | 'running' | 'ended';
+/** waiting = idle; running = match; results = winner panel (~10s) then auto next */
+export type RoundPhase = 'waiting' | 'countdown' | 'running' | 'results' | 'ended';
 
 export interface RoundState {
   phase: RoundPhase;
@@ -94,6 +95,9 @@ export interface RoundState {
   startedAt: number | null;
   mode: TikTokMode;
   playerCount: number;
+  /** During results: seconds left before next round */
+  resultsRemainingSec?: number;
+  kingUserId?: string | null;
 }
 
 export interface BallState {
@@ -110,10 +114,10 @@ export interface BallState {
   maxHp: number;
   label: string;
   hitFlash?: boolean;
-  /** Semi-transparent — no damage/push */
   spawnProtected?: boolean;
-  /** 🎯 revenge mark (visual only) */
   revengeMarked?: boolean;
+  /** 👑 Rei da Arena */
+  isKing?: boolean;
 }
 
 export interface PlayerStats {
@@ -129,12 +133,32 @@ export interface PlayerStats {
   damageTaken: number;
   collisions: number;
   highestSpeed: number;
-  /** Who eliminated them last (while dead / for UI) */
   lastKillerId?: string | null;
   lastKillerName?: string | null;
-  /** Active revenge target after respawn */
   revengeTargetId?: string | null;
   revengeTargetName?: string | null;
+  rank?: number;
+}
+
+/** Lifetime totals across rounds (in-memory; DB later) */
+export interface HistoricalStats {
+  userId: string;
+  username: string;
+  totalKills: number;
+  totalDeaths: number;
+  totalDamage: number;
+  wins: number;
+  roundsPlayed: number;
+}
+
+export interface WinnerInfo {
+  userId: string;
+  username: string;
+  nickname?: string;
+  kills: number;
+  deaths: number;
+  damageDealt: number;
+  highestSpeed: number;
 }
 
 export interface GameSnapshot {
@@ -142,9 +166,15 @@ export interface GameSnapshot {
   tickHz: number;
   phase: RoundPhase;
   remainingSec: number;
+  resultsRemainingSec?: number;
   playerCount: number;
   balls: BallState[];
+  /** Full sorted ranking */
   stats: PlayerStats[];
+  /** TOP 5 for overlay */
+  top5: PlayerStats[];
+  kingUserId: string | null;
+  winner: WinnerInfo | null;
 }
 
 export interface HitEvent {
@@ -174,15 +204,24 @@ export interface KillEvent {
   rivalryCount?: number;
 }
 
-/** Respawn / toast announcements */
 export interface AnnounceEvent {
   type: 'announce';
-  kind: 'eliminated' | 'respawn' | 'revenge_respawn' | 'rivalry';
+  kind:
+    | 'eliminated'
+    | 'respawn'
+    | 'revenge_respawn'
+    | 'rivalry'
+    | 'new_king'
+    | 'last_minute'
+    | 'countdown'
+    | 'winner'
+    | 'next_round';
   message: string;
   userId?: string;
   username?: string;
   targetId?: string;
   targetName?: string;
+  value?: number;
   timestamp: number;
 }
 
@@ -191,6 +230,8 @@ export type CombatEvent = HitEvent | KillEvent | AnnounceEvent;
 export const CANVAS_WIDTH = 1080;
 export const CANVAS_HEIGHT = 1920;
 export const DEFAULT_ROUND_DURATION_SEC = 300;
+/** Winner screen / interval before next round */
+export const RESULTS_DURATION_SEC = 10;
 
 export const PHYSICS_TICK_HZ = 30;
 export const SPEED_BOOST_ON_COLLISION = 1.015;
@@ -207,10 +248,10 @@ export const DAMAGE_MIN = 2;
 export const DAMAGE_MAX = 28;
 export const DAMAGE_IMPACT_THRESHOLD = 40;
 
-/** Respawn spawn protection (ms) — no damage dealt/received, no ball-ball push */
 export const SPAWN_PROTECTION_MS = 2000;
-/** How long 🎯 stays on revenge target (ms) — visual only */
 export const REVENGE_MARK_MS = 10000;
+/** Min gap between "NOVO REI DA ARENA" announces */
+export const KING_ANNOUNCE_COOLDOWN_MS = 8000;
 
 export const SOCKET_EVENTS = {
   ROUND_STATE: 'round:state',
@@ -220,3 +261,11 @@ export const SOCKET_EVENTS = {
   CLIENT_READY: 'client:ready',
   HEALTH_PING: 'health:ping',
 } as const;
+
+/** Sort: kills → damage → fewer deaths → highestSpeed */
+export function compareRanking(a: PlayerStats, b: PlayerStats): number {
+  if (b.kills !== a.kills) return b.kills - a.kills;
+  if (b.damageDealt !== a.damageDealt) return b.damageDealt - a.damageDealt;
+  if (a.deaths !== b.deaths) return a.deaths - b.deaths;
+  return b.highestSpeed - a.highestSpeed;
+}

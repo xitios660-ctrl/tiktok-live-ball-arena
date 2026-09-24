@@ -34,6 +34,10 @@ export function adminApiRouter(deps: {
       mode: deps.mode,
       round: deps.game.getState(),
       stats: snap.stats,
+      top5: snap.top5,
+      winner: snap.winner,
+      kingUserId: snap.kingUserId,
+      historical: deps.game.getHistorical().slice(0, 10),
       dead: deps.game.getDeadPlayers(),
       balls: snap.balls.map((b) => ({
         userId: b.userId,
@@ -61,6 +65,21 @@ export function adminApiRouter(deps: {
   router.post('/admin/round/reset', (_req, res) => {
     res.json({ ok: true, round: deps.game.resetToWaiting() });
   });
+
+  router.post('/admin/round/set-time', (req, res) => {
+    const sec = Number(req.body?.seconds ?? req.body?.sec ?? 15);
+    res.json({ ok: true, round: deps.game.setRemainingSec(sec) });
+  });
+
+  router.post('/admin/round/force-end', (_req, res) => {
+    res.json({ ok: true, round: deps.game.forceEndRound(), winner: deps.game.getSnapshot().winner });
+  });
+
+  router.post('/admin/round/next', (_req, res) => {
+    res.json({ ok: true, round: deps.game.forceNextRound() });
+  });
+
+
 
   router.post('/admin/sim/comment', requireDemo, (req, res) => {
     const demo = deps.getDemo()!;

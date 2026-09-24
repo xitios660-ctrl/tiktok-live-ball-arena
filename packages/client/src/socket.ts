@@ -22,7 +22,7 @@ export function connectSocket(game: Phaser.Game): Socket {
 
   socket.on(SOCKET_EVENTS.ROUND_STATE, (state: RoundState) => {
     game.events.emit(SOCKET_EVENTS.ROUND_STATE, state);
-    if (state.phase === 'running') {
+    if (state.phase === 'running' || state.phase === 'results') {
       if (game.scene.isActive('WaitingScene')) {
         game.scene.stop('WaitingScene');
         game.scene.start('ArenaScene', { round: state });

@@ -2,7 +2,7 @@
 
 Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live spawnam bolas e habilidades na arena.
 
-> **Etapas 1–9:** DEMO + física + HP/morte + **respawn por comentário + vingança**. Ranking/rodadas = Etapa 10–11.
+> **Etapas 1–11:** DEMO + física + HP/morte + respawn/vingança + **TOP 5 + rodada 5 min + vencedor + auto next**. Next: gifts Rosa→Galaxy (16–20).
 
 ## DEMO vs PRODUCTION
 
@@ -46,6 +46,14 @@ docs/             pesquisa de integração TikTok
 
 
 
+## Ranking & Rodadas (Etapa 10–11)
+
+- TOP 5 no overlay; sort: kills → dano → menos mortes → highestSpeed
+- 👑 Rei da Arena na bola #1; anúncio `NOVO REI DA ARENA` (throttle)
+- Timer 5:00; ÚLTIMO MINUTO @1:00; intensity @0:30; countdown 10…1; freeze @0:00
+- Winner panel ~10s → wipe arena → nova rodada (re-entrar por comentário)
+- Admin rápido: **⏱ 15s** / Force end / Next round
+
 ## Respawn & Vingança (Etapa 8–9)
 
 - Morto: comente de novo para voltar (join não respawna)
@@ -56,7 +64,6 @@ docs/             pesquisa de integração TikTok
 
 - HP 100; dano mútuo em colisão (velocidade × massa), clamp 2–28
 - Morte remove a bola; kill feed: `@attacker eliminou @victim`
-- Mortos **não** respawnam ainda (Etapa 8)
 - Admin: botões Dano / Kill em `/admin`
 
 ## Física (Etapa 3)
