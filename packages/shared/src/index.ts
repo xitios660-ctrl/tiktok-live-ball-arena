@@ -550,10 +550,20 @@ export const PICKUP_SPAWN_WEIGHTS: Record<PickupAbilityKey, number> = {
 /** —— Likes / Shares / Random arena events —— */
 export const LIKE_THRESHOLD_DEFAULT = 100;
 export const LIKE_REWARD_DEFAULT: 'heal_rain' | 'speed_storm' = 'heal_rain';
-/** Personal survival loop: every 100 likes from a player rewards only their own ball. */
+/** Legacy single-step constants kept for compatibility. */
 export const LIKE_PERSONAL_STEP = 100;
 export const LIKE_PERSONAL_HEAL = 20;
 export const LIKE_PERSONAL_STRENGTH = 1;
+
+/** Personal, cumulative milestones. Each reward fires once per player per round. */
+export const LIKE_PERSONAL_MILESTONES = [
+  { likes: 50, heal: 10, strength: 0, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
+  { likes: 100, heal: 20, strength: 1, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
+  { likes: 200, heal: 40, strength: 2, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
+  { likes: 500, heal: 0, strength: 10, fullHeal: true, capybaraStacks: 1, capybaraUntilRoundEnd: false },
+  { likes: 1000, heal: 0, strength: 15, fullHeal: true, capybaraStacks: 3, capybaraUntilRoundEnd: true },
+] as const;
+
 /** Random/admin heal-rain amount. Live likes no longer trigger a global reward. */
 export const HEAL_RAIN_HP = 10;
 export const SPEED_STORM_DURATION_MS = 8_000;

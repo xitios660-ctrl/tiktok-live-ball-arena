@@ -9,9 +9,8 @@ import {
   KILL_STRENGTH_ANNOUNCE_EVERY,
   combatStrengthMult,
   displayStrengthScore,
-  LIKE_PERSONAL_STEP,
-  LIKE_PERSONAL_HEAL,
-  LIKE_PERSONAL_STRENGTH,
+  LIKE_PERSONAL_MILESTONES,
+  TITAN_DURATION_MS,
   HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
   isPickupAbility,
@@ -108,8 +107,8 @@ export class GameLoop {
   private readonly boss: ChatGPTBossController;
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
-  /** Per-user remainder for the 10 likes → +2 HP personal healing loop. */
-  private personalLikeProgress = new Map<string, number>();
+  /** Personal like total for cumulative reward milestones within this round. */
+  private personalLikeTotals = new Map<string, number>();
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -284,7 +283,7 @@ export class GameLoop {
     this.physics.clear();
     this.players.clear();
     this.hitPowerCooldown.clear();
-    this.personalLikeProgress.clear();
+    this.personalLikeTotals.clear();
     this.recentCombat = [];
     this.lastSpawnedUserId = null;
     this.globalEvents.resetRound();
@@ -331,7 +330,7 @@ export class GameLoop {
     this.physics.clear();
     this.players.clear();
     this.hitPowerCooldown.clear();
-    this.personalLikeProgress.clear();
+    this.personalLikeTotals.clear();
     this.pickups.clear();
     this.recentCombat = [];
     this.boss.resetRound();
@@ -379,55 +378,97 @@ export class GameLoop {
     const user = typeof userOrCount === 'number' ? null : userOrCount;
     const count = typeof userOrCount === 'number' ? userOrCount : maybeCount ?? 1;
     const n = Math.max(0, Math.floor(count));
-    if (n <= 0) return;
+    if (n <= 0 || !user || user.userId === CHATGPT_BOSS_USER_ID) return;
 
-    // Likes are strictly personal: they never heal or buff other players.
-    // Admin/global like simulation without a concrete user therefore gives no reward.
-    let healed = 0;
-    let strengthGained = 0;
-    if (
-      user &&
-      user.userId !== CHATGPT_BOSS_USER_ID &&
-      this.physics.hasUser(user.userId)
-    ) {
-      const total = (this.personalLikeProgress.get(user.userId) || 0) + n;
-      const pulses = Math.floor(total / LIKE_PERSONAL_STEP);
-      this.personalLikeProgress.set(user.userId, total % LIKE_PERSONAL_STEP);
-
-      if (pulses > 0) {
-        healed = this.physics.heal(
-          user.userId,
-          pulses * LIKE_PERSONAL_HEAL
-        );
-
-        const rec = this.players.get(user.userId);
-        if (rec) {
-          strengthGained = pulses * LIKE_PERSONAL_STRENGTH;
-          rec.hitPower += strengthGained;
-          this.physics.setHitPower(user.userId, rec.hitPower);
-        }
-
-        this.pushCombat({
-          type: 'announce',
-          kind: 'strength_up',
-          message:
-            '❤️ @' + (user.nickname || user.username) +
-            ' completou ' + (pulses * LIKE_PERSONAL_STEP) +
-            ' likes: +' + (pulses * LIKE_PERSONAL_HEAL) +
-            ' HP e +' + strengthGained + ' FORÇA!',
-          userId: user.userId,
-          username: user.nickname || user.username,
-          value: strengthGained,
-          timestamp: Date.now(),
-        });
-      }
+    // Rewards belong only to the player's active character.
+    const ball = this.physics.getBall(user.userId);
+    const rec = this.players.get(user.userId);
+    if (!ball || !rec) {
+      console.log(`[LIKE] @${user.username} +${n} ignored=no-active-character`);
+      return;
     }
 
-    if (healed > 0 || strengthGained > 0) this.emitSnapshot();
+    const before = this.personalLikeTotals.get(user.userId) || 0;
+    const total = before + n;
+    this.personalLikeTotals.set(user.userId, total);
 
+    const crossed = LIKE_PERSONAL_MILESTONES.filter(
+      (milestone) => before < milestone.likes && total >= milestone.likes
+    );
+
+    if (!crossed.length) {
+      console.log(`[LIKE] @${user.username} +${n} total=${total} next=${LIKE_PERSONAL_MILESTONES.find((m) => total < m.likes)?.likes ?? 'MAX'}`);
+      return;
+    }
+
+    const rewardMessages: string[] = [];
+
+    for (const milestone of crossed) {
+      let healed = 0;
+
+      if (milestone.capybaraStacks > 0) {
+        const until = milestone.capybaraUntilRoundEnd
+          ? Date.now() + Math.max(2_000, (this.state.remainingSec + 2) * 1_000)
+          : Date.now() + TITAN_DURATION_MS;
+
+        let stacks = ball.titanStacks;
+        // Always call at least once so an existing x3 stack gets its timer refreshed.
+        do {
+          stacks = this.physics.addGiftStack(user.userId, 'titan', until);
+        } while (stacks < milestone.capybaraStacks);
+
+        if (milestone.capybaraUntilRoundEnd) {
+          ball.titanUntil = Math.max(ball.titanUntil, until);
+        }
+      }
+
+      if (milestone.fullHeal) {
+        const previousHp = ball.hp;
+        ball.hp = ball.maxHp;
+        ball.healFlashTicks = 6;
+        healed = Math.max(0, ball.hp - previousHp);
+      } else if (milestone.heal > 0) {
+        healed = this.physics.heal(user.userId, milestone.heal);
+      }
+
+      if (milestone.strength > 0) {
+        rec.hitPower += milestone.strength;
+        this.physics.setHitPower(user.userId, rec.hitPower);
+      }
+
+      const capyText =
+        milestone.capybaraStacks > 0
+          ? ` + 🦫x${milestone.capybaraStacks}${milestone.capybaraUntilRoundEnd ? ' ATÉ O FIM' : ''}`
+          : '';
+      const hpText = milestone.fullHeal
+        ? 'VIDA 100%'
+        : `+${milestone.heal} HP`;
+      const strengthText =
+        milestone.strength > 0 ? ` +${milestone.strength} FORÇA` : '';
+
+      rewardMessages.push(
+        `${milestone.likes}❤️: ${hpText}${strengthText}${capyText}`
+      );
+
+      this.pushCombat({
+        type: 'announce',
+        kind: milestone.strength > 0 ? 'strength_up' : 'gift',
+        message:
+          '❤️ @' + (user.nickname || user.username) +
+          ' chegou a ' + milestone.likes +
+          ' likes: ' + hpText +
+          strengthText +
+          capyText + '!',
+        userId: user.userId,
+        username: user.nickname || user.username,
+        value: milestone.strength || healed,
+        timestamp: Date.now(),
+      });
+    }
+
+    this.emitSnapshot();
     console.log(
-      `[LIKE] @${user?.username || 'global'} +${n} ` +
-      `personalHeal=+${healed} personalStrength=+${strengthGained}`
+      `[LIKE MILESTONE] @${user.username} +${n} total=${total} rewards=${rewardMessages.join(' | ')}`
     );
   }
 

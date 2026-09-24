@@ -132,7 +132,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.likes = this.add
-      .text(0, 0, '❤️ 100 LIKES = +20 HP +1 FORÇA', {
+      .text(0, 0, '❤️ LIKES = EVOLUÇÃO PESSOAL', {
         fontFamily: FONT_ACCENT,
         fontSize: '22px',
         color: THEME_HEX.arenaRed,
@@ -236,9 +236,9 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setAlpha(0);
 
     this.footer = this.add
-      .text(0, 0, '💬 COMENTE PARA JOGAR   •   ❤️ 100 LIKES SEUS = +20 HP +1 FORÇA', {
+      .text(0, 0, '💬 COMENTE • ❤️ 50:+10HP • 100:+20HP/+1⚔ • 200:+40HP/+2⚔ • 500:FULL/+10⚔/🦫 • 1000:FULL/+15⚔/🦫×3', {
         fontFamily: FONT_ACCENT,
-        fontSize: '28px',
+        fontSize: '19px',
         color: THEME_HEX.arenaDark,
         backgroundColor: THEME_HEX.light,
         padding: { x: 24, y: 10 },
