@@ -25,9 +25,12 @@ import {
 import {
   createCinematicTitle,
   setPhaseChrome,
+  tickCinematicHud,
+  createAmbientTwinkles,
   type CinematicHudHandles,
 } from '../ui/CinematicHud';
-import { createGiftLegend, type GiftLegendHandles } from '../ui/GiftLegend';
+import { createGiftLegend, tickGiftLegend, type GiftLegendHandles } from '../ui/GiftLegend';
+import { PickupsLayer } from '../ui/PickupsLayer';
 
 interface BallView {
   container: Phaser.GameObjects.Container;
@@ -71,6 +74,13 @@ export class ArenaScene extends Phaser.Scene {
   private titleText!: Phaser.GameObjects.Text;
   private cinematicHud!: CinematicHudHandles;
   private giftLegend!: GiftLegendHandles;
+  private giftLegendBaseY = 0;
+  private top5BaseY = 0;
+  private top5Neon!: Phaser.GameObjects.Graphics;
+  private top5CardW = 300;
+  private top5CardH = 220;
+  private pickupsLayer!: PickupsLayer;
+  private ambientTwinkles: { tick: (t: number) => void; destroy: () => void } | null = null;
   private feedText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private bigCountdown!: Phaser.GameObjects.Text;
@@ -124,7 +134,13 @@ export class ArenaScene extends Phaser.Scene {
       g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 980);
       g.lineStyle(140, 0x000000, 0.28);
       g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 1100);
+      // Soft neon edge wash
+      g.lineStyle(3, THEME.teal, 0.18);
+      g.strokeRect(10, 10, CANVAS_WIDTH - 20, CANVAS_HEIGHT - 20);
+      g.lineStyle(2, THEME.lavender, 0.12);
+      g.strokeRect(18, 18, CANVAS_WIDTH - 36, CANVAS_HEIGHT - 36);
     }
+    this.ambientTwinkles = createAmbientTwinkles(this, 16, 1);
     this.border = this.add
       .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, THEME.card, opts.transparent ? 0 : 0.12)
       .setStrokeStyle(5, THEME.coral, 0.85)
@@ -133,7 +149,7 @@ export class ArenaScene extends Phaser.Scene {
     // Cinematic title treatment
     this.cinematicHud = createCinematicTitle(this, CANVAS_WIDTH / 2, top + 22, 100);
     this.titleText = this.cinematicHud.titleMain;
-    setPhaseChrome(this.cinematicHud, data?.round?.phase ?? 'waiting', data?.round?.remainingSec);
+    setPhaseChrome(this.cinematicHud, data?.round?.phase ?? 'waiting', data?.round?.remainingSec, this);
 
     // Timer glow (behind) + main timer
     this.timerGlow = this.add
@@ -180,8 +196,10 @@ export class ArenaScene extends Phaser.Scene {
       .setScrollFactor(0);
 
     // TOP 5 glass card (left)
-    this.top5Panel = this.add.container(side, top + 200).setDepth(100);
+    this.top5BaseY = top + 200;
+    this.top5Panel = this.add.container(side, this.top5BaseY).setDepth(100);
     this.top5Bg = this.add.graphics();
+    this.top5Neon = this.add.graphics();
     this.drawTop5Bg(280, 220);
     this.top5Text = this.add
       .text(14, 12, 'TOP 5\n—', {
@@ -190,15 +208,19 @@ export class ArenaScene extends Phaser.Scene {
         color: THEME_HEX.cream,
         lineSpacing: 4,
       });
-    this.top5Panel.add([this.top5Bg, this.top5Text]);
+    this.top5Panel.add([this.top5Bg, this.top5Neon, this.top5Text]);
 
     // Gift gabarito — right side (opposite TOP5; kill feed stays bottom-right)
     const legendW = 292;
-    this.giftLegend = createGiftLegend(this, CANVAS_WIDTH - side - legendW, top + 200, {
+    this.giftLegendBaseY = top + 200;
+    this.giftLegend = createGiftLegend(this, CANVAS_WIDTH - side - legendW, this.giftLegendBaseY, {
       compact: true,
       maxWidth: legendW,
       depth: 95,
     });
+
+    // Floor pickups layer (under balls)
+    this.pickupsLayer = new PickupsLayer(this, 8);
 
     this.toastText = this.add
       .text(CANVAS_WIDTH / 2, top + 250, '', {
@@ -344,12 +366,29 @@ export class ArenaScene extends Phaser.Scene {
       this.game.events.off(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
       this.game.events.off(SOCKET_EVENTS.COMBAT_EVENT, this.onCombat, this);
       this.views.clear();
+      this.pickupsLayer?.clear();
+      this.ambientTwinkles?.destroy();
+      this.ambientTwinkles = null;
     });
   }
 
   update(_time: number, delta: number): void {
     this.trackFps(delta);
     const now = Date.now();
+    const t = this.time.now;
+    if (this.cinematicHud) tickCinematicHud(this.cinematicHud, t);
+    this.ambientTwinkles?.tick(t);
+    this.pickupsLayer?.tick(t);
+    if (this.giftLegend) {
+      tickGiftLegend(this.giftLegend, t);
+      const bob = Math.sin(t / 900) * 3;
+      this.giftLegend.root.y = this.giftLegendBaseY + bob;
+    }
+    if (this.top5Panel) {
+      const bob = Math.sin(t / 1100 + 1.2) * 2.5;
+      this.top5Panel.y = this.top5BaseY + bob;
+      this.pulseTop5Neon(t);
+    }
     this.killFeed = this.killFeed.filter((item) => {
       const age = now - item.born;
       if (age > this.killFeedTtl) {
@@ -395,6 +434,7 @@ export class ArenaScene extends Phaser.Scene {
     this.applyTimerVisuals(snap.remainingSec, snap.phase);
     this.playersText.setText(`● VIVOS  ${snap.playerCount}`);
     this.syncBalls(snap.balls);
+    this.pickupsLayer?.sync(snap.pickups);
     if (snap.global && this.likesText) {
       const g = snap.global;
       this.likesText.setText(`❤️  ${g.likesAccumulated} / ${g.likesThreshold}` + (g.activeEffect ? `  ·  ${g.activeEffect}` : ''));
@@ -437,6 +477,10 @@ export class ArenaScene extends Phaser.Scene {
         this.showToast(event.message);
         this.pushKillFeed(event.message, THEME_HEX.gold, '#1E1E1Ecc');
         if (event.kind === 'winner') audio.play('victory');
+      } else if (event.kind === 'pickup') {
+        this.showToast(event.message);
+        this.pushKillFeed(event.message, THEME_HEX.teal, '#1a3040ee');
+        audio.play('gift');
       } else if (
         event.kind === 'gift' ||
         event.kind === 'galaxy' ||
@@ -490,7 +534,7 @@ export class ArenaScene extends Phaser.Scene {
     const label = this.formatTime(remaining);
     this.timerText.setText(label);
     if (this.timerGlow) this.timerGlow.setText(label);
-    if (this.cinematicHud) setPhaseChrome(this.cinematicHud, phase, remaining);
+    if (this.cinematicHud) setPhaseChrome(this.cinematicHud, phase, remaining, this);
     if (phase === 'results') {
       this.timerText.setColor(THEME_HEX.gold).setFontSize('64px');
       this.timerText.setText('RESULTADOS');
@@ -536,14 +580,28 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private drawTop5Bg(w: number, h: number): void {
+    this.top5CardW = w;
+    this.top5CardH = h;
     const g = this.top5Bg;
     g.clear();
     g.fillStyle(THEME.ink, 0.78);
     g.fillRoundedRect(0, 0, w, h, 18);
-    g.lineStyle(2, THEME.cream, 0.32);
+    g.lineStyle(2, THEME.cream, 0.28);
     g.strokeRoundedRect(0, 0, w, h, 18);
     g.lineStyle(3, THEME.gold, 0.9);
     g.lineBetween(0, 10, 0, h - 10);
+    this.pulseTop5Neon(this.time?.now ?? 0);
+  }
+
+  private pulseTop5Neon(time: number): void {
+    if (!this.top5Neon) return;
+    const pulse = 0.5 + Math.sin(time / 450) * 0.5;
+    const a = 0.28 + pulse * 0.4;
+    this.top5Neon.clear();
+    this.top5Neon.lineStyle(2, THEME.teal, a);
+    this.top5Neon.strokeRoundedRect(1, 1, this.top5CardW - 2, this.top5CardH - 2, 17);
+    this.top5Neon.lineStyle(1, THEME.lavender, a * 0.65);
+    this.top5Neon.strokeRoundedRect(4, 4, this.top5CardW - 8, this.top5CardH - 8, 14);
   }
 
   private renderTop5(top5: PlayerStats[]): void {
@@ -618,8 +676,15 @@ export class ArenaScene extends Phaser.Scene {
       })
       .setOrigin(1, 0);
     row.add(text);
+    row.setScale(1.22);
     this.killFeedLayer.add(row);
     this.killFeed.unshift({ row, text, born: Date.now() });
+    this.tweens.add({
+      targets: row,
+      scale: 1,
+      duration: 220,
+      ease: 'Back.Out',
+    });
     // Cap; destroy overflow
     while (this.killFeed.length > 6) {
       const old = this.killFeed.pop();
@@ -755,6 +820,22 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private updateBallView(view: BallView, b: BallState): void {
+    // Cheap motion smear for high-speed balls (1 ghost circle, short fade)
+    const dx = b.x - view.prevX;
+    const dy = b.y - view.prevY;
+    const dist2 = dx * dx + dy * dy;
+    if (dist2 > 22 * 22 && (this.particleBudget ?? 1) > 0.35) {
+      const ghost = this.add
+        .circle(view.prevX, view.prevY, b.radius * 0.85, b.color, 0.28)
+        .setDepth(9);
+      this.tweens.add({
+        targets: ghost,
+        alpha: 0,
+        scale: 0.7,
+        duration: 140,
+        onComplete: () => ghost.destroy(),
+      });
+    }
     view.container.setPosition(b.x, b.y);
     view.circle.setRadius(b.radius);
     view.ring.setRadius(b.radius + 3);

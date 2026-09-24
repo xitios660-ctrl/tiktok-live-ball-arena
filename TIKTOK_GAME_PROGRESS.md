@@ -1,50 +1,75 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Balance + cinematic overlay + gabarito**
+## Etapa atual: **Arena floor pickups + futuristic overlay**
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
-### Balance
+### Pickups (powers no chão)
 
-1. **Donut shield TTL** — `DONUT_SHIELD_DURATION_MS = 15_000`. Shield HP expires by time (`shieldUntil`); Sugar Burst only on damage-break, not on fade. Feed: `🛡 Escudo expirou @name`.
-2. **Cosmic Duel** — 1ª Galáxia = God Mode immortal até fim da rodada. 2ª Galáxia de outro player inicia **Duelo Cósmico**: gods se machucam via `cosmicHp` (250), dano ×`COSMIC_DUEL_DAMAGE_MULT` (0.4). Mortais não derrubam gods. Cosmic HP → 0 = perde God Mode, volta mortal full HP. 3ª+ entra no duelo.
+Powers that are **not** TikTok gifts spawn on the arena floor and activate only when a living ball rolls over them:
 
-### Overlay
+| Ability | Emoji | Admin giftId |
+|---------|-------|--------------|
+| lightning_zap | ⚡ | raio |
+| magnet_pulse | 🧲 | ima |
+| freeze_aura | ❄️ | gelo |
+| dash_burst | 🚀 | foguete |
+| reflect_shield | 🪞 | espelho |
 
-3. **Cinematic HUD** — título BALL ARENA (Nunito 800, ★ + gold accent), phase labels (RODADA / FINAL / RESULTADOS).
-4. **Gabarito de presentes** — painel direito compacto com efeitos em PT-BR + “Comente para entrar / respawnar”.
+**Still TikTok gifts:** rosa, mini_dino, rosquinha, capivara, galaxia.
 
-### Como testar (DEMO admin)
+Behavior:
+- During `running`: keep ~3–5 pickups; spawn every 6–10s if under max; lifetime ~32s then despawn/respawn elsewhere.
+- Collect when ball center within `ball.radius + pickup.radius`; immediate ability apply + feed `⚡ @name pegou Raio!`.
+- Clear on round start / results / waiting.
+- Galaxy gods can collect. Dead balls / results: no collect.
+- Admin: `POST /admin/sim/pickup` (near center). Gift buttons for the 5 diverted to floor spawn.
 
-```bash
-TIKTOK_MODE=demo npm run build && npm start
-# Overlay: http://localhost:PORT/overlay
-# Admin: spawn 2 bots → send galaxia on both → expect DUELO CÓSMICO + lavender HP bars
-# Send rosquinha → wait ~15s → “Escudo expirou” (no Sugar Burst); break shield by hits → Sugar Burst
-```
+### Overlay futuristic pass
+
+- Title: dual neon glow + drifting scanline + pulsing gold accent
+- Ambient star twinkles (perf-safe ~16 dots)
+- TOP5 / gabarito: teal/lavender neon border pulse + soft float bob
+- Pickups: orbiting rings, emoji bob, color-coded glow
+- Kill feed: scale punch then settle
+- Phase labels: fade+scale cinema transition
+- High-speed balls: cheap ghost motion smear
 
 ### Constantes
 
 | Key | Value |
 |-----|-------|
-| DONUT_SHIELD_DURATION_MS | 15000 |
-| COSMIC_DUEL_HP | 250 |
-| COSMIC_DUEL_DAMAGE_MULT | 0.4 |
+| MAX_PICKUPS | 5 |
+| PICKUP_RADIUS | 32 |
+| PICKUP_SPAWN_INTERVAL | 6–10s |
+| PICKUP_LIFETIME_MS | 32000 |
+| PICKUP_EDGE_MARGIN | 120 |
+
+### Como testar (DEMO)
+
+```bash
+TIKTOK_MODE=demo npm run build && npm start
+# Overlay: /overlay · Admin: /admin.html
+# 1) Spawn 5 bots → Iniciar
+# 2) “Spawn pickup” → ⚡ Raio (aparece no centro)
+# 3) Espere bolas passarem → feed “pegou Raio!” + FX
+# 4) Ou aguarde auto-spawn (~6–10s) em posições aleatórias
+```
 
 ### Arquivos
 
-- `packages/shared/src/index.ts` — constants + `cosmic_duel` / `shield_expire` kinds
-- `packages/server/src/game/PhysicsWorld.ts` — shieldUntil, enableGalaxy duel, cosmic damage
-- `packages/server/src/game/GiftAbilities.ts` — shield refresh + duel announces
-- `packages/server/src/game/GameLoop.ts` — feed for expire / lost God Mode
-- `packages/client/src/ui/CinematicHud.ts` — title / phase chrome
-- `packages/client/src/ui/GiftLegend.ts` — gift cheat sheet
-- `packages/client/src/scenes/ArenaScene.ts` — wire HUD + duel HP bar
+- `packages/shared/src/index.ts` — PickupState, constants, announce `pickup`
+- `packages/server/src/game/PickupSystem.ts` — spawn / collect / expire
+- `packages/server/src/game/GiftAbilities.ts` — `applyPickupAbility`
+- `packages/server/src/game/GameLoop.ts` — tick + snapshot.pickups
+- `packages/server/src/routes/adminApi.ts` + `public/admin.html`
+- `packages/client/src/ui/PickupsLayer.ts`, `GiftLegend.ts`, `CinematicHud.ts`
+- `packages/client/src/scenes/ArenaScene.ts`
 
 ### Public
 
 - Render: https://tiktok-live-ball-arena.onrender.com/overlay
 
-## Anterior (VFX polish)
+## Anterior (Balance + cinematic + gabarito)
 
-Lightweight ability FX on overlay. Server emits `ability_fx`; client draws bolts/rings/trails.
+Donut shield TTL, Cosmic Duel, Cinematic HUD, gift gabarito.

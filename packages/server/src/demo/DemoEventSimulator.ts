@@ -9,20 +9,26 @@ const DEMO_USERS: ArenaUser[] = [
   { userId: 'demo-4', username: 'rosa_queen', nickname: 'Rosa Queen' },
 ];
 
+/** TikTok gifts that apply directly to the sender ball */
 export const DEMO_GIFT_PRESETS = [
   { giftId: 'rosa', giftName: 'Rosa', coinValue: 1 },
   { giftId: 'mini_dino', giftName: 'Mini Dino', coinValue: 10 },
   { giftId: 'rosquinha', giftName: 'Rosquinha', coinValue: 30 },
   { giftId: 'capivara', giftName: 'Capivara', coinValue: 100 },
   { giftId: 'galaxia', giftName: 'Galaxia', coinValue: 1000 },
-  { giftId: 'raio', giftName: 'Raio', coinValue: 15 },
-  { giftId: 'ima', giftName: 'Ímã', coinValue: 20 },
-  { giftId: 'gelo', giftName: 'Gelo', coinValue: 25 },
-  { giftId: 'foguete', giftName: 'Foguete', coinValue: 15 },
-  { giftId: 'espelho', giftName: 'Espelho', coinValue: 35 },
+] as const;
+
+/** Floor pickups (admin spawn only — not auto gift-injected) */
+export const DEMO_PICKUP_PRESETS = [
+  { giftId: 'raio', giftName: 'Raio', ability: 'lightning_zap', emoji: '⚡' },
+  { giftId: 'ima', giftName: 'Ímã', ability: 'magnet_pulse', emoji: '🧲' },
+  { giftId: 'gelo', giftName: 'Gelo', ability: 'freeze_aura', emoji: '❄️' },
+  { giftId: 'foguete', giftName: 'Foguete', ability: 'dash_burst', emoji: '🚀' },
+  { giftId: 'espelho', giftName: 'Espelho', ability: 'reflect_shield', emoji: '🪞' },
 ] as const;
 
 export type DemoGiftId = (typeof DEMO_GIFT_PRESETS)[number]['giftId'];
+export type DemoPickupGiftId = (typeof DEMO_PICKUP_PRESETS)[number]['giftId'];
 
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];

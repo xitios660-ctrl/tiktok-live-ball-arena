@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import type { GameLoop } from '../game/GameLoop';
 import type { DemoEventSimulator } from '../demo/DemoEventSimulator';
-import { DEMO_GIFT_PRESETS } from '../demo/DemoEventSimulator';
+import { DEMO_GIFT_PRESETS, DEMO_PICKUP_PRESETS } from '../demo/DemoEventSimulator';
+import { PICKUP_META } from '@arena/shared';
+import { pickupAbilityFromGiftId } from '../game/PickupSystem';
 
 export function adminApiRouter(deps: {
   game: GameLoop;
@@ -97,6 +99,8 @@ export function adminApiRouter(deps: {
       tiktok: deps.connector.getStatus(),
       global: deps.game.getGlobalState(),
       gifts: DEMO_GIFT_PRESETS,
+      pickupPresets: DEMO_PICKUP_PRESETS,
+      pickups: snap.pickups || [],
     });
   });
 
@@ -135,6 +139,23 @@ export function adminApiRouter(deps: {
 
   router.post('/admin/sim/gift', (req, res) => {
     const giftId = (req.body?.giftId as string) || 'rosa';
+    // Floor powers: redirect to pickup spawn (do not apply to a selected ball)
+    const pickupAbility = pickupAbilityFromGiftId(giftId);
+    if (pickupAbility) {
+      const result = deps.game.adminSpawnPickup(pickupAbility);
+      if (!result.ok) {
+        res.status(400).json(result);
+        return;
+      }
+      res.json({
+        ok: true,
+        diverted: 'pickup',
+        ability: pickupAbility,
+        pickup: result.pickup,
+        pickups: deps.game.getSnapshot().pickups,
+      });
+      return;
+    }
     const repeatCount = Number(req.body?.repeatCount) || 1;
     const user = req.body?.user as { userId?: string; username?: string; nickname?: string } | undefined;
     const userId = (req.body?.userId as string) || user?.userId;
@@ -279,6 +300,23 @@ export function adminApiRouter(deps: {
     const enabled = req.body?.enabled !== false && req.body?.enabled !== 'false';
     demo.setAutoEnabled(Boolean(enabled));
     res.json({ ok: true, status: demo.getStatus() });
+  });
+
+  /** Force-spawn a floor pickup near center (testing). */
+  router.post('/admin/sim/pickup', (req, res) => {
+    const raw = (req.body?.ability as string) || (req.body?.giftId as string) || 'raio';
+    const result = deps.game.adminSpawnPickup(raw);
+    if (!result.ok) {
+      res.status(400).json(result);
+      return;
+    }
+    res.json({
+      ok: true,
+      ability: result.pickup?.ability,
+      pickup: result.pickup,
+      pickups: deps.game.getSnapshot().pickups,
+      meta: result.pickup ? PICKUP_META[result.pickup.ability] : undefined,
+    });
   });
 
   /** Force damage on a living ball (by userId or first ball) */

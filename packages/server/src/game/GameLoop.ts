@@ -9,6 +9,7 @@ import {
   KILL_STRENGTH_ANNOUNCE_EVERY,
   killStrengthMult,
   resolveAbilityKey,
+  isPickupAbility,
   type RoundState,
   type TikTokMode,
   type ArenaLiveEvent,
@@ -22,11 +23,13 @@ import {
   type AnnounceEvent,
   type WinnerInfo,
   type HistoricalStats,
+  type PickupAbilityKey,
 } from '@arena/shared';
 import { randomUUID } from 'crypto';
 import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
 import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
 import { GlobalArenaEvents } from './GlobalArenaEvents';
+import { PickupSystem, pickupAbilityFromGiftId } from './PickupSystem';
 
 export type RoundListener = (state: RoundState) => void;
 export type LiveListener = (event: ArenaLiveEvent) => void;
@@ -84,6 +87,7 @@ export class GameLoop {
   /** Last ball that spawned / received focus — admin gifts target this */
   private lastSpawnedUserId: string | null = null;
   private readonly globalEvents = new GlobalArenaEvents();
+  private readonly pickups = new PickupSystem();
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -123,6 +127,7 @@ export class GameLoop {
       resultsRemainingSec: this.state.phase === 'results' ? this.resultsRemainingSec : undefined,
       playerCount: this.physics.count,
       balls,
+      pickups: this.pickups.toPublicStates(),
       stats,
       top5,
       kingUserId,
@@ -234,6 +239,7 @@ export class GameLoop {
     this.recentCombat = [];
     this.lastSpawnedUserId = null;
     this.globalEvents.resetRound();
+    this.pickups.onRoundStart();
     this.tick = 0;
     this.winner = null;
     this.resultsRemainingSec = 0;
@@ -274,6 +280,7 @@ export class GameLoop {
     this.stopPhysics();
     this.physics.clear();
     this.players.clear();
+    this.pickups.clear();
     this.recentCombat = [];
     this.tick = 0;
     this.winner = null;
@@ -361,6 +368,26 @@ export class GameLoop {
       return [];
     }
 
+    // Non-gift powers → floor pickup only (never apply directly to a ball)
+    if (isPickupAbility(ability)) {
+      if (this.state.phase !== 'running') return [];
+      const spawned = this.pickups.forceSpawn(ability, { nearCenter: true });
+      const emitted: CombatEvent[] = [];
+      if (spawned) {
+        const ann: AnnounceEvent = {
+          type: 'announce',
+          kind: 'pickup',
+          message: `📦 Power no chão: ${event.giftName || ability}`,
+          timestamp: Date.now(),
+        };
+        emitted.push(ann);
+        this.pushCombat(ann);
+        this.emitSnapshot();
+        console.log(`[Pickup] giftId=${event.giftId} diverted → floor spawn ${ability}`);
+      }
+      return emitted;
+    }
+
     // Ensure sender has a ball (gift can also be entry)
     this.spawnNewOrNudge(event.user);
     this.lastSpawnedUserId = event.user.userId;
@@ -382,6 +409,24 @@ export class GameLoop {
       `[Gift] ${event.giftName} x${result.times} → @${event.user.username} (${ability})`
     );
     return emitted;
+  }
+
+  /** Admin: force-spawn a floor pickup (testing). */
+  adminSpawnPickup(abilityOrGiftId: string): { ok: boolean; pickup?: ReturnType<PickupSystem['forceSpawn']>; error?: string } {
+    if (this.state.phase !== 'running') {
+      return { ok: false, error: 'Pickups only during running round' };
+    }
+    const ability =
+      (isPickupAbility(abilityOrGiftId) ? abilityOrGiftId : null) ||
+      pickupAbilityFromGiftId(abilityOrGiftId);
+    if (!ability) {
+      return { ok: false, error: `Unknown pickup ability: ${abilityOrGiftId}` };
+    }
+    const pickup = this.pickups.forceSpawn(ability as PickupAbilityKey, { nearCenter: true });
+    if (!pickup) return { ok: false, error: 'Failed to spawn pickup' };
+    this.emitSnapshot();
+    console.log(`[Pickup] admin spawn ${ability} @(${Math.round(pickup.x)},${Math.round(pickup.y)})`);
+    return { ok: true, pickup };
   }
 
   /** Prefer explicit userId, else last spawned, else first alive ball */
@@ -567,6 +612,7 @@ export class GameLoop {
     this.resultsRemainingSec = 0;
     this.lastMinuteAnnounced = false;
     this.countdownAnnounced.clear();
+    this.pickups.onRoundStart();
     this.state = {
       ...this.state,
       phase: 'running',
@@ -588,6 +634,11 @@ export class GameLoop {
     if (this.state.phase !== 'running') return;
     const { damages, fx } = this.physics.step(this.dt);
     if (damages.length) this.processDamages(damages);
+
+    const pickupResult = this.pickups.tick(this.physics);
+    for (const a of pickupResult.announces) this.pushCombat(a);
+    for (const f of pickupResult.fx) this.pushCombat(f);
+
     for (const f of fx) {
       if (f.type === 'stomp') {
         this.pushCombat({
@@ -928,6 +979,7 @@ export class GameLoop {
     // Galaxy lasts ONLY until end of current round
     this.physics.clearAllGalaxy();
     this.physics.clearAllBuffs();
+    this.pickups.clear();
     // Freeze: stop physics stepping
     this.stopPhysics();
     const stats = this.getStats();

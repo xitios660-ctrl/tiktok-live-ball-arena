@@ -11,7 +11,9 @@ import {
   TITAN_HP_GAIN,
   TITAN_RESTACK_HP,
   resolveAbilityKey,
+  PICKUP_META,
   type AbilityKey,
+  type PickupAbilityKey,
   type ArenaGiftEvent,
   type AnnounceEvent,
   type AbilityFxEvent,
@@ -299,6 +301,145 @@ export function applyGiftAbility(
   }
 
   return { ability, times, announces, damages, fx };
+}
+
+/**
+ * Apply a floor-pickup ability to a living ball. Short "pegou" feed + FX.
+ */
+export function applyPickupAbility(
+  physics: PhysicsWorld,
+  userId: string,
+  ability: PickupAbilityKey,
+  displayName: string
+): GiftApplyResult | null {
+  const ball = physics.getBall(userId);
+  if (!ball) return null;
+
+  const name = displayName;
+  const announces: AnnounceEvent[] = [];
+  const damages: DamageApplication[] = [];
+  const fx: AbilityFxEvent[] = [];
+  const meta = PICKUP_META[ability];
+
+  switch (ability) {
+    case 'lightning_zap': {
+      const zap = physics.applyLightningZap(userId);
+      announces.push({
+        type: 'announce',
+        kind: 'pickup',
+        message: `${meta.emoji} @${name} pegou ${meta.label}!`,
+        userId,
+        username: name,
+        targetId: zap.targetId || undefined,
+        timestamp: Date.now(),
+      });
+      fx.push({
+        type: 'ability_fx',
+        ability: 'lightning_zap',
+        userId,
+        x: zap.x,
+        y: zap.y,
+        targetId: zap.targetId || undefined,
+        targetX: zap.targetX,
+        targetY: zap.targetY,
+        value: zap.damage,
+        timestamp: Date.now(),
+      });
+      break;
+    }
+    case 'magnet_pulse': {
+      const mag = physics.applyMagnetPulse(userId);
+      announces.push({
+        type: 'announce',
+        kind: 'pickup',
+        message: `${meta.emoji} @${name} pegou ${meta.label}!`,
+        userId,
+        username: name,
+        value: mag.count,
+        timestamp: Date.now(),
+      });
+      fx.push({
+        type: 'ability_fx',
+        ability: 'magnet_pulse',
+        userId,
+        x: mag.x,
+        y: mag.y,
+        value: mag.count,
+        timestamp: Date.now(),
+      });
+      break;
+    }
+    case 'freeze_aura': {
+      const fr = physics.applyFreezeAura(userId);
+      announces.push({
+        type: 'announce',
+        kind: 'pickup',
+        message: `${meta.emoji} @${name} pegou ${meta.label}!`,
+        userId,
+        username: name,
+        timestamp: Date.now(),
+      });
+      if (fr) {
+        fx.push({
+          type: 'ability_fx',
+          ability: 'freeze_aura',
+          userId,
+          x: fr.x,
+          y: fr.y,
+          timestamp: Date.now(),
+        });
+      }
+      break;
+    }
+    case 'dash_burst': {
+      const dash = physics.applyDashBurst(userId);
+      announces.push({
+        type: 'announce',
+        kind: 'pickup',
+        message: `${meta.emoji} @${name} pegou ${meta.label}!`,
+        userId,
+        username: name,
+        timestamp: Date.now(),
+      });
+      if (dash) {
+        fx.push({
+          type: 'ability_fx',
+          ability: 'dash_burst',
+          userId,
+          x: dash.x,
+          y: dash.y,
+          targetX: dash.x + dash.vx * 0.05,
+          targetY: dash.y + dash.vy * 0.05,
+          timestamp: Date.now(),
+        });
+      }
+      break;
+    }
+    case 'reflect_shield': {
+      const ref = physics.applyReflectShield(userId);
+      announces.push({
+        type: 'announce',
+        kind: 'pickup',
+        message: `${meta.emoji} @${name} pegou ${meta.label}!`,
+        userId,
+        username: name,
+        timestamp: Date.now(),
+      });
+      if (ref) {
+        fx.push({
+          type: 'ability_fx',
+          ability: 'reflect_shield',
+          userId,
+          x: ref.x,
+          y: ref.y,
+          timestamp: Date.now(),
+        });
+      }
+      break;
+    }
+  }
+
+  return { ability, times: 1, announces, damages, fx };
 }
 
 export function sugarBurstAnnounce(userId: string, username: string): AnnounceEvent {

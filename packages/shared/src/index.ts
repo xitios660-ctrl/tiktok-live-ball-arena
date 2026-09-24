@@ -202,6 +202,34 @@ export interface GlobalEventState {
   activeEffectUntil?: number | null;
 }
 
+/** Abilities that spawn as arena floor pickups (not TikTok gifts) */
+export type PickupAbilityKey =
+  | 'lightning_zap'
+  | 'magnet_pulse'
+  | 'freeze_aura'
+  | 'dash_burst'
+  | 'reflect_shield';
+
+export const PICKUP_ABILITY_KEYS: readonly PickupAbilityKey[] = [
+  'lightning_zap',
+  'magnet_pulse',
+  'freeze_aura',
+  'dash_burst',
+  'reflect_shield',
+] as const;
+
+export function isPickupAbility(key: string): key is PickupAbilityKey {
+  return (PICKUP_ABILITY_KEYS as readonly string[]).includes(key);
+}
+
+export interface PickupState {
+  id: string;
+  ability: PickupAbilityKey;
+  x: number;
+  y: number;
+  radius: number;
+}
+
 export interface GameSnapshot {
   tick: number;
   tickHz: number;
@@ -210,6 +238,8 @@ export interface GameSnapshot {
   resultsRemainingSec?: number;
   playerCount: number;
   balls: BallState[];
+  /** Arena floor power-ups (non-gift abilities) */
+  pickups: PickupState[];
   /** Full sorted ranking */
   stats: PlayerStats[];
   /** TOP 5 for overlay */
@@ -269,7 +299,8 @@ export interface AnnounceEvent {
     | 'double_damage'
     | 'share_boost'
     | 'likes_threshold'
-    | 'strength_up';
+    | 'strength_up'
+    | 'pickup';
   message: string;
   userId?: string;
   username?: string;
@@ -433,6 +464,41 @@ export const DASH_BURST_SPEED_MULT = 1.35;
 
 export const REFLECT_SHIELD_MS = 5_000;
 export const REFLECT_RATIO = 0.55; // portion of incoming raw dmg bounced
+
+/** —— Arena floor pickups (non-gift powers) —— */
+export const MAX_PICKUPS = 5;
+export const MIN_PICKUPS_TARGET = 3;
+export const PICKUP_RADIUS = 32;
+export const PICKUP_SPAWN_INTERVAL_MIN_MS = 6_000;
+export const PICKUP_SPAWN_INTERVAL_MAX_MS = 10_000;
+/** Despawn then respawn elsewhere */
+export const PICKUP_LIFETIME_MS = 32_000;
+/** Keep pickups inward from walls */
+export const PICKUP_EDGE_MARGIN = 120;
+/** Min distance between pickups (center-to-center) */
+export const PICKUP_MIN_SEPARATION = 100;
+/** Admin force-spawn near canvas center */
+export const PICKUP_ADMIN_SPAWN_JITTER = 80;
+
+export const PICKUP_META: Record<
+  PickupAbilityKey,
+  { emoji: string; label: string; giftId: string }
+> = {
+  lightning_zap: { emoji: '⚡', label: 'Raio', giftId: 'raio' },
+  magnet_pulse: { emoji: '🧲', label: 'Ímã', giftId: 'ima' },
+  freeze_aura: { emoji: '❄️', label: 'Gelo', giftId: 'gelo' },
+  dash_burst: { emoji: '🚀', label: 'Foguete', giftId: 'foguete' },
+  reflect_shield: { emoji: '🪞', label: 'Espelho', giftId: 'espelho' },
+};
+
+/** Slight bias toward dash/reflect for fun movement plays */
+export const PICKUP_SPAWN_WEIGHTS: Record<PickupAbilityKey, number> = {
+  lightning_zap: 1,
+  magnet_pulse: 1,
+  freeze_aura: 1,
+  dash_burst: 1.35,
+  reflect_shield: 1.35,
+};
 
 /** —— Likes / Shares / Random arena events —— */
 export const LIKE_THRESHOLD_DEFAULT = 100;

@@ -84,6 +84,8 @@
     button:hover { background:#404040; }
     button.gift { background:#3a2f55; }
     button.gift:hover { background:#4a3a6a; }
+    button.pickup { background:#2a4055; }
+    button.pickup:hover { background:#355570; }
     button.danger { background:#6b3030; }
     button.ok { background:#2d4a32; }
     button.revenge { background:#5a4520; }
@@ -158,7 +160,7 @@
     </div>
 
     <div class="card">
-      <h2>Presentes (→ alvo vivo)</h2>
+      <h2>Presentes TikTok (→ alvo vivo)</h2>
       <div class="row">
         <label>Alvo
           <select id="giftTarget">
@@ -172,12 +174,18 @@
       <button class="gift" onclick="gift('rosquinha')">🍩 Donut</button>
       <button class="gift" onclick="gift('capivara')">🦫 Capivara</button>
       <button class="gift" onclick="gift('galaxia')">🌌 Galaxy</button>
-      <button class="gift" onclick="gift('raio')">⚡ Raio</button>
-      <button class="gift" onclick="gift('ima')">🧲 Ímã</button>
-      <button class="gift" onclick="gift('gelo')">❄️ Gelo</button>
-      <button class="gift" onclick="gift('foguete')">🚀 Foguete</button>
-      <button class="gift" onclick="gift('espelho')">🪞 Espelho</button>
       <div id="giftTargetInfo" style="margin-top:6px;font-size:.8rem;color:var(--muted)">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Spawn pickup (no chão)</h2>
+      <p class="status-line" style="margin:0 0 8px">Powers no chão — bola passa por cima. Spawn perto do centro.</p>
+      <button class="pickup" onclick="spawnPickup('raio')">⚡ Raio</button>
+      <button class="pickup" onclick="spawnPickup('ima')">🧲 Ímã</button>
+      <button class="pickup" onclick="spawnPickup('gelo')">❄️ Gelo</button>
+      <button class="pickup" onclick="spawnPickup('foguete')">🚀 Foguete</button>
+      <button class="pickup" onclick="spawnPickup('espelho')">🪞 Espelho</button>
+      <div id="pickupInfo" style="margin-top:6px;font-size:.8rem;color:var(--muted)">pickups: —</div>
     </div>
 
     <div class="card">
@@ -258,6 +266,9 @@
       const repeatCount = Number(document.getElementById('giftRepeat').value) || 1;
       return post('/admin/sim/gift', { giftId, userId, repeatCount });
     }
+    function spawnPickup(ability) {
+      return post('/admin/sim/pickup', { ability });
+    }
     function comment() {
       return post('/admin/sim/comment', { comment: document.getElementById('comment').value || undefined });
     }
@@ -317,6 +328,13 @@
       document.getElementById('giftTargetInfo').textContent = info
         ? `${info.username} HP ${info.hp}/${info.maxHp} shield=${info.shieldHp||0} scale=${(info.sizeScale||1).toFixed(2)} buffs=${(info.buffs||[]).join('|')||'-'}`
         : 'Nenhuma bola — spawn bots primeiro';
+      const pi = document.getElementById('pickupInfo');
+      if (pi) {
+        const ps = j.pickups || [];
+        pi.textContent = ps.length
+          ? `pickups (${ps.length}): ` + ps.map(p => `${p.ability}@(${Math.round(p.x)},${Math.round(p.y)})`).join(' · ')
+          : 'pickups: nenhum no chão';
+      }
       const deadEl = document.getElementById('dead');
       const dead = j.dead || [];
       if (!dead.length) deadEl.textContent = 'Nenhum morto';
