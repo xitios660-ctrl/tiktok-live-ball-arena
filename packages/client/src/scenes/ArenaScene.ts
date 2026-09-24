@@ -1215,6 +1215,7 @@ export class ArenaScene extends Phaser.Scene {
       else this.particleBudget = 1;
       this.qualityTier = qualityFromBudget(this.particleBudget);
       audio.setQuality(this.particleBudget);
+      this.pickupsLayer?.setBudget(this.particleBudget);
     }
   }
 

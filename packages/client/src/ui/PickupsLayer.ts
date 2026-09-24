@@ -1,6 +1,7 @@
 /**
  * Arena floor pickups — orbiting neon rings, emoji bob, color-coded glow.
  * Perf-safe: one container per pickup, shared tween via update().
+ * Collect: cinematic implosion VFX when a pickup leaves the snapshot.
  */
 import Phaser from 'phaser';
 import {
@@ -9,6 +10,7 @@ import {
   type PickupAbilityKey,
 } from '@arena/shared';
 import { THEME, FONT_BLACK } from '../theme';
+import { playPickupCollectFx } from '../fx/AbilityFx';
 
 const GLOW: Record<PickupAbilityKey, number> = {
   lightning_zap: THEME.gold,
@@ -25,6 +27,7 @@ interface PickupView {
   ring2: Phaser.GameObjects.Arc;
   emoji: Phaser.GameObjects.Text;
   ability: PickupAbilityKey;
+  radius: number;
   born: number;
 }
 
@@ -32,10 +35,16 @@ export class PickupsLayer {
   private layer: Phaser.GameObjects.Container;
   private views = new Map<string, PickupView>();
   private scene: Phaser.Scene;
+  private budget = 1;
 
   constructor(scene: Phaser.Scene, depth = 8) {
     this.scene = scene;
     this.layer = scene.add.container(0, 0).setDepth(depth);
+  }
+
+  /** Adaptive particle budget 0..1 from ArenaScene */
+  setBudget(n: number): void {
+    this.budget = Math.max(0, Math.min(1, n));
   }
 
   sync(pickups: PickupState[] | undefined): void {
@@ -54,6 +63,15 @@ export class PickupsLayer {
     }
     for (const [id, view] of this.views) {
       if (!seen.has(id)) {
+        const color = GLOW[view.ability] ?? THEME.gold;
+        playPickupCollectFx(
+          this.scene,
+          view.root.x,
+          view.root.y,
+          color,
+          view.radius,
+          this.budget
+        );
         view.root.destroy(true);
         this.views.delete(id);
       }
@@ -110,6 +128,7 @@ export class PickupsLayer {
       ring2,
       emoji,
       ability: p.ability,
+      radius: p.radius,
       born: this.scene.time.now,
     };
   }

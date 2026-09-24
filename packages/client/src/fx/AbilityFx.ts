@@ -73,6 +73,66 @@ export function spawnSparks(
   }
 }
 
+/** Floor pickup collected — neon implosion + shock rings + sparks. */
+export function playPickupCollectFx(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  color: number,
+  radius = 32,
+  budget: FxBudget = 1
+): void {
+  const r = Math.max(12, radius);
+  const depth = 66;
+  const b = Math.max(0, Math.min(1, budget));
+
+  // Tiny cream flash at center (collapses with the glow)
+  const flash = scene.add.circle(x, y, r * 0.4, THEME.cream, 0.9).setDepth(depth + 2);
+  scene.tweens.add({
+    targets: flash,
+    scale: 0.12,
+    alpha: 0,
+    duration: 170,
+    ease: 'Cubic.easeIn',
+    onComplete: () => flash.destroy(),
+  });
+
+  // Ability-colored glow collapses inward
+  const glow = scene.add.circle(x, y, r * 1.35, color, 0.55).setDepth(depth);
+  scene.tweens.add({
+    targets: glow,
+    scale: 0.06,
+    alpha: 0,
+    duration: 220,
+    ease: 'Cubic.easeIn',
+    onComplete: () => glow.destroy(),
+  });
+
+  // Shock rings expand + fade (skip on very low budget)
+  if (b >= 0.3) {
+    const ringCount = b >= 0.7 ? 2 : 1;
+    for (let i = 0; i < ringCount; i++) {
+      const stroke = i === 0 ? color : THEME.gold;
+      const ring = scene.add
+        .circle(x, y, r * 0.85, color, 0)
+        .setStrokeStyle(2.6 - i * 0.6, stroke, 0.88 - i * 0.18)
+        .setDepth(depth + 1);
+      scene.tweens.add({
+        targets: ring,
+        scale: 2.15 + i * 0.4,
+        alpha: 0,
+        duration: 300 + i * 80,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy(),
+      });
+    }
+  }
+
+  // 6–12 colored sparks outward (spawnSparks already scales by budget)
+  const sparkN = Math.round(6 + 6 * b);
+  spawnSparks(scene, x, y, color, sparkN, b);
+}
+
 export function spawnLightningBolt(
   scene: Phaser.Scene,
   x0: number,
