@@ -25,6 +25,7 @@ import {
 } from '../fx/AbilityFx';
 import { playKillImpact } from '../fx/KillImpactFx';
 import { paintArenaFloor, paintArenaRim } from '../fx/ArenaFloor';
+import { createArenaEnergyRings, type ArenaEnergyRingsHandles } from '../fx/ArenaEnergyRings';
 import {
   createGlossParts,
   syncGlossParts,
@@ -133,6 +134,7 @@ export class ArenaScene extends Phaser.Scene {
   private top5BaseY = 0;
   private pickupsLayer!: PickupsLayer;
   private ambientTwinkles: { tick: (t: number) => void; destroy: () => void } | null = null;
+  private energyRings: ArenaEnergyRingsHandles | null = null;
   private feedText!: Phaser.GameObjects.Text;
   private feedCard!: Phaser.GameObjects.Graphics;
   private winnerFrame!: Phaser.GameObjects.Graphics;
@@ -190,6 +192,8 @@ export class ArenaScene extends Phaser.Scene {
     this.overlayTransparent = !!opts.transparent;
     this.arenaFloor = this.add.graphics().setDepth(0);
     paintArenaFloor(this.arenaFloor, CANVAS_WIDTH, CANVAS_HEIGHT, this.overlayTransparent);
+    // Animated neon energy rings above static floor (depth 1, same layer as twinkles)
+    this.energyRings = createArenaEnergyRings(this, 1);
     // Phone lite: fewer ambient twinkles to cut GPU load on screen-share
     this.ambientTwinkles = createAmbientTwinkles(this, this.phoneLite ? 7 : 16, 1);
     // Legacy border rect kept for layout hooks; stroke owned by arenaRim Graphics
@@ -426,6 +430,8 @@ export class ArenaScene extends Phaser.Scene {
       this.pickupsLayer?.clear();
       this.ambientTwinkles?.destroy();
       this.ambientTwinkles = null;
+      this.energyRings?.destroy();
+      this.energyRings = null;
       // Keep ambient running across scene swaps (Waiting↔Arena); AudioManager owns lifecycle.
     });
   }
@@ -442,6 +448,15 @@ export class ArenaScene extends Phaser.Scene {
       this.bottomCta.glow.setAlpha(0.35 + pulse * 0.4);
     }
     if (this.ambientTwinkles && (this.particleBudget ?? 1) > 0.2) this.ambientTwinkles.tick(t);
+    if (this.energyRings) {
+      const urgent = this.lastPhase === 'running' && this.lastRemaining <= 30;
+      this.energyRings.tick(t, {
+        budget: this.particleBudget ?? 1,
+        phoneLite: this.phoneLite,
+        transparent: this.overlayTransparent,
+        urgent,
+      });
+    }
     this.pickupsLayer?.tick(t);
     if (this.giftLegend) {
       tickGiftLegend(this.giftLegend, t);
