@@ -2,8 +2,8 @@ import { isBotUser, type RoundPhase } from '@arena/shared';
 import type { BallBody, PhysicsWorld } from './PhysicsWorld';
 
 export const CHATGPT_BOSS_USER_ID = 'boss-chatgpt';
-export const CHATGPT_BOSS_USERNAME = 'chatgpt_boss';
-export const CHATGPT_BOSS_NAME = '🤖 ChatGPT BOSS';
+export const CHATGPT_BOSS_USERNAME = 'boss';
+export const CHATGPT_BOSS_NAME = 'BOSS';
 export const CHATGPT_BOSS_REWARD_KILLS = 10;
 
 const BOSS_RADIUS = 84;
