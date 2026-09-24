@@ -13,7 +13,7 @@ import {
 } from '../fx/CharacterBalls';
 
 /**
- * Cinematic waiting poster — layered Phaser graphics matching waiting-mock.png.
+ * Cinematic waiting poster — energetic orange stadium matching waiting-target.png.
  * OBS ?transparent=1 skips opaque stadium fills; logo + CTA stay readable.
  */
 export class WaitingScene extends Phaser.Scene {
@@ -46,75 +46,63 @@ export class WaitingScene extends Phaser.Scene {
       this.paintStadiumWash(this.stadiumGfx);
     }
 
-    // Soft energy dust (gated)
-    const dustCount = this.overlayTransparent ? 6 : 20;
+    // Warm ember dust (gated)
+    const dustCount = this.overlayTransparent ? 6 : 24;
     for (let i = 0; i < dustCount; i++) {
       const color =
-        i % 3 === 0 ? THEME.gold : i % 3 === 1 ? THEME.emberOrange : THEME.electricCyan;
+        i % 3 === 0 ? THEME.gold : i % 3 === 1 ? THEME.emberOrange : THEME.arenaRed;
       const d = this.add
         .circle(
           60 + Math.random() * (CANVAS_WIDTH - 120),
           100 + Math.random() * (CANVAS_HEIGHT - 200),
-          1.2 + Math.random() * 2.4,
+          1.2 + Math.random() * 2.6,
           color,
-          0.35
+          0.4
         )
         .setDepth(2);
       this.energyDust.push(d);
     }
 
-    this.twinkles = createAmbientTwinkles(this, this.overlayTransparent ? 8 : 16, 2);
+    this.twinkles = createAmbientTwinkles(this, this.overlayTransparent ? 8 : 18, 2);
 
-    // Thin cream frame (readable on transparent too)
+    // Thin cream frame
     this.add
       .rectangle(cx, cy, CANVAS_WIDTH - 28, CANVAS_HEIGHT - 28, 0x000000, 0)
       .setStrokeStyle(2, THEME.light, this.overlayTransparent ? 0.18 : 0.28)
       .setDepth(4);
 
-    // Logo assembly — top (crown + BALL / ARENA + rings)
+    // Logo — orange energy ring + red-orange Bevan
     this.logo = createBallArenaLogo(this, cx, SAFE.top + 118, {
-      scale: 0.92,
+      scale: 0.95,
       depth: 30,
       showRings: true,
       showFlare: true,
     });
 
-    // Hero clash pack — center mood
+    // Hero clash pack — front and center
     const packCy = cy - 40;
     const pack = createWaitingHeroPack(this, cx, packCy);
     this.heroes = pack.balls;
     this.clash = pack.clash;
 
-    // Floor ellipse under heroes (skip heavy fill when transparent)
+    // Arena floor — dark metallic + ORANGE segment lines (not teal orbitals)
     const floor = this.add.graphics().setDepth(15);
-    if (!this.overlayTransparent) {
-      floor.fillStyle(THEME.stone, 0.55);
-      floor.fillEllipse(cx, packCy + 160, 780, 160);
-      floor.fillStyle(THEME.arenaDark, 0.4);
-      floor.fillEllipse(cx, packCy + 160, 620, 110);
-    }
-    floor.lineStyle(2.5, THEME.electricCyan, this.overlayTransparent ? 0.35 : 0.45);
-    floor.strokeEllipse(cx, packCy + 160, 700, 130);
-    floor.lineStyle(2, THEME.emberOrange, 0.35);
-    floor.strokeEllipse(cx, packCy + 160, 520, 95);
-    floor.lineStyle(2.5, THEME.gold, 0.55);
-    floor.strokeCircle(cx, packCy + 160, 36);
-    floor.fillStyle(THEME.gold, 0.12);
-    floor.fillCircle(cx, packCy + 160, 22);
+    this.paintArenaFloor(floor, cx, packCy + 160);
 
-    // Big subtitle — AGUARDANDO A LIVE (stacked 3D ember glow)
+    // AGUARDANDO A LIVE — metallic light face + red-orange stacked glow
     const titleY = cy + 220;
     const titleStr = 'AGUARDANDO A LIVE';
     const layers: Array<{ dy: number; color: string; stroke: string; strokeW: number; alpha: number }> = [
-      { dy: 6, color: THEME_HEX.arenaRed, stroke: THEME_HEX.arenaDark, strokeW: 10, alpha: 0.55 },
-      { dy: 3, color: THEME_HEX.emberOrange, stroke: THEME_HEX.arenaRed, strokeW: 8, alpha: 0.7 },
+      { dy: 8, color: THEME_HEX.arenaRed, stroke: THEME_HEX.arenaDark, strokeW: 14, alpha: 0.5 },
+      { dy: 5, color: THEME_HEX.arenaRed, stroke: THEME_HEX.emberOrange, strokeW: 11, alpha: 0.7 },
+      { dy: 2, color: THEME_HEX.emberOrange, stroke: THEME_HEX.arenaRed, strokeW: 8, alpha: 0.85 },
       { dy: 0, color: THEME_HEX.light, stroke: THEME_HEX.arenaDark, strokeW: 6, alpha: 1 },
     ];
     for (const L of layers) {
       const t = this.add
         .text(cx, titleY + L.dy, titleStr, {
           fontFamily: FONT_BLACK,
-          fontSize: '48px',
+          fontSize: '50px',
           color: L.color,
           align: 'center',
           stroke: L.stroke,
@@ -129,16 +117,16 @@ export class WaitingScene extends Phaser.Scene {
 
     // Tiny crown above subtitle
     this.add
-      .text(cx, titleY - 42, '👑', { fontSize: '22px' })
+      .text(cx, titleY - 44, '👑', { fontSize: '24px' })
       .setOrigin(0.5)
       .setDepth(40)
-      .setAlpha(0.9);
+      .setAlpha(0.95);
 
     const phase = data?.round?.phase || 'waiting';
     this.subtitle = this.add
       .text(
         cx,
-        titleY + 52,
+        titleY + 54,
         phase === 'ended'
           ? 'Rodada encerrada — próxima em breve'
           : 'Comente na live para entrar na arena',
@@ -153,31 +141,35 @@ export class WaitingScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(40);
 
-    // Wide CTA — orange glow border + speech bubble + Bebas
-    this.cta = this.add.container(cx, titleY + 130).setDepth(42);
+    // Wide CTA — cream/light fill + BLACK Bebas + bright orange glow (NOT dark)
+    this.cta = this.add.container(cx, titleY + 132).setDepth(42);
     this.ctaGlow = this.add.graphics();
     this.drawCtaGlow(1);
     const ctaBg = this.add.graphics();
-    ctaBg.fillStyle(THEME.arenaDark, 0.82);
-    ctaBg.fillRoundedRect(-260, -36, 520, 72, 18);
-    ctaBg.fillStyle(THEME.arenaRed, 0.92);
-    ctaBg.fillRoundedRect(-254, -30, 508, 60, 14);
-    ctaBg.lineStyle(3, THEME.emberOrange, 0.95);
-    ctaBg.strokeRoundedRect(-260, -36, 520, 72, 18);
-    ctaBg.lineStyle(1.5, THEME.gold, 0.55);
-    ctaBg.strokeRoundedRect(-252, -28, 504, 56, 12);
+    // Outer rim (ember)
+    ctaBg.fillStyle(THEME.emberOrange, 1);
+    ctaBg.fillRoundedRect(-268, -40, 536, 80, 20);
+    // Cream / off-white body
+    ctaBg.fillStyle(THEME.cream, 1);
+    ctaBg.fillRoundedRect(-260, -32, 520, 64, 16);
+    // Soft inner highlight
+    ctaBg.fillStyle(0xffffff, 0.55);
+    ctaBg.fillRoundedRect(-252, -28, 504, 22, 10);
+    // Thin gold inner stroke
+    ctaBg.lineStyle(2, THEME.gold, 0.65);
+    ctaBg.strokeRoundedRect(-256, -28, 512, 56, 14);
     const ctaLabel = this.add
-      .text(0, 0, '💬   COMENTE PARA JOGAR', {
+      .text(0, 1, '💬   COMENTE PARA JOGAR', {
         fontFamily: FONT_ACCENT,
-        fontSize: '38px',
-        color: THEME_HEX.light,
-        stroke: '#000000',
-        strokeThickness: 4,
+        fontSize: '40px',
+        color: '#0B0B0F',
+        stroke: '#F2EBD7',
+        strokeThickness: 1,
       })
       .setOrigin(0.5);
     this.cta.add([this.ctaGlow, ctaBg, ctaLabel]);
 
-    // Footer — JOGOS INDIE COM ALMA ♡ between thin ember lines
+    // Footer — JOGOS INDIE COM ALMA ♡ between orange hairlines
     this.footerGfx = this.add.graphics().setDepth(40);
     const footerY = CANVAS_HEIGHT - SAFE.bottom + 48;
     this.drawFooter(footerY);
@@ -188,28 +180,31 @@ export class WaitingScene extends Phaser.Scene {
         color: THEME_HEX.light,
       })
       .setOrigin(0.5)
-      .setAlpha(0.8)
+      .setAlpha(0.85)
       .setDepth(41);
 
+    // Tiny admin hint only (was loud DEMO text)
     this.add
-      .text(cx, CANVAS_HEIGHT - SAFE.bottom + 88, 'Admin DEMO · /admin', {
+      .text(cx, CANVAS_HEIGHT - SAFE.bottom + 88, 'Admin · /admin', {
         fontFamily: FONT,
-        fontSize: '16px',
+        fontSize: '12px',
         color: THEME_HEX.muted,
       })
       .setOrigin(0.5)
+      .setAlpha(0.35)
       .setDepth(41);
 
     if (opts.demoBadge) {
       this.add
         .text(SAFE.side, SAFE.top, 'DEMO', {
           fontFamily: FONT_ACCENT,
-          fontSize: '20px',
+          fontSize: '18px',
           color: THEME_HEX.light,
           backgroundColor: THEME_HEX.arenaRed + 'cc',
-          padding: { x: 10, y: 5 },
+          padding: { x: 8, y: 4 },
         })
-        .setDepth(200);
+        .setDepth(200)
+        .setAlpha(0.7);
     }
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
@@ -220,72 +215,125 @@ export class WaitingScene extends Phaser.Scene {
     });
   }
 
-  /** Stadium wash: ember spotlights + dark crowd silhouette bands (procedural). */
+  /** Dark metallic floor with orange segment rings + crown marker. */
+  private paintArenaFloor(g: Phaser.GameObjects.Graphics, cx: number, fy: number): void {
+    if (!this.overlayTransparent) {
+      g.fillStyle(THEME.stone, 0.7);
+      g.fillEllipse(cx, fy, 820, 175);
+      g.fillStyle(THEME.arenaDark, 0.55);
+      g.fillEllipse(cx, fy, 660, 120);
+      // Metallic tile hints
+      g.lineStyle(1, THEME.steel, 0.25);
+      for (let i = -4; i <= 4; i++) {
+        g.lineBetween(cx + i * 70, fy - 40, cx + i * 70, fy + 40);
+      }
+    }
+    // ORANGE segment rings (primary — not teal)
+    g.lineStyle(3.5, THEME.emberOrange, this.overlayTransparent ? 0.45 : 0.7);
+    g.strokeEllipse(cx, fy, 740, 140);
+    g.lineStyle(2.5, THEME.arenaRed, 0.45);
+    g.strokeEllipse(cx, fy, 580, 105);
+    g.lineStyle(2, THEME.gold, 0.55);
+    g.strokeEllipse(cx, fy, 420, 78);
+    // Center crown pad
+    g.lineStyle(2.5, THEME.gold, 0.7);
+    g.strokeCircle(cx, fy, 38);
+    g.fillStyle(THEME.emberOrange, 0.15);
+    g.fillCircle(cx, fy, 28);
+    g.fillStyle(THEME.gold, 0.85);
+    // Tiny crown mark
+    g.fillTriangle(cx - 10, fy + 4, cx + 10, fy + 4, cx, fy - 12);
+    g.fillRect(cx - 12, fy + 2, 24, 5);
+  }
+
+  /** Stadium wash: warm ember spotlights + crowd silhouette bands. */
   private paintStadiumWash(g: Phaser.GameObjects.Graphics): void {
     const cx = CANVAS_WIDTH / 2;
     const cy = CANVAS_HEIGHT / 2;
     g.fillStyle(THEME.arenaDark, 1);
     g.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Ember spotlights from upper corners
-    g.fillStyle(THEME.emberOrange, 0.09);
-    g.fillEllipse(180, 200, 520, 420);
-    g.fillEllipse(CANVAS_WIDTH - 180, 220, 480, 400);
-    g.fillStyle(THEME.arenaRed, 0.07);
-    g.fillEllipse(cx, 280, 700, 360);
-    g.fillStyle(THEME.electricCyan, 0.035);
-    g.fillEllipse(cx, CANVAS_HEIGHT - 500, 900, 380);
+    // Warm ember wash (stronger than cool teal)
+    g.fillStyle(THEME.emberOrange, 0.14);
+    g.fillEllipse(160, 180, 560, 460);
+    g.fillEllipse(CANVAS_WIDTH - 160, 200, 520, 440);
+    g.fillStyle(THEME.arenaRed, 0.1);
+    g.fillEllipse(cx, 260, 780, 400);
+    g.fillStyle(THEME.gold, 0.06);
+    g.fillEllipse(cx, 400, 600, 320);
+    // Soft ground glow under arena
+    g.fillStyle(THEME.emberOrange, 0.08);
+    g.fillEllipse(cx, CANVAS_HEIGHT - 520, 980, 420);
 
-    // Crowd silhouette bands — soft dark ellipses (not a photo)
-    for (let row = 0; row < 6; row++) {
-      const y = 340 + row * 70;
-      const a = 0.18 + row * 0.04;
+    // Spotlight cones from top
+    for (const [sx, sy, w, h, a] of [
+      [200, 40, 180, 520, 0.07],
+      [cx, 20, 220, 560, 0.09],
+      [CANVAS_WIDTH - 200, 50, 170, 500, 0.07],
+      [340, 60, 120, 400, 0.05],
+      [CANVAS_WIDTH - 340, 70, 120, 380, 0.05],
+    ] as Array<[number, number, number, number, number]>) {
+      g.fillStyle(THEME.gold, a);
+      g.fillTriangle(sx - 18, sy, sx + 18, sy, sx, sy + h * 0.15);
+      g.fillStyle(THEME.emberOrange, a * 0.85);
+      g.fillEllipse(sx, sy + h * 0.55, w, h);
+    }
+
+    // Crowd silhouette bands
+    for (let row = 0; row < 7; row++) {
+      const y = 320 + row * 68;
+      const a = 0.16 + row * 0.035;
       g.fillStyle(0x000000, a);
-      for (let i = 0; i < 14; i++) {
-        const x = 40 + i * 78 + (row % 2) * 36;
-        const h = 28 + (i % 3) * 10 + row * 2;
-        g.fillEllipse(x, y, 34 + (i % 4) * 6, h);
+      for (let i = 0; i < 15; i++) {
+        const x = 30 + i * 74 + (row % 2) * 34;
+        const h = 26 + (i % 3) * 12 + row * 2;
+        g.fillEllipse(x, y, 32 + (i % 4) * 6, h);
       }
     }
 
-    // Vertical banners with tiny crown marks
+    // Vertical banners with crown marks
     for (const bx of [90, CANVAS_WIDTH - 90]) {
-      g.fillStyle(THEME.arenaRed, 0.22);
-      g.fillRoundedRect(bx - 18, 300, 36, 280, 6);
-      g.fillStyle(THEME.gold, 0.55);
-      g.fillCircle(bx, 340, 8);
-      g.fillTriangle(bx - 7, 352, bx + 7, 352, bx, 368);
+      g.fillStyle(THEME.arenaRed, 0.28);
+      g.fillRoundedRect(bx - 18, 290, 36, 300, 6);
+      g.fillStyle(THEME.emberOrange, 0.2);
+      g.fillRoundedRect(bx - 14, 294, 28, 292, 4);
+      g.fillStyle(THEME.gold, 0.7);
+      g.fillCircle(bx, 330, 9);
+      g.fillTriangle(bx - 8, 344, bx + 8, 344, bx, 362);
     }
 
     // Vignette
-    g.lineStyle(160, 0x000000, 0.55);
-    g.strokeCircle(cx, cy, 920);
-    g.lineStyle(200, 0x000000, 0.4);
-    g.strokeCircle(cx, cy, 1100);
+    g.lineStyle(180, 0x000000, 0.5);
+    g.strokeCircle(cx, cy, 900);
+    g.lineStyle(220, 0x000000, 0.38);
+    g.strokeCircle(cx, cy, 1080);
   }
 
   private drawFooter(y: number): void {
     const g = this.footerGfx;
     g.clear();
     const cx = CANVAS_WIDTH / 2;
-    g.lineStyle(1.5, THEME.emberOrange, 0.55);
-    g.lineBetween(cx - 280, y, cx - 150, y);
-    g.lineBetween(cx + 150, y, cx + 280, y);
-    g.lineStyle(1, THEME.gold, 0.35);
-    g.lineBetween(cx - 280, y + 3, cx - 155, y + 3);
-    g.lineBetween(cx + 155, y + 3, cx + 280, y + 3);
+    g.lineStyle(2, THEME.emberOrange, 0.7);
+    g.lineBetween(cx - 290, y, cx - 155, y);
+    g.lineBetween(cx + 155, y, cx + 290, y);
+    g.lineStyle(1, THEME.gold, 0.4);
+    g.lineBetween(cx - 290, y + 4, cx - 160, y + 4);
+    g.lineBetween(cx + 160, y + 4, cx + 290, y + 4);
   }
 
   private drawCtaGlow(pulse: number): void {
     const g = this.ctaGlow;
     g.clear();
-    const a = 0.22 + pulse * 0.28;
+    const a = 0.3 + pulse * 0.35;
+    // Bright ember outer bloom
     g.fillStyle(THEME.emberOrange, a);
-    g.fillRoundedRect(-280, -50, 560, 100, 24);
-    g.fillStyle(THEME.arenaRed, a * 0.55);
-    g.fillRoundedRect(-268, -42, 536, 84, 20);
-    g.lineStyle(2, THEME.gold, 0.25 + pulse * 0.35);
-    g.strokeRoundedRect(-272, -46, 544, 92, 22);
+    g.fillRoundedRect(-300, -56, 600, 112, 28);
+    g.fillStyle(THEME.arenaRed, a * 0.45);
+    g.fillRoundedRect(-286, -48, 572, 96, 24);
+    g.fillStyle(THEME.gold, a * 0.25);
+    g.fillRoundedRect(-276, -44, 552, 88, 22);
+    g.lineStyle(3, THEME.emberOrange, 0.4 + pulse * 0.45);
+    g.strokeRoundedRect(-280, -50, 560, 100, 24);
   }
 
   private onRound = (state: RoundState) => {
@@ -304,18 +352,17 @@ export class WaitingScene extends Phaser.Scene {
     for (const h of this.heroes) tickHeroBall(h, t, 5);
     if (this.clash) tickClashFx(this.clash, t);
 
-    // Title main layer breathes
-    if (this.titleStack[2]) {
-      this.titleStack[2].setAlpha(0.88 + Math.sin(this.pulse) * 0.12);
-    }
-    if (this.cta) this.cta.setScale(1 + Math.sin(this.pulse * 1.5) * 0.035);
+    // Title face layer breathes
+    const face = this.titleStack[this.titleStack.length - 1];
+    if (face) face.setAlpha(0.9 + Math.sin(this.pulse) * 0.1);
+    if (this.cta) this.cta.setScale(1 + Math.sin(this.pulse * 1.5) * 0.04);
     if (this.ctaGlow) this.drawCtaGlow(p);
 
     this.twinkles?.tick(t);
     for (let i = 0; i < this.energyDust.length; i++) {
       const d = this.energyDust[i];
       d.y -= (0.15 + (i % 5) * 0.04) * (dt / 16);
-      d.setAlpha(0.15 + (0.5 + Math.sin(this.pulse * 2 + i) * 0.5) * 0.4);
+      d.setAlpha(0.18 + (0.5 + Math.sin(this.pulse * 2 + i) * 0.5) * 0.45);
       if (d.y < 40) d.y = CANVAS_HEIGHT - 60;
     }
   }
