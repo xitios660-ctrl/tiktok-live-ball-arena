@@ -11,6 +11,7 @@ import {
   displayStrengthScore,
   LIKE_PERSONAL_STEP,
   LIKE_PERSONAL_HEAL,
+  LIKE_PERSONAL_STRENGTH,
   HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
   isPickupAbility,
@@ -380,13 +381,10 @@ export class GameLoop {
     const n = Math.max(0, Math.floor(count));
     if (n <= 0) return;
 
-    // Community meter: every threshold triggers a small heal for all living players.
-    const anns = this.globalEvents.addLikes(n, this.physics);
-    for (const a of anns) this.pushCombat(a);
-
-    // Personal meter: every 10 likes from the same viewer heals their own ball +2 HP.
-    // Remainder is kept, so 7 likes now + 3 later still triggers the heal.
+    // Likes are strictly personal: they never heal or buff other players.
+    // Admin/global like simulation without a concrete user therefore gives no reward.
     let healed = 0;
+    let strengthGained = 0;
     if (
       user &&
       user.userId !== CHATGPT_BOSS_USER_ID &&
@@ -401,14 +399,35 @@ export class GameLoop {
           user.userId,
           pulses * LIKE_PERSONAL_HEAL
         );
+
+        const rec = this.players.get(user.userId);
+        if (rec) {
+          strengthGained = pulses * LIKE_PERSONAL_STRENGTH;
+          rec.hitPower += strengthGained;
+          this.physics.setHitPower(user.userId, rec.hitPower);
+        }
+
+        this.pushCombat({
+          type: 'announce',
+          kind: 'strength_up',
+          message:
+            '❤️ @' + (user.nickname || user.username) +
+            ' completou ' + (pulses * LIKE_PERSONAL_STEP) +
+            ' likes: +' + (pulses * LIKE_PERSONAL_HEAL) +
+            ' HP e +' + strengthGained + ' FORÇA!',
+          userId: user.userId,
+          username: user.nickname || user.username,
+          value: strengthGained,
+          timestamp: Date.now(),
+        });
       }
     }
 
-    if (anns.length || healed > 0) this.emitSnapshot();
+    if (healed > 0 || strengthGained > 0) this.emitSnapshot();
 
     console.log(
-      `[LIKE] @${user?.username || 'global'} +${n} personalHeal=+${healed} ` +
-      `global=${this.globalEvents.likesAccumulated}/${this.globalEvents.likesThreshold}`
+      `[LIKE] @${user?.username || 'global'} +${n} ` +
+      `personalHeal=+${healed} personalStrength=+${strengthGained}`
     );
   }
 
