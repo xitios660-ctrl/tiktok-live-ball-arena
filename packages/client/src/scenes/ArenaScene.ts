@@ -7,6 +7,8 @@ import {
   type ArenaLiveEvent,
   type GameSnapshot,
   type BallState,
+  type CombatEvent,
+  type PlayerStats,
 } from '@arena/shared';
 
 interface BallView {
@@ -16,18 +18,27 @@ interface BallView {
   label: Phaser.GameObjects.Text;
   hpBg: Phaser.GameObjects.Rectangle;
   hpFg: Phaser.GameObjects.Rectangle;
-  avatar?: Phaser.GameObjects.Image;
+  lastHp: number;
 }
 
-/** Renders server-authoritative snapshots. No local physics. */
+interface KillFeedItem {
+  text: Phaser.GameObjects.Text;
+  born: number;
+}
+
+/** Renders server snapshots + kill feed. No local physics. */
 export class ArenaScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private playersText!: Phaser.GameObjects.Text;
+  private kdaText!: Phaser.GameObjects.Text;
   private feedText!: Phaser.GameObjects.Text;
   private feed: string[] = [];
   private ballsLayer!: Phaser.GameObjects.Container;
+  private killFeedLayer!: Phaser.GameObjects.Container;
   private views = new Map<string, BallView>();
   private pendingAvatars = new Set<string>();
+  private killFeed: KillFeedItem[] = [];
+  private readonly killFeedTtl = 4500;
 
   constructor() {
     super('ArenaScene');
@@ -35,8 +46,6 @@ export class ArenaScene extends Phaser.Scene {
 
   create(data?: { round?: RoundState }): void {
     this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, 0x0a0e18);
-
-    // Full-bleed arena border (matches server physics bounds visually)
     this.add
       .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, 0x10162a, 0.35)
       .setStrokeStyle(6, 0xfe2c55);
@@ -60,7 +69,7 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.playersText = this.add
-      .text(CANVAS_WIDTH / 2, 175, `Jogadores: ${data?.round?.playerCount ?? 0}`, {
+      .text(CANVAS_WIDTH / 2, 175, `Vivos: ${data?.round?.playerCount ?? 0}`, {
         fontFamily: 'Arial',
         fontSize: '28px',
         color: '#aaaaaa',
@@ -68,13 +77,22 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(100);
 
-    this.ballsLayer = this.add.container(0, 0).setDepth(10);
-
-    this.feedText = this.add
-      .text(40, CANVAS_HEIGHT - 280, '', {
+    this.kdaText = this.add
+      .text(40, 220, '', {
         fontFamily: 'monospace',
         fontSize: '20px',
-        color: '#bbbbbb',
+        color: '#888888',
+      })
+      .setDepth(100);
+
+    this.ballsLayer = this.add.container(0, 0).setDepth(10);
+    this.killFeedLayer = this.add.container(0, 0).setDepth(200);
+
+    this.feedText = this.add
+      .text(40, CANVAS_HEIGHT - 220, '', {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#999999',
         wordWrap: { width: CANVAS_WIDTH - 80 },
       })
       .setDepth(100);
@@ -82,37 +100,123 @@ export class ArenaScene extends Phaser.Scene {
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.game.events.on(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
     this.game.events.on(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
+    this.game.events.on(SOCKET_EVENTS.COMBAT_EVENT, this.onCombat, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
       this.game.events.off(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
       this.game.events.off(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
+      this.game.events.off(SOCKET_EVENTS.COMBAT_EVENT, this.onCombat, this);
       this.views.clear();
     });
   }
 
+  update(_t: number, _dt: number): void {
+    const now = Date.now();
+    this.killFeed = this.killFeed.filter((item) => {
+      const age = now - item.born;
+      if (age > this.killFeedTtl) {
+        item.text.destroy();
+        return false;
+      }
+      const fade = age > this.killFeedTtl - 800 ? 1 - (age - (this.killFeedTtl - 800)) / 800 : 1;
+      item.text.setAlpha(fade);
+      return true;
+    });
+    this.layoutKillFeed();
+  }
+
   private onRound = (state: RoundState) => {
     this.timerText.setText(this.formatTime(state.remainingSec));
-    this.playersText.setText(`Jogadores: ${state.playerCount ?? 0}`);
+    this.playersText.setText(`Vivos: ${state.playerCount ?? 0}`);
   };
 
   private onLive = (event: ArenaLiveEvent) => {
     let line = `${event.type}`;
     if (event.type === 'gift') line = `🎁 ${event.user.username} → ${event.giftName}`;
     else if (event.type === 'comment') line = `💬 ${event.user.username}: ${event.comment}`;
-    else if (event.type === 'like') line = `❤️ ${event.user.username} +${event.likeCount}`;
+    else if (event.type === 'like') line = `❤️ ${event.user.username}`;
     else if (event.type === 'join') line = `👋 ${event.user.username}`;
     else if (event.type === 'follow') line = `➕ ${event.user.username}`;
     else if (event.type === 'share') line = `📤 ${event.user.username}`;
     this.feed.unshift(line);
-    this.feed = this.feed.slice(0, 8);
+    this.feed = this.feed.slice(0, 6);
     this.feedText.setText(this.feed.join('\n'));
   };
 
   private onSnapshot = (snap: GameSnapshot) => {
     this.timerText.setText(this.formatTime(snap.remainingSec));
-    this.playersText.setText(`Jogadores: ${snap.playerCount}`);
+    this.playersText.setText(`Vivos: ${snap.playerCount}`);
     this.syncBalls(snap.balls);
+    this.updateKda(snap.stats);
   };
+
+  private onCombat = (event: CombatEvent) => {
+    if (event.type === 'hit') {
+      this.spawnHitSparks(event.x, event.y, 0xffffff);
+    } else if (event.type === 'kill') {
+      this.pushKillFeed(event.message);
+      this.spawnHitSparks(event.x, event.y, 0xfe2c55, 18);
+      this.spawnDeathFlash(event.x, event.y);
+    }
+  };
+
+  private updateKda(stats: PlayerStats[]): void {
+    const top = stats.slice(0, 5);
+    this.kdaText.setText(
+      top.map((s) => `${s.alive ? '●' : '✗'} ${s.username.slice(0, 10)} ${s.kills}/${s.deaths}`).join('\n')
+    );
+  }
+
+  private pushKillFeed(message: string): void {
+    const text = this.add
+      .text(CANVAS_WIDTH - 40, 260, message, {
+        fontFamily: 'Arial',
+        fontSize: '26px',
+        color: '#ffffff',
+        backgroundColor: '#fe2c55cc',
+        padding: { x: 12, y: 8 },
+      })
+      .setOrigin(1, 0);
+    this.killFeedLayer.add(text);
+    this.killFeed.unshift({ text, born: Date.now() });
+    this.killFeed = this.killFeed.slice(0, 6);
+    this.layoutKillFeed();
+  }
+
+  private layoutKillFeed(): void {
+    let y = 260;
+    for (const item of this.killFeed) {
+      item.text.setPosition(CANVAS_WIDTH - 40, y);
+      y += 48;
+    }
+  }
+
+  private spawnHitSparks(x: number, y: number, color: number, n = 8): void {
+    for (let i = 0; i < n; i++) {
+      const angle = (Math.PI * 2 * i) / n + Math.random() * 0.3;
+      const dist = 20 + Math.random() * 40;
+      const dot = this.add.circle(x, y, 4 + Math.random() * 4, color, 1).setDepth(50);
+      this.tweens.add({
+        targets: dot,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        duration: 280 + Math.random() * 200,
+        onComplete: () => dot.destroy(),
+      });
+    }
+  }
+
+  private spawnDeathFlash(x: number, y: number): void {
+    const ring = this.add.circle(x, y, 10, 0xfe2c55, 0.6).setDepth(60);
+    this.tweens.add({
+      targets: ring,
+      scale: 4,
+      alpha: 0,
+      duration: 450,
+      onComplete: () => ring.destroy(),
+    });
+  }
 
   private syncBalls(balls: BallState[]): void {
     const seen = new Set<string>();
@@ -128,6 +232,7 @@ export class ArenaScene extends Phaser.Scene {
     }
     for (const [id, view] of this.views) {
       if (!seen.has(id)) {
+        // Death removal — brief flash already handled by combat event
         view.container.destroy(true);
         this.views.delete(id);
       }
@@ -167,13 +272,15 @@ export class ArenaScene extends Phaser.Scene {
       this.tryLoadAvatar(b, circle, initials, container);
     }
 
-    return { container, circle, initials, label, hpBg, hpFg };
+    return { container, circle, initials, label, hpBg, hpFg, lastHp: b.hp };
   }
 
   private updateBallView(view: BallView, b: BallState): void {
     view.container.setPosition(b.x, b.y);
     view.circle.setRadius(b.radius);
-    view.circle.setFillStyle(b.color, 1);
+    const flash = b.hitFlash;
+    view.circle.setFillStyle(flash ? 0xffffff : b.color, flash ? 0.9 : 1);
+    view.circle.setStrokeStyle(3, flash ? 0xfe2c55 : 0xffffff, 0.85);
     view.label.setText(this.truncate(b.label, 14));
     view.label.setY(b.radius + 14);
     const barW = b.radius * 2;
@@ -183,6 +290,18 @@ export class ArenaScene extends Phaser.Scene {
     view.hpFg.setPosition(-barW / 2, -b.radius - 12);
     view.hpFg.setSize(barW * ratio, 8);
     view.hpFg.setFillStyle(ratio > 0.3 ? 0x20d68a : 0xfe2c55);
+
+    if (b.hp < view.lastHp) {
+      // micro punch on damage
+      this.tweens.add({
+        targets: view.container,
+        scaleX: 1.15,
+        scaleY: 1.15,
+        duration: 60,
+        yoyo: true,
+      });
+    }
+    view.lastHp = b.hp;
   }
 
   private tryLoadAvatar(
@@ -203,9 +322,6 @@ export class ArenaScene extends Phaser.Scene {
       if (!this.textures.exists(key)) return;
       this.applyAvatar(key, b.radius, circle, initials, container);
     });
-    this.load.once(Phaser.Loader.Events.FILE_LOAD_ERROR, () => {
-      // keep initials fallback
-    });
     this.load.start();
   }
 
@@ -218,15 +334,7 @@ export class ArenaScene extends Phaser.Scene {
   ): void {
     initials.setVisible(false);
     const img = this.add.image(0, 0, key);
-    const size = radius * 1.7;
-    img.setDisplaySize(size, size);
-    // Mask circle
-    const maskShape = this.make.graphics({ x: 0, y: 0 });
-    maskShape.fillStyle(0xffffff);
-    maskShape.fillCircle(0, 0, radius - 2);
-    // Position mask with container — use geometry mask on image relative to container
-    img.setMask(maskShape.createGeometryMask());
-    // Parent mask with container by updating in sync is hard; simpler: just show circular-ish image
+    img.setDisplaySize(radius * 1.7, radius * 1.7);
     container.addAt(img, 1);
     circle.setFillStyle(circle.fillColor, 0.25);
   }

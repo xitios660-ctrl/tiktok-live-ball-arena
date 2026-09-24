@@ -58,6 +58,7 @@ async function main() {
 
   game.onRound((state) => io.emit(SOCKET_EVENTS.ROUND_STATE, state));
   game.onSnapshot((snap) => io.emit(SOCKET_EVENTS.GAME_SNAPSHOT, snap));
+  game.onCombat((ev) => io.emit(SOCKET_EVENTS.COMBAT_EVENT, ev));
 
   app.use(healthRouter({ game, connector, mode: MODE }));
   app.use(adminApiRouter({ game, getDemo, mode: MODE }));

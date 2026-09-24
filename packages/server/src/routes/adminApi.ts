@@ -3,10 +3,6 @@ import type { GameLoop } from '../game/GameLoop';
 import type { DemoEventSimulator } from '../demo/DemoEventSimulator';
 import { DEMO_GIFT_PRESETS } from '../demo/DemoEventSimulator';
 
-/**
- * Admin REST API for DEMO playtesting.
- * Only active / meaningful when connector is DemoEventSimulator.
- */
 export function adminApiRouter(deps: {
   game: GameLoop;
   getDemo: () => DemoEventSimulator | null;
@@ -32,10 +28,19 @@ export function adminApiRouter(deps: {
 
   router.get('/admin/status', (_req, res) => {
     const demo = deps.getDemo();
+    const snap = deps.game.getSnapshot();
     res.json({
       ok: true,
       mode: deps.mode,
       round: deps.game.getState(),
+      stats: snap.stats,
+      balls: snap.balls.map((b) => ({
+        userId: b.userId,
+        username: b.username,
+        hp: b.hp,
+        maxHp: b.maxHp,
+      })),
+      recentCombat: deps.game.getRecentCombat().slice(-20),
       recentEvents: deps.game.getRecentEvents().slice(-20),
       demo: demo?.getStatus() ?? null,
       gifts: DEMO_GIFT_PRESETS,
@@ -119,6 +124,37 @@ export function adminApiRouter(deps: {
     const enabled = req.body?.enabled !== false && req.body?.enabled !== 'false';
     demo.setAutoEnabled(Boolean(enabled));
     res.json({ ok: true, status: demo.getStatus() });
+  });
+
+  /** Force damage on a living ball (by userId or first ball) */
+  router.post('/admin/combat/damage', (req, res) => {
+    const snap = deps.game.getSnapshot();
+    const victimId =
+      (req.body?.victimId as string) ||
+      snap.balls[0]?.userId;
+    if (!victimId) {
+      res.status(400).json({ ok: false, error: 'No living balls' });
+      return;
+    }
+    const damage = Number(req.body?.damage) || 25;
+    const attackerId = req.body?.attackerId as string | undefined;
+    const events = deps.game.adminDamage(victimId, damage, attackerId);
+    res.json({ ok: true, victimId, damage, events, stats: deps.game.getStats() });
+  });
+
+  /** Instantly kill a ball */
+  router.post('/admin/combat/kill', (req, res) => {
+    const snap = deps.game.getSnapshot();
+    const victimId =
+      (req.body?.victimId as string) ||
+      snap.balls[0]?.userId;
+    if (!victimId) {
+      res.status(400).json({ ok: false, error: 'No living balls' });
+      return;
+    }
+    const attackerId = req.body?.attackerId as string | undefined;
+    const events = deps.game.adminKill(victimId, attackerId);
+    res.json({ ok: true, victimId, events, stats: deps.game.getStats() });
   });
 
   return router;

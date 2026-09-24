@@ -5,6 +5,7 @@ import {
   type RoundState,
   type ArenaLiveEvent,
   type GameSnapshot,
+  type CombatEvent,
 } from '@arena/shared';
 
 let socket: Socket | null = null;
@@ -42,6 +43,10 @@ export function connectSocket(game: Phaser.Game): Socket {
 
   socket.on(SOCKET_EVENTS.GAME_SNAPSHOT, (snap: GameSnapshot) => {
     game.events.emit(SOCKET_EVENTS.GAME_SNAPSHOT, snap);
+  });
+
+  socket.on(SOCKET_EVENTS.COMBAT_EVENT, (event: CombatEvent) => {
+    game.events.emit(SOCKET_EVENTS.COMBAT_EVENT, event);
   });
 
   return socket;

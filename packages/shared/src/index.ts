@@ -25,25 +25,12 @@ export interface GiftConfigFile {
   gifts: GiftConfigEntry[];
 }
 
-/** Normalized TikTok-like user (demo or production) */
 export interface ArenaUser {
   userId: string;
   username: string;
   nickname?: string;
   avatarUrl?: string;
 }
-
-export type ArenaEventType =
-  | 'comment'
-  | 'gift'
-  | 'like'
-  | 'share'
-  | 'join'
-  | 'follow'
-  | 'streamEnd'
-  | 'connected'
-  | 'disconnected'
-  | 'error';
 
 export interface ArenaCommentEvent {
   type: 'comment';
@@ -109,7 +96,6 @@ export interface RoundState {
   playerCount: number;
 }
 
-/** Public ball state (client-renderable). Server is authoritative. */
 export interface BallState {
   id: string;
   userId: string;
@@ -119,15 +105,26 @@ export interface BallState {
   x: number;
   y: number;
   radius: number;
-  /** 0xRRGGBB */
   color: number;
   hp: number;
   maxHp: number;
-  /** Display label (username or nickname) */
   label: string;
+  /** Flash client on recent hit */
+  hitFlash?: boolean;
 }
 
-/** Full snapshot broadcast ~PHYSICS_TICK_HZ times per second */
+/** Per-player round stats (alive or dead). Respawn = Etapa 8. */
+export interface PlayerStats {
+  userId: string;
+  username: string;
+  nickname?: string;
+  kills: number;
+  deaths: number;
+  alive: boolean;
+  hp: number;
+  maxHp: number;
+}
+
 export interface GameSnapshot {
   tick: number;
   tickHz: number;
@@ -135,28 +132,74 @@ export interface GameSnapshot {
   remainingSec: number;
   playerCount: number;
   balls: BallState[];
+  /** Leaderboard-ish kill list (top / all) */
+  stats: PlayerStats[];
 }
+
+/** Collision hit for VFX / feed */
+export interface HitEvent {
+  type: 'hit';
+  attackerId: string;
+  attackerName: string;
+  victimId: string;
+  victimName: string;
+  damage: number;
+  victimHp: number;
+  x: number;
+  y: number;
+  timestamp: number;
+}
+
+export interface KillEvent {
+  type: 'kill';
+  attackerId: string | null;
+  attackerName: string | null;
+  victimId: string;
+  victimName: string;
+  /** "@attacker eliminou @victim" */
+  message: string;
+  x: number;
+  y: number;
+  timestamp: number;
+}
+
+export type CombatEvent = HitEvent | KillEvent;
 
 export const CANVAS_WIDTH = 1080;
 export const CANVAS_HEIGHT = 1920;
 export const DEFAULT_ROUND_DURATION_SEC = 300;
 
-/** Server physics + snapshot broadcast rate (Hz) */
 export const PHYSICS_TICK_HZ = 30;
-
-/** Progressive speed multiplier on wall or ball collision */
 export const SPEED_BOOST_ON_COLLISION = 1.015;
 
 export const DEFAULT_BALL_RADIUS = 36;
 export const DEFAULT_BALL_HP = 100;
+/** Soft cap for future heals (Etapa gifts) */
+export const MAX_BALL_HP = 150;
 export const MAX_BALL_SPEED = 900;
 export const MIN_SPAWN_SPEED = 80;
 export const MAX_SPAWN_SPEED = 160;
+
+/**
+ * Damage formula (player-player, approaching collisions only):
+ *   impact = closing speed along normal (−velAlongNormal)
+ *   shareA = massB / (massA + massB)   // heavier opponent → more dmg to you
+ *   raw = impact * DAMAGE_SPEED_FACTOR * share * strength(1)
+ *   damage = clamp(round(raw), DAMAGE_MIN, DAMAGE_MAX)
+ * Both balls take damage (mutual), weighted by the other's mass share.
+ * Last hitter who dealt damage to you gets the kill credit.
+ */
+export const DAMAGE_SPEED_FACTOR = 0.085;
+export const DAMAGE_MIN = 2;
+export const DAMAGE_MAX = 28;
+/** Ignore glancing blows below this closing speed (px/s) */
+export const DAMAGE_IMPACT_THRESHOLD = 40;
 
 export const SOCKET_EVENTS = {
   ROUND_STATE: 'round:state',
   LIVE_EVENT: 'live:event',
   GAME_SNAPSHOT: 'game:snapshot',
+  COMBAT_EVENT: 'combat:event',
   CLIENT_READY: 'client:ready',
   HEALTH_PING: 'health:ping',
 } as const;

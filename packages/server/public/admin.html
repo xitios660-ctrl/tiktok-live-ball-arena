@@ -68,6 +68,15 @@
       <button onclick="post('/admin/sim/follow')">➕ Follow</button>
     </div>
 
+
+    <div class="card">
+      <h2>Combate (HP / kill)</h2>
+      <button class="danger" onclick="post('/admin/combat/damage', { damage: 25 })">💥 Dano 25 (1ª bola)</button>
+      <button class="danger" onclick="post('/admin/combat/damage', { damage: 50 })">💥 Dano 50</button>
+      <button class="danger" onclick="post('/admin/combat/kill')">☠️ Kill (1ª bola)</button>
+      <div id="kills" style="margin-top:8px;font-size:.85rem;color:var(--muted)">kills: —</div>
+    </div>
+
     <div class="card">
       <h2>Bots & conexão</h2>
       <div class="row">
@@ -117,11 +126,18 @@
       const j = await r.json();
       const rd = j.round || {};
       document.getElementById('round').textContent =
-        `phase=${rd.phase} remaining=${rd.remainingSec}s mode=${rd.mode} id=${(rd.roundId||'').slice(0,8)}`;
-      if (j.recentEvents?.length) {
-        document.getElementById('log').textContent = j.recentEvents
-          .slice().reverse().map(e => `${e.type} ${e.user?.username||''} ${e.giftName||e.comment||''}`).join('\n');
+        `phase=${rd.phase} remaining=${rd.remainingSec}s players=${rd.playerCount||0} id=${(rd.roundId||'').slice(0,8)}`;
+      const killsEl = document.getElementById('kills');
+      if (killsEl && j.stats) {
+        killsEl.textContent = j.stats.slice(0, 8).map(s =>
+          `${s.alive?'🟢':'💀'} ${s.username} K:${s.kills} D:${s.deaths} HP:${s.hp}`
+        ).join(' · ') || 'sem jogadores';
       }
+      const combat = (j.recentCombat||[]).filter(e => e.type==='kill').slice(-5).reverse();
+      const evLines = (j.recentEvents||[]).slice().reverse().slice(0,10).map(e =>
+        `${e.type} ${e.user?.username||''} ${e.giftName||e.comment||''}`);
+      const killLines = combat.map(e => e.message);
+      document.getElementById('log').textContent = [...killLines, ...evLines].join('\n');
     }
     refresh();
     setInterval(refresh, 2000);

@@ -1,43 +1,44 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Etapas 2 + 3 concluídas** (arena + física autoritativa)
+## Etapa atual: **Etapas 4–5 + 7-lite concluídas** (HP, dano, morte, kill feed)
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
 ## Decisões
 
-1. **DEMO-first:** `TIKTOK_MODE=demo` padrão; playtest via `/admin`.
-2. **Conector isolado:** `ITikTokConnector` — demo/production swappable.
-3. **PRODUCTION (futuro):** `tiktok-live-connector` v2.5.x — ver `docs/TIKTOK_INTEGRATION.md`.
-4. **Client:** Phaser 3 + Vite, canvas **1080×1920** (OBS Browser Source).
-5. **Server autoritativo:** Express + Socket.IO; **física 100% no server**.
-6. **Tick rate:** **`PHYSICS_TICK_HZ = 30`** — integrate + broadcast `game:snapshot` a 30 Hz.
-7. **Spawn:** comentário ou join (bots) → 1 bola por `userId` (nudge se já existe). Auto-inicia rodada no DEMO se `waiting`.
-8. **Colisão:** paredes + bola-bola (impulso ~elástico); em **toda** colisão parede/jogador multiplica velocidade por **`1.015`**; cap `MAX_BALL_SPEED=900`; clamp NaN; push-out de paredes.
-9. **HP:** stub visual 100 (dano/morte = Etapa 4–5).
-10. **Gifts/abilities:** ainda stub (Etapa futura).
+1. **DEMO-first** + conector isolado + Phaser 1080×1920 (mantidos).
+2. **Física 30 Hz** server-authoritative; speed × **1.015** em colisão (Etapa 6 leve já ativa).
+3. **HP:** start **100**, `maxHp` 100 (cap soft `MAX_BALL_HP=150` para heals futuros).
+4. **Dano (mútuo, mass-weighted):**
+   - Só em colisões **aproximando** (`velAlongNormal < 0`) com closing speed ≥ `DAMAGE_IMPACT_THRESHOLD` (40).
+   - `impact = −velAlongNormal`
+   - `damage_to_victim = clamp(round(impact × 0.085 × (attackerMass/totalMass) × strength), 2, 28)`
+   - Ambos levam dano; quem acerta mais forte (mais massa) causa mais.
+   - `lastHitter` = o outro na última aplicação de dano → crédito do kill.
+5. **Morte:** HP ≤ 0 → remove da física, `deaths++`, killer `kills++`, emit `combat:event` kill `"@attacker eliminou @victim"`.
+6. **Respawn:** **não** nesta etapa. Mortos ficam em `stats` (`alive:false`); comentário de morto é ignorado (hook Etapa 8).
+7. **Admin:** `/admin/combat/damage`, `/admin/combat/kill` + painel com K/D.
 
-## Arquivos principais (Etapa 2–3)
+## Arquivos (desta entrega)
 
-- `packages/shared/src/index.ts` — `BallState`, `GameSnapshot`, constantes de física
-- `packages/server/src/game/PhysicsWorld.ts` — círculos, paredes, colisões
-- `packages/server/src/game/GameLoop.ts` — spawn + tick 30 Hz + snapshots
-- `packages/client/src/scenes/ArenaScene.ts` — render de bolas (label, iniciais/avatar, HP bar)
-- `packages/client/src/socket.ts` — escuta `game:snapshot`
+- `packages/shared/src/index.ts` — dano constants, `PlayerStats`, `HitEvent`/`KillEvent`, `COMBAT_EVENT`
+- `packages/server/src/game/PhysicsWorld.ts` — dano em bola-bola
+- `packages/server/src/game/GameLoop.ts` — stats, morte, adminDamage/Kill, anti-respawn morto
+- `packages/server/src/routes/adminApi.ts` + `public/admin.html`
+- `packages/client/src/scenes/ArenaScene.ts` — HP bars, kill feed, sparks/death flash
+- `packages/client/src/socket.ts` — `combat:event`
 
 ## Como testar DEMO
 
 ```bash
-npm run dev   # ou server já em :3000 + overlay build
-# Admin http://localhost:3000/admin
-# 1) Spawn bots (5) OU Comentário
-# 2) Overlay http://localhost:3000/overlay ou :5173
-# Bolas devem aparecer, quicar nas paredes e entre si, acelerando aos poucos
+# server :3000
+# Admin → Spawn bots (8–12) → esperar colisões (HP cai) OU
+#   "Dano 25/50" / "Kill (1ª bola)"
+# Overlay: kill feed à direita, K/D no canto, bolas somem ao morrer
 ```
 
-## Next: **Etapa 4–5 — HP / dano / morte**
+## Next: **Etapa 8 — respawn por comentário + revenge**
 
-- Dano em colisão bola-bola (escalar com velocidade relativa)
-- Morte / remoção / revenge stub
-- Ranking / placar
-- (Depois) gifts → abilityKey (tamanhos, boosts)
+- Morto comenta → respawna (talvez HP reduzido / revenge mark no killer)
+- Ranking / top killers overlay
+- Gifts → abilityKey (tamanhos, heal até 150, boosts)

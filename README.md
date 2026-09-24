@@ -2,7 +2,7 @@
 
 Jogo interativo para TikTok Live (overlay OBS **1080×1920**). Presentes da live spawnam bolas e habilidades na arena.
 
-> **Etapas 1–3:** estrutura + DEMO + arena 1080×1920 + física server-side a **30 Hz**. HP/dano = Etapa 4–5.
+> **Etapas 1–5 + 7-lite:** DEMO + arena + física 30 Hz + **HP/dano/morte/kill feed**. Respawn = Etapa 8.
 
 ## DEMO vs PRODUCTION
 
@@ -43,6 +43,14 @@ gifts/            gift-config.json (hierarquia Rosa → Galaxia)
 docs/             pesquisa de integração TikTok
 ```
 
+
+
+## Combate (Etapa 5)
+
+- HP 100; dano mútuo em colisão (velocidade × massa), clamp 2–28
+- Morte remove a bola; kill feed: `@attacker eliminou @victim`
+- Mortos **não** respawnam ainda (Etapa 8)
+- Admin: botões Dano / Kill em `/admin`
 
 ## Física (Etapa 3)
 
