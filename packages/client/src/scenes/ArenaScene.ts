@@ -17,6 +17,7 @@ import { getOverlayOptions, SAFE } from '../overlayConfig';
 import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT } from '../theme';
 import {
   playAbilityFx,
+  playBallSpawnFx,
   spawnStrengthSparkles,
   spawnFreezeBurst,
   spawnDashBurst,
@@ -153,6 +154,8 @@ export class ArenaScene extends Phaser.Scene {
   private ballsLayer!: Phaser.GameObjects.Container;
   private killFeedLayer!: Phaser.GameObjects.Container;
   private views = new Map<string, BallView>();
+  /** After first syncBalls, new balls get spawn portal VFX (avoids hydrate spam). */
+  private ballsHydrated = false;
   private pendingAvatars = new Set<string>();
   private killFeed: NeonFeedItem[] = [];
   private toastUntil = 0;
@@ -807,6 +810,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private syncBalls(balls: BallState[]): void {
     const seen = new Set<string>();
+    const hydrated = this.ballsHydrated;
     for (const b of balls) {
       seen.add(b.id);
       let view = this.views.get(b.id);
@@ -814,6 +818,20 @@ export class ArenaScene extends Phaser.Scene {
         view = this.createBallView(b);
         this.views.set(b.id, view);
         this.ballsLayer.add(view.container);
+        // Soft pop always; full portal only after first hydrate (join/respawn mid-match)
+        view.container.setScale(0.15);
+        this.tweens.add({
+          targets: view.container,
+          scale: 1,
+          duration: 320,
+          ease: 'Back.Out',
+        });
+        if (hydrated) {
+          playBallSpawnFx(this, b.x, b.y, b.radius, this.particleBudget ?? 1, {
+            revenge: !!b.revengeMarked,
+            phoneLite: this.phoneLite,
+          });
+        }
       }
       this.updateBallView(view, b);
     }
@@ -823,6 +841,7 @@ export class ArenaScene extends Phaser.Scene {
         this.views.delete(id);
       }
     }
+    this.ballsHydrated = true;
   }
 
   private createBallView(b: BallState): BallView {

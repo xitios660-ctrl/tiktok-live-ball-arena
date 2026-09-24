@@ -508,3 +508,101 @@ export function tickBuffParticles(
   }
   return opts.lastBuffFxAt;
 }
+
+/**
+ * Cinematic ball join/respawn portal — cyan/gold rings + vertical beam + sparks.
+ * Skip heavy parts when budget < 0.25; simplify on phoneLite via lower budget.
+ */
+export function playBallSpawnFx(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  radius: number,
+  budget: FxBudget = 1,
+  opts?: { revenge?: boolean; phoneLite?: boolean }
+): void {
+  if (budget < 0.2) return;
+  const r = Math.max(16, radius);
+  const depth = 68;
+  const accent = opts?.revenge ? THEME.gold : THEME.electricCyan;
+  const secondary = opts?.revenge ? THEME.emberOrange : THEME.gold;
+  const lite = !!opts?.phoneLite || budget < 0.45;
+
+  // Soft vertical warp beam
+  if (!lite) {
+    const beam = scene.add
+      .rectangle(x, y, Math.max(10, r * 0.35), r * 4.2, accent, 0.35)
+      .setDepth(depth - 2);
+    scene.tweens.add({
+      targets: beam,
+      scaleY: 0.15,
+      alpha: 0,
+      duration: 480,
+      ease: 'Cubic.easeIn',
+      onComplete: () => beam.destroy(),
+    });
+  }
+
+  // Core cream flash
+  const core = scene.add.circle(x, y, r * 0.55, THEME.light, 0.75).setDepth(depth);
+  scene.tweens.add({
+    targets: core,
+    scale: 0.15,
+    alpha: 0,
+    duration: 280,
+    ease: 'Cubic.easeIn',
+    onComplete: () => core.destroy(),
+  });
+
+  // Expanding neon rings (portal)
+  const ringCount = lite ? 1 : 2;
+  for (let i = 0; i < ringCount; i++) {
+    const color = i === 0 ? accent : secondary;
+    const ring = scene.add
+      .circle(x, y, r * 0.7, color, 0)
+      .setStrokeStyle(lite ? 3 : 4, color, 0.95)
+      .setDepth(depth)
+      .setAlpha(0.95);
+    scene.tweens.add({
+      targets: ring,
+      scale: 2.1 + i * 0.35,
+      alpha: 0,
+      delay: i * 55,
+      duration: 420 + i * 80,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  // Soft fill bloom under rings
+  const bloom = scene.add.circle(x, y, r * 1.1, accent, 0.28).setDepth(depth - 1);
+  scene.tweens.add({
+    targets: bloom,
+    scale: 1.85,
+    alpha: 0,
+    duration: 380,
+    ease: 'Cubic.easeOut',
+    onComplete: () => bloom.destroy(),
+  });
+
+  // Outward sparks
+  const sparkN = Math.max(4, Math.floor((lite ? 6 : 12) * Math.max(0.35, budget)));
+  for (let i = 0; i < sparkN; i++) {
+    const ang = (Math.PI * 2 * i) / sparkN + Math.random() * 0.2;
+    const dist = r * 1.2 + Math.random() * r * 1.1;
+    const c = i % 3 === 0 ? THEME.light : i % 3 === 1 ? secondary : accent;
+    const dot = scene.add
+      .circle(x, y, 2.5 + Math.random() * 3, c, 1)
+      .setDepth(depth + 1);
+    scene.tweens.add({
+      targets: dot,
+      x: x + Math.cos(ang) * dist,
+      y: y + Math.sin(ang) * dist - 8,
+      alpha: 0,
+      scale: 0.25,
+      duration: 320 + Math.random() * 200,
+      ease: 'Cubic.easeOut',
+      onComplete: () => dot.destroy(),
+    });
+  }
+}
