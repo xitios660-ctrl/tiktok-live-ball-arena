@@ -22,6 +22,12 @@ import {
   spawnReflectActivate,
   tickBuffParticles,
 } from '../fx/AbilityFx';
+import {
+  createCinematicTitle,
+  setPhaseChrome,
+  type CinematicHudHandles,
+} from '../ui/CinematicHud';
+import { createGiftLegend, type GiftLegendHandles } from '../ui/GiftLegend';
 
 interface BallView {
   container: Phaser.GameObjects.Container;
@@ -63,6 +69,8 @@ export class ArenaScene extends Phaser.Scene {
   private top5Bg!: Phaser.GameObjects.Graphics;
   private top5Text!: Phaser.GameObjects.Text;
   private titleText!: Phaser.GameObjects.Text;
+  private cinematicHud!: CinematicHudHandles;
+  private giftLegend!: GiftLegendHandles;
   private feedText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private bigCountdown!: Phaser.GameObjects.Text;
@@ -122,21 +130,14 @@ export class ArenaScene extends Phaser.Scene {
       .setStrokeStyle(5, THEME.coral, 0.85)
       .setDepth(2);
 
-    // Title
-    this.titleText = this.add
-      .text(CANVAS_WIDTH / 2, top + 8, 'BALL ARENA', {
-        fontFamily: FONT_BLACK,
-        fontSize: '42px',
-        color: THEME_HEX.cream,
-        stroke: THEME_HEX.coral,
-        strokeThickness: 6,
-      })
-      .setOrigin(0.5)
-      .setDepth(100);
+    // Cinematic title treatment
+    this.cinematicHud = createCinematicTitle(this, CANVAS_WIDTH / 2, top + 22, 100);
+    this.titleText = this.cinematicHud.titleMain;
+    setPhaseChrome(this.cinematicHud, data?.round?.phase ?? 'waiting', data?.round?.remainingSec);
 
     // Timer glow (behind) + main timer
     this.timerGlow = this.add
-      .text(CANVAS_WIDTH / 2, top + 72, this.formatTime(data?.round?.remainingSec ?? 300), {
+      .text(CANVAS_WIDTH / 2, top + 108, this.formatTime(data?.round?.remainingSec ?? 300), {
         fontFamily: FONT_BLACK,
         fontSize: '64px',
         color: THEME_HEX.sage,
@@ -145,7 +146,7 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(99)
       .setAlpha(0.25);
     this.timerText = this.add
-      .text(CANVAS_WIDTH / 2, top + 72, this.formatTime(data?.round?.remainingSec ?? 300), {
+      .text(CANVAS_WIDTH / 2, top + 108, this.formatTime(data?.round?.remainingSec ?? 300), {
         fontFamily: FONT_BLACK,
         fontSize: '58px',
         color: THEME_HEX.sage,
@@ -156,7 +157,7 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.playersText = this.add
-      .text(CANVAS_WIDTH / 2, top + 128, `● VIVOS  ${data?.round?.playerCount ?? 0}`, {
+      .text(CANVAS_WIDTH / 2, top + 168, `● VIVOS  ${data?.round?.playerCount ?? 0}`, {
         fontFamily: FONT_BLACK,
         fontSize: '24px',
         color: THEME_HEX.muted,
@@ -178,8 +179,8 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(200)
       .setScrollFactor(0);
 
-    // TOP 5 glass card
-    this.top5Panel = this.add.container(side, top + 150).setDepth(100);
+    // TOP 5 glass card (left)
+    this.top5Panel = this.add.container(side, top + 200).setDepth(100);
     this.top5Bg = this.add.graphics();
     this.drawTop5Bg(280, 220);
     this.top5Text = this.add
@@ -191,8 +192,16 @@ export class ArenaScene extends Phaser.Scene {
       });
     this.top5Panel.add([this.top5Bg, this.top5Text]);
 
+    // Gift gabarito — right side (opposite TOP5; kill feed stays bottom-right)
+    const legendW = 292;
+    this.giftLegend = createGiftLegend(this, CANVAS_WIDTH - side - legendW, top + 200, {
+      compact: true,
+      maxWidth: legendW,
+      depth: 95,
+    });
+
     this.toastText = this.add
-      .text(CANVAS_WIDTH / 2, top + 210, '', {
+      .text(CANVAS_WIDTH / 2, top + 250, '', {
         fontFamily: FONT_BLACK,
         fontSize: '32px',
         color: THEME_HEX.gold,
@@ -239,27 +248,27 @@ export class ArenaScene extends Phaser.Scene {
     const panelAccent = this.add.rectangle(0, -320, 860, 12, THEME.coral, 1);
     const panelAccent2 = this.add.rectangle(0, 320, 860, 12, THEME.teal, 1);
     this.winnerTitle = this.add
-      .text(0, -250, '🏆 REI DA ARENA', {
+      .text(0, -250, '★ REI DA ARENA ★', {
         fontFamily: FONT_BLACK,
-        fontSize: '52px',
+        fontSize: '58px',
         color: THEME_HEX.gold,
         stroke: '#000000',
-        strokeThickness: 8,
+        strokeThickness: 10,
       })
       .setOrigin(0.5);
     this.winnerBody = this.add
       .text(0, -20, '', {
         fontFamily: FONT,
-        fontSize: '30px',
+        fontSize: '32px',
         color: THEME_HEX.cream,
         align: 'center',
-        lineSpacing: 10,
+        lineSpacing: 12,
       })
       .setOrigin(0.5);
     this.resultsHint = this.add
       .text(0, 270, 'Próxima rodada em …', {
         fontFamily: FONT_BLACK,
-        fontSize: '26px',
+        fontSize: '28px',
         color: THEME_HEX.teal,
       })
       .setOrigin(0.5);
@@ -431,12 +440,20 @@ export class ArenaScene extends Phaser.Scene {
       } else if (
         event.kind === 'gift' ||
         event.kind === 'galaxy' ||
+        event.kind === 'cosmic_duel' ||
         event.kind === 'sugar_burst' ||
-        event.kind === 'stomp'
+        event.kind === 'stomp' ||
+        event.kind === 'shield_expire'
       ) {
         this.showToast(event.message);
-        this.pushKillFeed(event.message, THEME_HEX.lavender, '#2a2040ee');
-        audio.play('gift');
+        const feedColor =
+          event.kind === 'cosmic_duel'
+            ? THEME_HEX.gold
+            : event.kind === 'shield_expire'
+              ? THEME_HEX.muted
+              : THEME_HEX.lavender;
+        this.pushKillFeed(event.message, feedColor, '#2a2040ee');
+        if (event.kind !== 'shield_expire') audio.play('gift');
       } else if (
         event.kind === 'heal_rain' ||
         event.kind === 'speed_storm' ||
@@ -473,20 +490,21 @@ export class ArenaScene extends Phaser.Scene {
     const label = this.formatTime(remaining);
     this.timerText.setText(label);
     if (this.timerGlow) this.timerGlow.setText(label);
+    if (this.cinematicHud) setPhaseChrome(this.cinematicHud, phase, remaining);
     if (phase === 'results') {
       this.timerText.setColor(THEME_HEX.gold).setFontSize('64px');
-      this.timerText.setText('FIM');
+      this.timerText.setText('RESULTADOS');
       if (this.timerGlow) {
-        this.timerGlow.setText('FIM').setColor(THEME_HEX.gold).setFontSize('70px');
+        this.timerGlow.setText('RESULTADOS').setColor(THEME_HEX.gold).setFontSize('70px');
       }
       this.intensity = false;
       return;
     }
     if (remaining <= 30) {
       this.intensity = true;
-      const size = remaining <= 10 ? '78px' : '66px';
+      const size = remaining <= 10 ? '82px' : '66px';
       this.timerText.setColor(THEME_HEX.coral).setFontSize(size);
-      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.coral).setFontSize(size).setAlpha(0.4);
+      if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.coral).setFontSize(size).setAlpha(0.45);
       if (remaining <= 10 && this.titleText) this.titleText.setColor(THEME_HEX.coral);
     } else if (remaining <= 60) {
       this.intensity = false;
@@ -506,12 +524,13 @@ export class ArenaScene extends Phaser.Scene {
   private showBigCountdown(n: number): void {
     this.bigCountdown.setText(String(n));
     this.bigCountdown.setColor(n <= 3 ? THEME_HEX.coral : THEME_HEX.cream);
-    this.bigCountdown.setAlpha(1).setScale(0.35);
+    this.bigCountdown.setStroke(n <= 3 ? THEME_HEX.gold : THEME_HEX.cream, n <= 3 ? 18 : 14);
+    this.bigCountdown.setAlpha(1).setScale(0.28);
     this.tweens.add({
       targets: this.bigCountdown,
-      scale: 1.35,
+      scale: n <= 3 ? 1.55 : 1.35,
       alpha: 0,
-      duration: 900,
+      duration: n <= 3 ? 1000 : 900,
       ease: 'Cubic.easeOut',
     });
   }
@@ -845,11 +864,20 @@ export class ArenaScene extends Phaser.Scene {
     const barW = Math.max(40, b.radius * 2.1);
     view.hpBg.setPosition(0, -b.radius - 14);
     view.hpBg.setSize(barW, 10);
-    if (isGalaxy) {
+    // Solo galaxy = immortal ∞ bar; Cosmic Duel uses real cosmic HP (lavender)
+    const galaxyImmortal = isGalaxy && (b.maxHp ?? 0) >= 9000;
+    const galaxyDuel = isGalaxy && !galaxyImmortal;
+    if (galaxyImmortal) {
       view.hpFg.setPosition(-barW / 2, -b.radius - 14);
       view.hpFg.setSize(barW, 10);
       view.hpFg.setFillStyle(THEME.lavender);
       view.label.setText(this.truncate(b.label, 10) + ' ∞');
+    } else if (galaxyDuel) {
+      const ratio = b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 0;
+      view.hpFg.setPosition(-barW / 2, -b.radius - 14);
+      view.hpFg.setSize(barW * ratio, 10);
+      view.hpFg.setFillStyle(THEME.lavender);
+      view.label.setText(this.truncate(b.label, 10) + ' ⚔️');
     } else {
       const ratio = b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 0;
       view.hpFg.setPosition(-barW / 2, -b.radius - 14);
@@ -876,7 +904,7 @@ export class ArenaScene extends Phaser.Scene {
       });
     }
 
-    if (b.hp < view.lastHp && !isGalaxy) {
+    if (b.hp < view.lastHp && !galaxyImmortal) {
       this.tweens.add({
         targets: view.container,
         scaleX: 1.15,

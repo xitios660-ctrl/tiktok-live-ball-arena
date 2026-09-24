@@ -5,6 +5,7 @@ import {
   DONUT_SHIELD_PER,
   DONUT_SHIELD_MAX,
   DONUT_DURATION_MS,
+  DONUT_SHIELD_DURATION_MS,
   SUGAR_BURST_DURATION_MS,
   TITAN_DURATION_MS,
   TITAN_HP_GAIN,
@@ -84,6 +85,7 @@ export function applyGiftAbility(
       case 'donut_overdrive': {
         physics.heal(userId, DONUT_HEAL);
         physics.addShield(userId, DONUT_SHIELD_PER, DONUT_SHIELD_MAX);
+        physics.refreshShieldUntil(userId, DONUT_SHIELD_DURATION_MS);
         const until = Math.max(ball.donutUntil, now) + DONUT_DURATION_MS;
         physics.setTimedBuff(userId, 'donut', until);
         if (i === times - 1) {
@@ -91,7 +93,7 @@ export function applyGiftAbility(
           announces.push({
             type: 'announce',
             kind: 'gift',
-            message: `🍩 DONUT OVERDRIVE! @${name} escudo ${b.shieldHp}`,
+            message: `🍩 DONUT OVERDRIVE! @${name} escudo ${b.shieldHp} (~${Math.round(DONUT_SHIELD_DURATION_MS / 1000)}s)`,
             userId,
             username: name,
             timestamp: Date.now(),
@@ -128,16 +130,41 @@ export function applyGiftAbility(
         break;
       }
       case 'galaxy_god': {
-        physics.enableGalaxy(userId);
-        if (i === 0) {
-          announces.push({
-            type: 'announce',
-            kind: 'galaxy',
-            message: `🌌 GALAXY GOD MODE! @${name} — imortal até o fim da rodada!`,
-            userId,
-            username: name,
-            timestamp: Date.now(),
-          });
+        const gal = physics.enableGalaxy(userId);
+        if (i === 0 && gal.ok) {
+          if (gal.alreadyGalaxy) {
+            // Refresh only — skip spam announce
+          } else if (gal.duelStarted && gal.opponents.length) {
+            const opp = gal.opponents.map((o) => `@${o.name}`).join(' & ');
+            announces.push({
+              type: 'announce',
+              kind: 'cosmic_duel',
+              message: `⚔️ DUELO CÓSMICO! @${name} vs ${opp} — só gods se machucam!`,
+              userId,
+              username: name,
+              targetId: gal.opponents[0]?.userId,
+              targetName: gal.opponents[0]?.name,
+              timestamp: Date.now(),
+            });
+          } else if (gal.duelJoined) {
+            announces.push({
+              type: 'announce',
+              kind: 'cosmic_duel',
+              message: `🌌 @${name} entrou no DUELO CÓSMICO! Gods vs gods!`,
+              userId,
+              username: name,
+              timestamp: Date.now(),
+            });
+          } else {
+            announces.push({
+              type: 'announce',
+              kind: 'galaxy',
+              message: `🌌 GALAXY GOD MODE! @${name} — imortal até o fim da rodada!`,
+              userId,
+              username: name,
+              timestamp: Date.now(),
+            });
+          }
         }
         break;
       }

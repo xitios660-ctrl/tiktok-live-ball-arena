@@ -1,149 +1,50 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **VFX polish (abilities + combat feedback)**
+## Etapa atual: **Balance + cinematic overlay + gabarito**
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
-Lightweight ability FX on overlay (no heavy Phaser filters). Server emits `ability_fx` combat events; client draws bolts/rings/trails with adaptive particle budget.
+### Balance
 
-| ability | VFX |
-|---------|-----|
-| lightning_zap | jagged bolt caster→target + hit spark |
-| magnet_pulse | inward radial rings + pull lines |
-| freeze_aura | icy burst + soft flakes while aura active |
-| dash_burst | speed afterimage trail |
-| reflect_shield | silver rotating ring; flash + bounce line on reflect_hit |
-| strength_up / high kills | gold sparkles + existing 💪 mark (kept) |
+1. **Donut shield TTL** — `DONUT_SHIELD_DURATION_MS = 15_000`. Shield HP expires by time (`shieldUntil`); Sugar Burst only on damage-break, not on fade. Feed: `🛡 Escudo expirou @name`.
+2. **Cosmic Duel** — 1ª Galáxia = God Mode immortal até fim da rodada. 2ª Galáxia de outro player inicia **Duelo Cósmico**: gods se machucam via `cosmicHp` (250), dano ×`COSMIC_DUEL_DAMAGE_MULT` (0.4). Mortais não derrubam gods. Cosmic HP → 0 = perde God Mode, volta mortal full HP. 3ª+ entra no duelo.
 
-Shared: `AbilityFxEvent` on `CombatEvent`. DEMO admin gift buttons unchanged. Mobile 9:16 FIT unchanged. Postgres / production TikTok not touched.
+### Overlay
 
-## Como testar
+3. **Cinematic HUD** — título BALL ARENA (Nunito 800, ★ + gold accent), phase labels (RODADA / FINAL / RESULTADOS).
+4. **Gabarito de presentes** — painel direito compacto com efeitos em PT-BR + “Comente para entrar / respawnar”.
+
+### Como testar (DEMO admin)
 
 ```bash
 TIKTOK_MODE=demo npm run build && npm start
 # Overlay: http://localhost:PORT/overlay
-# Admin: spawn 2+ bots, fire raio / ima / gelo / foguete / espelho
-# Expect: bolt, pull rings, ice flakes, dash ghosts, shield ring + flash on hit
-# Low FPS: particleBudget drops (fewer particles)
-# Public: https://tiktok-live-ball-arena.onrender.com/overlay
+# Admin: spawn 2 bots → send galaxia on both → expect DUELO CÓSMICO + lavender HP bars
+# Send rosquinha → wait ~15s → “Escudo expirou” (no Sugar Burst); break shield by hits → Sugar Burst
 ```
 
-## Arquivos
+### Constantes
 
-- `packages/shared/src/index.ts` — `AbilityFxEvent`
-- `packages/server/src/game/GiftAbilities.ts` — emit fx per new gift
-- `packages/server/src/game/PhysicsWorld.ts` — richer ability returns + `reflected` on damage
-- `packages/server/src/game/GameLoop.ts` — push `ability_fx` / `reflect_hit`
-- `packages/client/src/fx/AbilityFx.ts` — one-shot + tick particles
-- `packages/client/src/scenes/ArenaScene.ts` — wire combat + buff tick
+| Key | Value |
+|-----|-------|
+| DONUT_SHIELD_DURATION_MS | 15000 |
+| COSMIC_DUEL_HP | 250 |
+| COSMIC_DUEL_DAMAGE_MULT | 0.4 |
 
-## Próximo
+### Arquivos
 
-1. Optional Postgres / match history
-2. Production TikTok connector **only when asked**
-3. Optional: process lightning zap damages through kill/hit path (today FX-only; HP already applied)
+- `packages/shared/src/index.ts` — constants + `cosmic_duel` / `shield_expire` kinds
+- `packages/server/src/game/PhysicsWorld.ts` — shieldUntil, enableGalaxy duel, cosmic damage
+- `packages/server/src/game/GiftAbilities.ts` — shield refresh + duel announces
+- `packages/server/src/game/GameLoop.ts` — feed for expire / lost God Mode
+- `packages/client/src/ui/CinematicHud.ts` — title / phase chrome
+- `packages/client/src/ui/GiftLegend.ts` — gift cheat sheet
+- `packages/client/src/scenes/ArenaScene.ts` — wire HUD + duel HP bar
 
-## Public
+### Public
 
-- Render auto-deploy: https://tiktok-live-ball-arena.onrender.com
+- Render: https://tiktok-live-ball-arena.onrender.com/overlay
 
+## Anterior (VFX polish)
 
-## Anterior (theme + powers)
-
-## Add-on: Mild attraction + new powers
-
-**Attraction:** `MILD_ATTRACTION_ACCEL=55`, radius `420`, cap `90` px/s²; soft falloff `(1-dist/R)`; disabled while spawn-protected. Clusters fights without gluing.
-
-**New gifts (admin DEMO):**
-| id | ability | effect |
-|----|---------|--------|
-| raio | lightning_zap | nearest foe: dmg 8 + slow ~2.2s |
-| ima | magnet_pulse | short strong pull toward caster |
-| gelo | freeze_aura | 8s aura slows nearby |
-| foguete | dash_burst | impulse + 2.5s speed |
-| espelho | reflect_shield | 5s, ~55% dmg bounce |
-
-Still: design polish + kill→strength (`1+min(kills*0.08,1)`) + ranking kills-first.
-
-## Como testar
-
-```bash
-TIKTOK_MODE=demo npm run build && npm start
-# Overlay: polish HUD; Admin: spawn bots, force kills
-# After 3 kills on same player → toast FORÇA +24% + 💪×1.24 on ball
-# TOP 5 / crown track kills; winner = most kills
-# Mobile: https://tiktok-live-ball-arena.onrender.com/overlay
-```
-
-## Arquivos
-
-- `packages/shared/src/index.ts` — `killStrengthMult`, constants, BallState fields
-- `packages/server/src/game/PhysicsWorld.ts` — `kills` + `setKills` + strength
-- `packages/server/src/game/GameLoop.ts` — sync kills, strength_up announce
-- `packages/client/src/scenes/ArenaScene.ts`, `WaitingScene.ts`
-- `packages/server/public/admin.html` (status fields via adminApi)
-
-## Public
-
-- Render auto-deploy: https://tiktok-live-ball-arena.onrender.com
-
-## Anterior (Mobile)
-
-## Mobile
-
-1. **Overlay:** viewport `device-width` + `viewport-fit=cover`; `#game-container` 100% / 100dvh flex center; black letterbox (transparent if `?transparent=1`).
-2. **Phaser:** logical size stays **1080×1920**; `Scale.FIT` + `CENTER_BOTH`; refresh on resize/orientation/visualViewport.
-3. **Audio:** `audio.unlock()` on first touch/pointer/keydown (iOS/Android autoplay).
-4. **Admin:** sticky topbar with quick actions; stacked grid on narrow screens; min tap ~44px; `font-size:16px` inputs (no iOS zoom); no horizontal overflow; safe-area insets.
-
-## Como testar (mobile)
-
-```bash
-TIKTOK_MODE=demo npm run build && npm start
-# No telefone (mesma rede ou Render):
-#   https://tiktok-live-ball-arena.onrender.com/overlay
-#   https://tiktok-live-ball-arena.onrender.com/admin
-# Rotacionar landscape/portrait → canvas re-FIT; toque → áudio desbloqueia.
-```
-
-## Public
-
-- Render: https://tiktok-live-ball-arena.onrender.com (auto-deploy on push master)
-
-## Anterior (OBS polish)
-
-## Decisões
-
-1. **Transparent OBS:** `?transparent=1` ou `?bg=transparent` → Phaser `transparent` + CSS `.obs-transparent` (html/body/#game-container). Fundo sólido escuro continua o default para preview local.
-2. **Safe margins (TikTok chrome):** top ~140px, bottom ~320px, side ~36px. TOP 5 upper-left; kill feed empilha perto da base (acima da barra de comments); title/timer/vivos/likes dentro da safe area.
-3. **Clean vs debug:** FPS + guias de safe area só com `?debug=1`; mute menor/menos proeminente no clean. Badge `DEMO` só se `?demo=1` (sem acoplar TIKTOK_MODE no client).
-4. Docs: `docs/OBS.md` (PT-BR) com setup Browser Source.
-
-## Como testar
-
-```bash
-TIKTOK_MODE=demo npm run build && npm start
-# Overlay Vite:  http://localhost:5173/?transparent=1
-# Debug guides:  http://localhost:5173/?transparent=1&debug=1
-# Demo badge:    http://localhost:5173/?transparent=1&demo=1
-# Admin:         http://localhost:3000/admin
-# Health:        http://localhost:3000/health
-# Guia OBS:      docs/OBS.md
-```
-
-## Arquivos
-
-- `packages/client/src/overlayConfig.ts` — query params + SAFE insets
-- `packages/client/src/main.ts`, `index.html` — transparent Phaser/CSS
-- `packages/client/src/scenes/ArenaScene.ts`, `WaitingScene.ts` — HUD safe zones
-- `docs/OBS.md`
-
-## Anterior (likes/áudio/load test)
-
-- Likes threshold, shares, random events, Web Audio beeps, load test 50/100 bots — commit a91b0f4 era.
-
-## Next
-
-- Bank/historical **Postgres** (opcional)
-- VFX polish fino (partículas/abilities) se quiser
-- Production TikTok connector **só quando** o usuário pedir (flag; DEMO first)
+Lightweight ability FX on overlay. Server emits `ability_fx`; client draws bolts/rings/trails.

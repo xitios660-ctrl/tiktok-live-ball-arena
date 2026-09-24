@@ -63,6 +63,9 @@ import {
   GALAXY_IMPACT_SPEED,
   GALAXY_IMPACT_PUSH,
   GALAXY_IMPACT_EXTRA_DMG,
+  DONUT_SHIELD_DURATION_MS,
+  COSMIC_DUEL_HP,
+  COSMIC_DUEL_DAMAGE_MULT,
   type ArenaUser,
   type BallState,
   type BuffKey,
@@ -111,6 +114,11 @@ export interface BallBody {
   titanApplied: boolean;
   galaxy: boolean;
   shieldHp: number;
+  /** When shieldHp expires by time (ms timestamp); 0 = none */
+  shieldUntil: number;
+  /** Cosmic Duel HP while 2+ galaxies fight each other */
+  cosmicHp: number;
+  cosmicMaxHp: number;
   /** VFX */
   healFlashTicks: number;
   sugarBurstFlashTicks: number;
@@ -131,6 +139,8 @@ export interface DamageApplication {
   y: number;
   killed: boolean;
   shieldBroke?: boolean;
+  /** Galaxy lost God Mode via cosmic HP reaching 0 */
+  lostGalaxy?: boolean;
   /** Victim had reflect_shield and bounced damage */
   reflected?: boolean;
   reflectX?: number;
@@ -138,10 +148,11 @@ export interface DamageApplication {
 }
 
 export interface FxEvent {
-  type: 'sugar_burst' | 'stomp' | 'galaxy_impact';
+  type: 'sugar_burst' | 'stomp' | 'galaxy_impact' | 'shield_expire';
   userId: string;
   x: number;
   y: number;
+  username?: string;
 }
 
 export interface StepResult {
@@ -344,6 +355,15 @@ export class PhysicsWorld {
     return b.shieldHp - before;
   }
 
+  /** Refresh / extend shield time-to-live (Donut). Does not trigger Sugar Burst on expiry. */
+  refreshShieldUntil(userId: string, durationMs = DONUT_SHIELD_DURATION_MS): number {
+    const b = this.balls.get(userId);
+    if (!b) return 0;
+    const now = Date.now();
+    b.shieldUntil = Math.max(b.shieldUntil || 0, now) + durationMs;
+    return b.shieldUntil;
+  }
+
   setTimedBuff(
     userId: string,
     kind: 'dino' | 'donut' | 'sugar' | 'titan' | 'dash' | 'freeze' | 'reflect' | 'magnet',
@@ -377,23 +397,116 @@ export class PhysicsWorld {
     capSpeed(b, now);
   }
 
-  enableGalaxy(userId: string): void {
+  /** Living balls currently in God Mode */
+  countGalaxies(): number {
+    let n = 0;
+    for (const b of this.balls.values()) {
+      if (b.galaxy) n += 1;
+    }
+    return n;
+  }
+
+  listGalaxyBalls(): BallBody[] {
+    return [...this.balls.values()].filter((b) => b.galaxy);
+  }
+
+  /**
+   * Enable / refresh God Mode. If another galaxy already exists, enters Cosmic Duel
+   * (gods can damage each other via cosmicHp). Same user re-gift = no-op refresh.
+   */
+  enableGalaxy(userId: string): {
+    ok: boolean;
+    alreadyGalaxy: boolean;
+    duelStarted: boolean;
+    duelJoined: boolean;
+    opponents: { userId: string; name: string }[];
+    allGods: { userId: string; name: string }[];
+  } {
+    const empty = {
+      ok: false,
+      alreadyGalaxy: false,
+      duelStarted: false,
+      duelJoined: false,
+      opponents: [] as { userId: string; name: string }[],
+      allGods: [] as { userId: string; name: string }[],
+    };
     const b = this.balls.get(userId);
-    if (!b) return;
+    if (!b) return empty;
+
+    const nameOf = (x: BallBody) => x.nickname || x.username;
+    const others = this.listGalaxyBalls().filter((g) => g.userId !== userId);
+
+    if (b.galaxy) {
+      // Same person re-sending Galaxy: refresh geometry, do not duel with self
+      recomputeGeometry(b, Date.now());
+      capSpeed(b);
+      const all = this.listGalaxyBalls().map((g) => ({ userId: g.userId, name: nameOf(g) }));
+      return {
+        ok: true,
+        alreadyGalaxy: true,
+        duelStarted: false,
+        duelJoined: false,
+        opponents: others.map((g) => ({ userId: g.userId, name: nameOf(g) })),
+        allGods: all,
+      };
+    }
+
+    const otherCount = others.length;
     b.galaxy = true;
     b.hp = Math.max(b.hp, 9999);
     b.maxHp = 9999;
+
+    let duelStarted = false;
+    let duelJoined = false;
+
+    if (otherCount === 0) {
+      // Solo god — immortal vs mortals until round end / later duel
+      b.cosmicHp = 0;
+      b.cosmicMaxHp = 0;
+    } else if (otherCount === 1) {
+      // 2nd galaxy → start Cosmic Duel; both get fresh cosmic HP
+      duelStarted = true;
+      b.cosmicHp = COSMIC_DUEL_HP;
+      b.cosmicMaxHp = COSMIC_DUEL_HP;
+      for (const o of others) {
+        o.cosmicHp = COSMIC_DUEL_HP;
+        o.cosmicMaxHp = COSMIC_DUEL_HP;
+      }
+    } else {
+      // 3rd+ joins ongoing duel
+      duelJoined = true;
+      b.cosmicHp = COSMIC_DUEL_HP;
+      b.cosmicMaxHp = COSMIC_DUEL_HP;
+      for (const o of others) {
+        if (o.cosmicMaxHp <= 0) {
+          o.cosmicHp = COSMIC_DUEL_HP;
+          o.cosmicMaxHp = COSMIC_DUEL_HP;
+        }
+      }
+    }
+
     recomputeGeometry(b, Date.now());
     capSpeed(b);
+    const allGods = this.listGalaxyBalls().map((g) => ({ userId: g.userId, name: nameOf(g) }));
+    return {
+      ok: true,
+      alreadyGalaxy: false,
+      duelStarted,
+      duelJoined,
+      opponents: others.map((g) => ({ userId: g.userId, name: nameOf(g) })),
+      allGods,
+    };
   }
 
   clearGalaxy(userId: string): void {
     const b = this.balls.get(userId);
     if (!b || !b.galaxy) return;
     b.galaxy = false;
-    b.hp = Math.min(b.hp, GIFT_SOFT_MAX_HP);
-    b.maxHp = Math.min(DEFAULT_BALL_HP, GIFT_SOFT_MAX_HP);
-    if (b.hp > b.maxHp) b.hp = b.maxHp;
+    b.cosmicHp = 0;
+    b.cosmicMaxHp = 0;
+    // Fair mortal restore: full HP, not dead
+    b.maxHp = DEFAULT_BALL_HP;
+    b.hp = DEFAULT_BALL_HP;
     recomputeGeometry(b, Date.now());
   }
 
@@ -415,6 +528,9 @@ export class PhysicsWorld {
       b.titanApplied = false;
       b.galaxy = false;
       b.shieldHp = 0;
+      b.shieldUntil = 0;
+      b.cosmicHp = 0;
+      b.cosmicMaxHp = 0;
       b.hp = Math.min(b.hp, DEFAULT_BALL_HP);
       b.maxHp = DEFAULT_BALL_HP;
       recomputeGeometry(b, now);
@@ -529,6 +645,9 @@ export class PhysicsWorld {
       titanApplied: false,
       galaxy: false,
       shieldHp: 0,
+      shieldUntil: 0,
+      cosmicHp: 0,
+      cosmicMaxHp: 0,
       healFlashTicks: 0,
       sugarBurstFlashTicks: 0,
       stompFlashTicks: 0,
@@ -574,6 +693,18 @@ export class PhysicsWorld {
       // Expire titan flag
       if (b.titanApplied && now >= b.titanUntil) {
         b.titanApplied = false;
+      }
+      // Donut shield time expiry (no Sugar Burst — just fades)
+      if (b.shieldHp > 0 && b.shieldUntil > 0 && now >= b.shieldUntil) {
+        b.shieldHp = 0;
+        b.shieldUntil = 0;
+        fx.push({
+          type: 'shield_expire',
+          userId: b.userId,
+          username: b.nickname || b.username,
+          x: b.x,
+          y: b.y,
+        });
       }
       recomputeGeometry(b, now);
 
@@ -812,8 +943,16 @@ export class PhysicsWorld {
         y: b.y,
         radius: b.radius,
         color: b.color,
-        hp: b.galaxy ? 9999 : b.hp,
-        maxHp: b.galaxy ? 9999 : b.maxHp,
+        hp: b.galaxy
+          ? b.cosmicMaxHp > 0 && this.countGalaxies() >= 2
+            ? b.cosmicHp
+            : 9999
+          : b.hp,
+        maxHp: b.galaxy
+          ? b.cosmicMaxHp > 0 && this.countGalaxies() >= 2
+            ? b.cosmicMaxHp
+            : 9999
+          : b.maxHp,
         label: b.nickname || b.username,
         hitFlash: b.hitFlashTicks > 0,
         spawnProtected: isProtected(b, now),
@@ -849,6 +988,7 @@ export class PhysicsWorld {
       dmg -= absorbed;
       if (victim.shieldHp <= 0) {
         victim.shieldHp = 0;
+        victim.shieldUntil = 0;
         shieldBroke = true;
       }
     }
@@ -868,10 +1008,32 @@ export class PhysicsWorld {
       }
     }
 
+    let lostGalaxy = false;
+    const galaxiesAlive = this.countGalaxies();
+    const cosmicDuelActive = galaxiesAlive >= 2;
+
     if (victim.galaxy) {
-      // Cannot die — cosmetic chip only
-      victim.hp = Math.max(5000, victim.hp - Math.min(dmg, 50));
-      dmg = 0;
+      const attackerIsGalaxy = !!(attacker && attacker.galaxy);
+      if (attackerIsGalaxy && cosmicDuelActive && dmg > 0) {
+        // Galaxy vs Galaxy — scaled damage to cosmic HP
+        if (victim.cosmicMaxHp <= 0) {
+          victim.cosmicHp = COSMIC_DUEL_HP;
+          victim.cosmicMaxHp = COSMIC_DUEL_HP;
+        }
+        const cosmicDmg = Math.max(1, Math.round(dmg * COSMIC_DUEL_DAMAGE_MULT));
+        victim.cosmicHp = Math.max(0, victim.cosmicHp - cosmicDmg);
+        dmg = cosmicDmg;
+        // Keep display hp high for solo-immortal cosmetics; duel uses cosmicHp in snapshot
+        victim.hp = Math.max(5000, victim.hp);
+        if (victim.cosmicHp <= 0) {
+          lostGalaxy = true;
+          this.clearGalaxy(victim.userId);
+        }
+      } else {
+        // Immortal vs mortals (or solo god) — cosmetic chip only
+        victim.hp = Math.max(5000, victim.hp - Math.min(dmg, 50));
+        dmg = 0;
+      }
     } else if (dmg > 0) {
       victim.hp = Math.max(0, victim.hp - dmg);
     }
@@ -880,17 +1042,26 @@ export class PhysicsWorld {
       victim.lastHitterId = attacker.userId;
       victim.lastHitterName = attacker.nickname || attacker.username;
     }
+    const inDuelDisplay =
+      victim.galaxy && victim.cosmicMaxHp > 0 && this.countGalaxies() >= 2;
     return {
       victimId: victim.userId,
       victimName: victim.nickname || victim.username,
       attackerId: attacker?.userId || 'admin',
       attackerName: attacker ? attacker.nickname || attacker.username : 'admin',
       damage: Math.max(0, Math.round(raw)),
-      victimHpAfter: victim.galaxy ? 9999 : victim.hp,
+      victimHpAfter: lostGalaxy
+        ? victim.hp
+        : victim.galaxy
+          ? inDuelDisplay
+            ? victim.cosmicHp
+            : 9999
+          : victim.hp,
       x: victim.x,
       y: victim.y,
-      killed: !victim.galaxy && victim.hp <= 0,
+      killed: !victim.galaxy && !lostGalaxy && victim.hp <= 0,
       shieldBroke,
+      lostGalaxy: lostGalaxy || undefined,
       reflected: reflected || undefined,
       reflectX,
       reflectY,

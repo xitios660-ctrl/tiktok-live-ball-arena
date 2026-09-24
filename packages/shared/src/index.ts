@@ -260,6 +260,8 @@ export interface AnnounceEvent {
     | 'next_round'
     | 'gift'
     | 'galaxy'
+    | 'cosmic_duel'
+    | 'shield_expire'
     | 'sugar_burst'
     | 'stomp'
     | 'heal_rain'
@@ -337,6 +339,8 @@ export const DONUT_HEAL = 20;
 export const DONUT_SHIELD_PER = 100;
 export const DONUT_SHIELD_MAX = 300;
 export const DONUT_DURATION_MS = 12_000;
+/** Shield HP also expires by time (not only when broken by damage) */
+export const DONUT_SHIELD_DURATION_MS = 15_000;
 export const DONUT_SPEED_MULT = 1.2;
 export const DONUT_RESIST = 0.25;
 export const SUGAR_BURST_SPEED_MULT = 1.25;
@@ -369,6 +373,10 @@ export const GALAXY_MASS_MULT = 4.0;
 export const GALAXY_IMPACT_SPEED = 350;
 export const GALAXY_IMPACT_PUSH = 520;
 export const GALAXY_IMPACT_EXTRA_DMG = 1.5;
+/** Cosmic Duel (Galaxy vs Galaxy): gods fight each other with this pool */
+export const COSMIC_DUEL_HP = 250;
+/** Scale collision damage when both attacker & victim are galaxy */
+export const COSMIC_DUEL_DAMAGE_MULT = 0.4;
 
 export const GIFT_ABILITY_BY_ID: Record<string, AbilityKey> = {
   rosa: 'heal_pulse',

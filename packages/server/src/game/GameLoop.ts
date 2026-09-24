@@ -605,6 +605,16 @@ export class GameLoop {
           userId: f.userId,
           timestamp: Date.now(),
         });
+      } else if (f.type === 'shield_expire') {
+        const uname = f.username || f.userId;
+        this.pushCombat({
+          type: 'announce',
+          kind: 'shield_expire',
+          message: `🛡 Escudo expirou @${uname}`,
+          userId: f.userId,
+          username: uname,
+          timestamp: Date.now(),
+        });
       }
     }
     this.tick += 1;
@@ -626,7 +636,7 @@ export class GameLoop {
     const pairs = new Set<string>();
 
     for (const d of damages) {
-      if (d.damage <= 0 && !d.shieldBroke && !d.killed && !d.reflected) continue;
+      if (d.damage <= 0 && !d.shieldBroke && !d.killed && !d.reflected && !d.lostGalaxy) continue;
 
       const pairKey = [d.attackerId, d.victimId].sort().join(':');
       if (!pairs.has(pairKey)) {
@@ -693,6 +703,21 @@ export class GameLoop {
           }
         }
         void victimBall;
+      }
+
+      if (d.lostGalaxy) {
+        const ann = {
+          type: 'announce' as const,
+          kind: 'cosmic_duel' as const,
+          message: `💥 @${d.victimName} caiu do God Mode! @${d.attackerName} vence o duelo!`,
+          userId: d.victimId,
+          username: d.victimName,
+          targetId: d.attackerId,
+          targetName: d.attackerName,
+          timestamp: Date.now(),
+        };
+        emitted.push(ann);
+        this.pushCombat(ann);
       }
 
       if (d.killed && !killedIds.has(d.victimId)) {
