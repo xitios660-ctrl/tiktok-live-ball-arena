@@ -7,7 +7,7 @@ const CORNER = 28;
 /**
  * Glossy cinematic stadium floor — rectangle physics bounds (margin 8), not a circle.
  * Opaque fills + vignette are skipped when transparent (OBS).
- * Motifs from style-guide: neon cyan rings, ember floodlights, smoke-ish soft ellipses.
+ * Motifs from style-guide: ember/orange rings, floodlights, smoke-ish soft ellipses; cyan accent.
  * Visual only — does not change physics bounds / server authority.
  */
 export function paintArenaFloor(
@@ -21,9 +21,9 @@ export function paintArenaFloor(
     // Transparent OBS: keep only faint neon rings so gameplay stays readable, no opaque wash
     const cx = w * 0.5;
     const cy = h * 0.46;
-    g.lineStyle(1.5, THEME.electricCyan, 0.14);
+    g.lineStyle(1.5, THEME.emberOrange, 0.18);
     g.strokeEllipse(cx, cy, w * 0.7, h * 0.36);
-    g.lineStyle(1.25, THEME.emberOrange, 0.1);
+    g.lineStyle(1.25, THEME.arenaRed, 0.12);
     g.strokeEllipse(cx, cy, w * 0.5, h * 0.26);
     g.lineStyle(2, THEME.gold, 0.22);
     g.strokeCircle(cx, cy, Math.min(w, h) * 0.04);
@@ -76,13 +76,13 @@ export function paintArenaFloor(
     g.lineBetween(40, y, w - 40, y);
   }
 
-  // Neon cyan + ember rings (style-guide arena motif)
+  // Ember/orange primary rings + cyan accent (brand-aligned with waiting poster)
   const rings = [
-    { rx: w * 0.55, ry: h * 0.32, color: THEME.electricCyan, a: 0.22, lw: 2.5 },
-    { rx: w * 0.46, ry: h * 0.27, color: THEME.emberOrange, a: 0.18, lw: 1.5 },
-    { rx: w * 0.38, ry: h * 0.22, color: THEME.arenaRed, a: 0.14, lw: 1.5 },
-    { rx: w * 0.28, ry: h * 0.16, color: THEME.gold, a: 0.22, lw: 2 },
-    { rx: w * 0.18, ry: h * 0.1, color: THEME.electricCyan, a: 0.2, lw: 1.5 },
+    { rx: w * 0.55, ry: h * 0.32, color: THEME.emberOrange, a: 0.32, lw: 2.8 },
+    { rx: w * 0.46, ry: h * 0.27, color: THEME.arenaRed, a: 0.22, lw: 2 },
+    { rx: w * 0.38, ry: h * 0.22, color: THEME.gold, a: 0.28, lw: 2 },
+    { rx: w * 0.28, ry: h * 0.16, color: THEME.emberOrange, a: 0.2, lw: 1.5 },
+    { rx: w * 0.18, ry: h * 0.1, color: THEME.electricCyan, a: 0.16, lw: 1.5 },
   ];
   for (const r of rings) {
     g.lineStyle(r.lw, r.color, r.a);
