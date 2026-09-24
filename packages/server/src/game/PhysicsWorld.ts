@@ -1276,20 +1276,28 @@ export class PhysicsWorld {
     const impact = -velAlongNormal;
 
     if (impact >= DAMAGE_IMPACT_THRESHOLD) {
-      const dmgToA = calcDamage(
-        impact,
-        b.mass * activeStrength(b, now),
-        a.mass,
-        activeStrength(b, now),
-        activeCollisionDmgMult(b, now)
-      );
-      const dmgToB = calcDamage(
-        impact,
-        a.mass * activeStrength(a, now),
-        b.mass,
-        activeStrength(a, now),
-        activeCollisionDmgMult(a, now)
-      );
+      // The ChatGPT boss is an evasive objective, not an attacker.
+      // Collisions still resolve physically, but any damage DEALT BY the boss is zero.
+      const bossA = a.userId === 'boss-chatgpt';
+      const bossB = b.userId === 'boss-chatgpt';
+      const dmgToA = bossB
+        ? 0
+        : calcDamage(
+            impact,
+            b.mass * activeStrength(b, now),
+            a.mass,
+            activeStrength(b, now),
+            activeCollisionDmgMult(b, now)
+          );
+      const dmgToB = bossA
+        ? 0
+        : calcDamage(
+            impact,
+            a.mass * activeStrength(a, now),
+            b.mass,
+            activeStrength(a, now),
+            activeCollisionDmgMult(a, now)
+          );
 
       const appA = this.dealDamage(a, dmgToA, b, now);
       const appB = this.dealDamage(b, dmgToB, a, now);
