@@ -640,22 +640,9 @@ export class GameLoop {
     for (const f of pickupResult.fx) this.pushCombat(f);
 
     for (const f of fx) {
-      if (f.type === 'stomp') {
-        this.pushCombat({
-          type: 'announce',
-          kind: 'stomp',
-          message: `🦫 STOMP!`,
-          userId: f.userId,
-          timestamp: Date.now(),
-        });
-      } else if (f.type === 'galaxy_impact') {
-        this.pushCombat({
-          type: 'announce',
-          kind: 'galaxy',
-          message: `🌌 GALAXY IMPACT!`,
-          userId: f.userId,
-          timestamp: Date.now(),
-        });
+      // stomp / galaxy_impact: VFX only — no feed spam
+      if (f.type === 'stomp' || f.type === 'galaxy_impact') {
+        continue;
       } else if (f.type === 'shield_expire') {
         const uname = f.username || f.userId;
         this.pushCombat({
