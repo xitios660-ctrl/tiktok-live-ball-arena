@@ -147,6 +147,7 @@ export class GlobalArenaEvents {
     if (kind === 'heal_rain') {
       let healed = 0;
       for (const b of physics.getAll()) {
+        if (b.userId === 'boss-chatgpt') continue;
         healed += physics.heal(b.userId, HEAL_RAIN_HP);
       }
       this.activeEffect = 'heal_rain';
@@ -154,7 +155,7 @@ export class GlobalArenaEvents {
       announces.push({
         type: 'announce',
         kind: 'heal_rain',
-        message: `💚 HEAL RAIN! Todos +${HEAL_RAIN_HP} HP (${source})`,
+        message: `💚 CURA DE LIKES! Jogadores vivos +${HEAL_RAIN_HP} HP`,
         value: HEAL_RAIN_HP,
         timestamp: now,
       });
@@ -162,7 +163,7 @@ export class GlobalArenaEvents {
         announces.push({
           type: 'announce',
           kind: 'likes_threshold',
-          message: `❤️ ${this.likesThreshold} likes! HEAL RAIN ativada!`,
+          message: `❤️ ${this.likesThreshold} likes! TODOS OS JOGADORES +${HEAL_RAIN_HP} HP!`,
           value: this.likesThreshold,
           timestamp: now,
         });
