@@ -1045,6 +1045,12 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private updateBallView(view: BallView, b: BallState): void {
+    // Avatar can arrive/refresh with the comment event even if the ball existed
+    // before the profile image URL was available.
+    if (b.avatarUrl && !b.isBoss && !view.avatar) {
+      this.tryLoadAvatar(b, view);
+    }
+
     // Speed trails (rastro) — stronger when particleBudget / quality tier high
     const dx = b.x - view.prevX;
     const dy = b.y - view.prevY;
@@ -1183,7 +1189,7 @@ export class ArenaScene extends Phaser.Scene {
     view.glossKey = view.gloss.texture.key;
     view.skin = skinFromBall(b);
     if (view.avatar) {
-      const avSize = b.radius * 1.9;
+      const avSize = b.radius * 1.98;
       view.avatar.setDisplaySize(avSize, avSize);
       view.avatar.setAlpha(protected_ ? 0.55 : 1);
       this.syncAvatarChrome(view, b.radius, stroke, !!b.isKing, isGalaxy, protected_);
@@ -1421,7 +1427,7 @@ export class ArenaScene extends Phaser.Scene {
     view.initials.setVisible(false);
     view.avatarSrcKey = key;
     const roundKey = this.ensureRoundAvatar(key);
-    const avSize = radius * 1.9;
+    const avSize = radius * 1.98;
     if (view.avatar) {
       view.avatar.setTexture(roundKey);
       view.avatar.setDisplaySize(avSize, avSize);
@@ -1457,13 +1463,30 @@ export class ArenaScene extends Phaser.Scene {
     const ctx = canvasTex.getContext();
     const src = this.textures.get(srcKey).getSourceImage() as CanvasImageSource;
     const r = size / 2;
+    const srcAny = src as unknown as {
+      naturalWidth?: number;
+      naturalHeight?: number;
+      videoWidth?: number;
+      videoHeight?: number;
+      width?: number;
+      height?: number;
+    };
+    const sw = srcAny.naturalWidth || srcAny.videoWidth || srcAny.width || size;
+    const sh = srcAny.naturalHeight || srcAny.videoHeight || srcAny.height || size;
+    const coverScale = Math.max(size / sw, size / sh);
+    const dw = sw * coverScale;
+    const dh = sh * coverScale;
+    const dx = (size - dw) / 2;
+    const dy = (size - dh) / 2;
+
     ctx.clearRect(0, 0, size, size);
     ctx.save();
     ctx.beginPath();
     ctx.arc(r, r, r - 1, 0, Math.PI * 2);
     ctx.closePath();
     ctx.clip();
-    ctx.drawImage(src as CanvasImageSource, 0, 0, size, size);
+    // Cover-crop instead of stretching, so the face fills the ball naturally.
+    ctx.drawImage(src as CanvasImageSource, dx, dy, dw, dh);
     // Soft inner vignette so photo sits on the ball
     const vig = ctx.createRadialGradient(r, r, r * 0.55, r, r, r);
     vig.addColorStop(0, 'rgba(0,0,0,0)');
