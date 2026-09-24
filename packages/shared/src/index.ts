@@ -550,7 +550,11 @@ export const PICKUP_SPAWN_WEIGHTS: Record<PickupAbilityKey, number> = {
 /** —— Likes / Shares / Random arena events —— */
 export const LIKE_THRESHOLD_DEFAULT = 100;
 export const LIKE_REWARD_DEFAULT: 'heal_rain' | 'speed_storm' = 'heal_rain';
-export const HEAL_RAIN_HP = 15;
+/** Personal survival loop: every 10 likes from a player restores 2 HP to their own ball. */
+export const LIKE_PERSONAL_STEP = 10;
+export const LIKE_PERSONAL_HEAL = 2;
+/** Community milestone: every 100 accumulated likes restores 10 HP to every living player. */
+export const HEAL_RAIN_HP = 10;
 export const SPEED_STORM_DURATION_MS = 8_000;
 export const DOUBLE_DAMAGE_DURATION_MS = 10_000;
 export const DOUBLE_DAMAGE_MULT = 2.0;
