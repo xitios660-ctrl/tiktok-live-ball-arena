@@ -49,6 +49,27 @@ export function adminApiRouter(deps: {
     return event;
   };
 
+  /** Spawn bots via GameLoop joins (works in DEMO + PRODUCTION). */
+  const spawnBotsDirect = (count: number, withGift = false) => {
+    const n = Math.max(1, Math.min(150, Math.floor(count)));
+    const events: Array<{ type: string; [k: string]: unknown }> = [];
+    const seq = Date.now();
+    for (let i = 0; i < n; i++) {
+      const user = {
+        userId: `bot-${seq}-${i}`,
+        username: `bot_${i + 1}_${String(seq).slice(-4)}`,
+        nickname: `Bot ${i + 1}`,
+      };
+      const join = { type: 'join' as const, user, timestamp: Date.now() };
+      deps.game.handleLiveEvent(join);
+      events.push(join);
+      if (withGift) {
+        events.push(injectGiftDirect('rosa', { user }));
+      }
+    }
+    return events;
+  };
+
   const requireDemo = (
     _req: unknown,
     res: { status: (n: number) => { json: (b: unknown) => void } },
@@ -131,9 +152,20 @@ export function adminApiRouter(deps: {
 
 
 
-  router.post('/admin/sim/comment', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
-    const event = demo.injectComment(req.body?.comment, req.body?.user);
+  router.post('/admin/sim/comment', (req, res) => {
+    const bodyUser = req.body?.user as { userId?: string; username?: string; nickname?: string } | undefined;
+    const user = {
+      userId: bodyUser?.userId || `admin-comment-${Date.now()}`,
+      username: bodyUser?.username || 'admin_commenter',
+      nickname: bodyUser?.nickname || 'Admin',
+    };
+    const event = {
+      type: 'comment' as const,
+      user,
+      comment: (req.body?.comment as string) || 'bora!',
+      timestamp: Date.now(),
+    };
+    deps.game.handleLiveEvent(event);
     res.json({ ok: true, event });
   });
 
@@ -215,9 +247,16 @@ export function adminApiRouter(deps: {
     res.json({ ok: true, user, global: deps.game.getGlobalState() });
   });
 
-  router.post('/admin/sim/join', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
-    const event = demo.injectJoin(req.body?.user);
+  router.post('/admin/sim/join', (req, res) => {
+    const bodyUser = req.body?.user as { userId?: string; username?: string; nickname?: string } | undefined;
+    const seq = Date.now();
+    const user = {
+      userId: bodyUser?.userId || `admin-join-${seq}`,
+      username: bodyUser?.username || `joiner_${String(seq).slice(-4)}`,
+      nickname: bodyUser?.nickname || 'Joiner',
+    };
+    const event = { type: 'join' as const, user, timestamp: Date.now() };
+    deps.game.handleLiveEvent(event);
     res.json({ ok: true, event });
   });
 
@@ -227,33 +266,30 @@ export function adminApiRouter(deps: {
     res.json({ ok: true, event });
   });
 
-  router.post('/admin/sim/bots', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
+  router.post('/admin/sim/bots', (req, res) => {
     const count = Number(req.body?.count) || 5;
     const withGift = Boolean(req.body?.withGift);
-    const events = demo.spawnBots(count, withGift);
-    res.json({ ok: true, count: events.filter((e) => e.type === 'join').length, events });
+    const events = spawnBotsDirect(count, withGift);
+    res.json({
+      ok: true,
+      count: events.filter((e) => e.type === 'join').length,
+      events,
+      mode: deps.mode,
+      players: deps.game.getState().playerCount,
+    });
   });
 
-  router.post('/admin/sim/loadtest', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
+  router.post('/admin/sim/loadtest', (req, res) => {
     const count = Math.min(150, Math.max(1, Number(req.body?.count) || 50));
     const withGift = Boolean(req.body?.withGift);
     const giftSpam = Boolean(req.body?.giftSpam);
-    const events = demo.spawnBots(count, withGift);
+    const events = spawnBotsDirect(count, withGift);
     let gifts = 0;
     if (giftSpam) {
       const balls = deps.game.getSnapshot().balls;
       for (const b of balls.slice(0, Math.min(20, balls.length))) {
-        deps.game.handleLiveEvent({
-          type: 'gift',
+        injectGiftDirect('rosa', {
           user: { userId: b.userId, username: b.username, nickname: b.nickname },
-          giftId: 'rosa',
-          giftName: 'Rosa',
-          repeatCount: 1,
-          repeatEnd: true,
-          coinValue: 1,
-          timestamp: Date.now(),
         });
         gifts += 1;
       }
@@ -263,6 +299,7 @@ export function adminApiRouter(deps: {
       spawned: events.filter((e) => e.type === 'join').length,
       gifts,
       players: deps.game.getState().playerCount,
+      mode: deps.mode,
     });
   });
 
@@ -377,19 +414,24 @@ export function adminApiRouter(deps: {
   });
 
   /** Simulate comment from a specific userId (respawns if dead) */
-  router.post('/admin/sim/comment-as', requireDemo, (req, res) => {
-    const demo = deps.getDemo()!;
+  router.post('/admin/sim/comment-as', (req, res) => {
     const userId = req.body?.userId as string;
     if (!userId) {
       res.status(400).json({ ok: false, error: 'userId required' });
       return;
     }
     const stats = deps.game.getStats().find((s) => s.userId === userId);
-    const event = demo.injectComment(req.body?.comment || 'volto!', {
-      userId,
-      username: stats?.username || req.body?.username || userId,
-      nickname: stats?.nickname,
-    });
+    const event = {
+      type: 'comment' as const,
+      user: {
+        userId,
+        username: stats?.username || (req.body?.username as string) || userId,
+        nickname: stats?.nickname,
+      },
+      comment: (req.body?.comment as string) || 'volto!',
+      timestamp: Date.now(),
+    };
+    deps.game.handleLiveEvent(event);
     res.json({ ok: true, event, stats: deps.game.getStats() });
   });
 

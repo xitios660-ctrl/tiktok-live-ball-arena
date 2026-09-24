@@ -123,9 +123,9 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>Ball Arena — Painel DEMO</h1>
+    <h1>Ball Arena — Painel Admin</h1>
     <p class="sub">
-      Eventos <strong>simulados</strong>. Morto → <strong>comentário</strong> respawna (vingança se tiver killer).
+      Admin sim (demo + production). Morto → <strong>comentário</strong> respawna (vingança se tiver killer).
       Overlay: <a href="/overlay" target="_blank">/overlay</a> ·
       Health: <a href="/health" target="_blank">/health</a>
     </p>
@@ -213,6 +213,7 @@
 
     <div class="card">
       <h2>Bots & Load test</h2>
+      <p class="status-line" style="margin:0 0 8px">Funciona em <strong>demo</strong> e <strong>production</strong> (inject join via GameLoop). Se não aparecer, clique <strong>Start round</strong> (fase results/ended bloqueia spawn).</p>
       <div class="row">
         <label>N <input id="bots" type="number" value="5" min="1" max="150" /></label>
         <button onclick="bots(false)">👥 Spawn bots</button>
@@ -256,9 +257,15 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const j = await r.json();
-      log(JSON.stringify(j).slice(0, 400));
-      refresh();
+      let j = {};
+      try { j = await r.json(); } catch (_) { j = { ok: false, error: 'invalid JSON (HTTP ' + r.status + ')' }; }
+      await refresh();
+      if (!r.ok || j.ok === false) {
+        const err = j.error || j.message || ('HTTP ' + r.status);
+        log('ERR ' + path + ': ' + err);
+      } else {
+        log(JSON.stringify(j).slice(0, 400));
+      }
       return j;
     }
     function gift(giftId) {
@@ -295,7 +302,11 @@
         badge.style.background = tk.live ? '#0d3d2a' : (tk.phase === 'reconnecting' || tk.phase === 'waiting_live' ? '#5a3a00' : '#333');
       }
       const mb = document.getElementById('modeBadge');
-      if (mb) { mb.textContent = (j.mode || 'demo').toUpperCase(); mb.className = 'badge ' + (j.mode === 'demo' ? 'demo' : ''); }
+      if (mb) {
+        const mode = (j.mode || 'demo').toUpperCase();
+        mb.textContent = mode === 'PRODUCTION' ? 'PRODUCTION · bots OK' : mode;
+        mb.className = 'badge ' + (j.mode === 'demo' ? 'demo' : '');
+      }
       const gl = j.global || {};
       const lm = document.getElementById('likesMeter');
       if (lm) {
