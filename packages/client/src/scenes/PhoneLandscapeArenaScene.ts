@@ -132,7 +132,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.likes = this.add
-      .text(0, 0, '❤️ 0 / 100', {
+      .text(0, 0, '❤️ 100 LIKES = +20 HP +1 FORÇA', {
         fontFamily: FONT_ACCENT,
         fontSize: '22px',
         color: THEME_HEX.arenaRed,
@@ -236,7 +236,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setAlpha(0);
 
     this.footer = this.add
-      .text(0, 0, '💬 COMENTE PARA JOGAR   •   ❤️ 10 LIKES = +2 HP   •   100 LIKES = +10 HP PARA TODOS', {
+      .text(0, 0, '💬 COMENTE PARA JOGAR   •   ❤️ 100 LIKES SEUS = +20 HP +1 FORÇA', {
         fontFamily: FONT_ACCENT,
         fontSize: '28px',
         color: THEME_HEX.arenaDark,
@@ -349,9 +349,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.timer.setText(this.formatTime(snap.remainingSec));
     this.players.setText('PLAYERS: ' + snap.playerCount);
 
-    if (snap.global) {
-      this.likes.setText('❤️ ' + snap.global.likesAccumulated + ' / ' + snap.global.likesThreshold);
-    }
+    // Likes are personal rewards now, so this pill shows the rule instead of a global meter.
+    this.likes.setText('❤️ 100 LIKES = +20 HP +1 FORÇA');
 
     this.syncBalls(snap.balls);
     this.syncPickups(snap.pickups || []);
