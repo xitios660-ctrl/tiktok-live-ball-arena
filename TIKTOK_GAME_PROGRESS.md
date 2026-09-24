@@ -1,3 +1,30 @@
+# Etapa atual: **Cinematic interactive home + animated JOGAR transition**
+
+Data: 2026-09-24 (America/Sao_Paulo)
+
+### Home interativa
+- Nova camada cinematográfica em `packages/client/src/ui/CinematicIntro.ts`.
+- Ativa automaticamente em `?phone=1` ou `?intro=1`; `?intro=0` desliga.
+- Mouse e toque controlam parallax, perspectiva e glow.
+- Mantém `/overlay` normal para OBS/uso direto e ignora intro em modo transparente.
+- Botões JOGAR, Conectar TikTok, Ranking e Como Jogar têm hotspots/ações reais.
+
+### JOGAR
+- O Phaser inicia por trás da home para o socket já estar quente.
+- Clique em JOGAR tenta usar `/assets/ball-arena/cinematic/play-transition.mp4`.
+- Se o vídeo ainda não estiver publicado, usa fallback de zoom cinematográfico sem quebrar o jogo.
+- `/assets/ball-arena/cinematic/home-loop.mp4` é usado automaticamente como home quando existir; sem ele usa `access-arena.jpg`.
+- O clique também tenta liberar áudio/fullscreen no mesmo gesto; se falhar, o gate de áudio normal continua disponível.
+
+### Arquivos
+- `packages/client/src/ui/CinematicIntro.ts` (novo)
+- `packages/client/src/main.ts`
+
+### Próximo asset esperado
+- `packages/client/public/assets/ball-arena/cinematic/home-loop.mp4`
+- `packages/client/public/assets/ball-arena/cinematic/play-transition.mp4`
+
+---
 # TikTok Live Ball Arena — Progress Log
 
 ## Etapa atual: **Premium TOP 5 + overlay graphics polish**

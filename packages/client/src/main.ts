@@ -8,6 +8,7 @@ import { connectSocket } from './socket';
 import { applyOverlayDom, getOverlayOptions } from './overlayConfig';
 import { audio } from './audio/AudioManager';
 import { THEME_HEX } from './theme';
+import { runCinematicIntro, shouldShowCinematicIntro } from './ui/CinematicIntro';
 import {
   LANDSCAPE_HEIGHT,
   landscapeGameWidth,
@@ -84,6 +85,11 @@ function showAudioRetryToast(msg = 'toque de novo'): void {
 function setupAudioUnlockGate(): void {
   const gate = document.getElementById('audio-unlock-gate');
 
+  if (audioUnlockedThisSession) {
+    gate?.classList.add('hidden');
+    return;
+  }
+
   if (opts.startMuted) {
     audio.setMuted(true);
     gate?.classList.add('hidden');
@@ -146,8 +152,6 @@ function setupAudioUnlockGate(): void {
   gate.addEventListener('touchstart', onGateTap, { passive: false });
   window.addEventListener('keydown', onKey);
 }
-
-setupAudioUnlockGate();
 
 function boot(): void {
   const initialWidth = initialPhoneLandscape ? landscapeGameWidth() : CANVAS_WIDTH;
@@ -250,6 +254,26 @@ const fontsReady =
   typeof document !== 'undefined' && document.fonts?.ready
     ? document.fonts.ready.then(() => undefined).catch(() => undefined)
     : Promise.resolve();
-void fontsReady.then(() => boot());
+void fontsReady.then(async () => {
+  // Boot the real game behind the cinematic layer so the socket and round
+  // state are already warm when the player presses JOGAR.
+  boot();
+
+  if (shouldShowCinematicIntro(opts)) {
+    await runCinematicIntro({
+      onPlayGesture: async () => {
+        tryEnterPhoneFullscreen();
+        try {
+          const ok = await audio.unlock();
+          if (ok) audioUnlockedThisSession = true;
+        } catch {
+          // The normal audio gate remains available after the transition.
+        }
+      },
+    });
+  }
+
+  setupAudioUnlockGate();
+});
 
 export default null;
