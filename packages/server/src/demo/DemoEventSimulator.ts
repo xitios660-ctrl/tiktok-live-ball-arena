@@ -15,6 +15,11 @@ export const DEMO_GIFT_PRESETS = [
   { giftId: 'rosquinha', giftName: 'Rosquinha', coinValue: 30 },
   { giftId: 'capivara', giftName: 'Capivara', coinValue: 100 },
   { giftId: 'galaxia', giftName: 'Galaxia', coinValue: 1000 },
+  { giftId: 'raio', giftName: 'Raio', coinValue: 15 },
+  { giftId: 'ima', giftName: 'Ímã', coinValue: 20 },
+  { giftId: 'gelo', giftName: 'Gelo', coinValue: 25 },
+  { giftId: 'foguete', giftName: 'Foguete', coinValue: 15 },
+  { giftId: 'espelho', giftName: 'Espelho', coinValue: 35 },
 ] as const;
 
 export type DemoGiftId = (typeof DEMO_GIFT_PRESETS)[number]['giftId'];

@@ -25,6 +25,22 @@ strengthMult = 1 + min(kills * 0.08, 1.0)
 - Announce `💪 FORÇA +N%` every 3 kills (`strength_up`) — not per kill.
 - Survives death/respawn (`setKills` on respawn/spawn).
 
+
+## Add-on: Mild attraction + new powers
+
+**Attraction:** `MILD_ATTRACTION_ACCEL=55`, radius `420`, cap `90` px/s²; soft falloff `(1-dist/R)`; disabled while spawn-protected. Clusters fights without gluing.
+
+**New gifts (admin DEMO):**
+| id | ability | effect |
+|----|---------|--------|
+| raio | lightning_zap | nearest foe: dmg 8 + slow ~2.2s |
+| ima | magnet_pulse | short strong pull toward caster |
+| gelo | freeze_aura | 8s aura slows nearby |
+| foguete | dash_burst | impulse + 2.5s speed |
+| espelho | reflect_shield | 5s, ~55% dmg bounce |
+
+Still: design polish + kill→strength (`1+min(kills*0.08,1)`) + ranking kills-first.
+
 ## Como testar
 
 ```bash

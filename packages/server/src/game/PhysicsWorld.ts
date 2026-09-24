@@ -13,6 +13,25 @@ import {
   DAMAGE_IMPACT_THRESHOLD,
   SPAWN_PROTECTION_MS,
   killStrengthMult,
+  MILD_ATTRACTION_ACCEL,
+  MILD_ATTRACTION_RADIUS,
+  MILD_ATTRACTION_MAX_ACCEL,
+  LIGHTNING_SLOW_MS,
+  LIGHTNING_SLOW_FACTOR,
+  LIGHTNING_RANGE,
+  LIGHTNING_DAMAGE,
+  MAGNET_PULSE_RADIUS,
+  MAGNET_PULSE_PULL,
+  MAGNET_PULSE_VISUAL_MS,
+  FREEZE_AURA_MS,
+  FREEZE_AURA_RADIUS,
+  FREEZE_AURA_SLOW,
+  FREEZE_AURA_TICK_SLOW_MS,
+  DASH_BURST_BOOST,
+  DASH_BURST_SPEED_MS,
+  DASH_BURST_SPEED_MULT,
+  REFLECT_SHIELD_MS,
+  REFLECT_RATIO,
   GIFT_SOFT_MAX_HP,
   DINO_STRENGTH_MULT,
   DINO_SPEED_MULT,
@@ -67,6 +86,12 @@ export interface BallBody {
   strength: number;
   /** Round kill count — drives killStrengthMult in activeStrength */
   kills: number;
+  /** External slow (lightning / freeze aura) */
+  slowUntil: number;
+  freezeAuraUntil: number;
+  magnetPulseUntil: number;
+  dashUntil: number;
+  reflectUntil: number;
   hitFlashTicks: number;
   lastHitterId: string | null;
   lastHitterName: string | null;
@@ -144,8 +169,10 @@ function activeSpeedMult(b: BallBody, now: number): number {
   if (now < b.dinoRageUntil) m *= DINO_SPEED_MULT;
   if (now < b.donutUntil) m *= DONUT_SPEED_MULT;
   if (now < b.sugarBurstUntil) m *= SUGAR_BURST_SPEED_MULT;
+  if (now < b.dashUntil) m *= DASH_BURST_SPEED_MULT;
   if (now < b.titanUntil) m *= TITAN_SPEED_MULT;
   if (b.galaxy) m *= GALAXY_SPEED_MULT;
+  if (now < b.slowUntil) m *= FREEZE_AURA_SLOW;
   return m;
 }
 
@@ -315,7 +342,7 @@ export class PhysicsWorld {
 
   setTimedBuff(
     userId: string,
-    kind: 'dino' | 'donut' | 'sugar' | 'titan',
+    kind: 'dino' | 'donut' | 'sugar' | 'titan' | 'dash' | 'freeze' | 'reflect' | 'magnet',
     until: number
   ): void {
     const b = this.balls.get(userId);
@@ -324,6 +351,10 @@ export class PhysicsWorld {
     if (kind === 'dino') b.dinoRageUntil = Math.max(b.dinoRageUntil, until);
     if (kind === 'donut') b.donutUntil = Math.max(b.donutUntil, until);
     if (kind === 'sugar') b.sugarBurstUntil = Math.max(b.sugarBurstUntil, until);
+    if (kind === 'dash') b.dashUntil = Math.max(b.dashUntil, until);
+    if (kind === 'freeze') b.freezeAuraUntil = Math.max(b.freezeAuraUntil, until);
+    if (kind === 'reflect') b.reflectUntil = Math.max(b.reflectUntil, until);
+    if (kind === 'magnet') b.magnetPulseUntil = Math.max(b.magnetPulseUntil, until);
     if (kind === 'titan') {
       const was = now < b.titanUntil && b.titanApplied;
       b.titanUntil = Math.max(b.titanUntil, until);
@@ -473,6 +504,11 @@ export class PhysicsWorld {
       maxHp: DEFAULT_BALL_HP,
       strength: 1,
       kills: 0,
+      slowUntil: 0,
+      freezeAuraUntil: 0,
+      magnetPulseUntil: 0,
+      dashUntil: 0,
+      reflectUntil: 0,
       hitFlashTicks: 0,
       lastHitterId: null,
       lastHitterName: null,
@@ -556,7 +592,24 @@ export class PhysicsWorld {
       if (!Number.isFinite(b.y)) b.y = this.height / 2;
       if (!Number.isFinite(b.vx)) b.vx = 0;
       if (!Number.isFinite(b.vy)) b.vy = 0;
+    }
 
+    // Mild mutual attraction (cluster fights) — before integrate
+    this.applyMildAttraction(list, now, dt);
+
+    // Freeze aura: keep nearby foes slowed
+    for (const caster of list) {
+      if (now >= caster.freezeAuraUntil) continue;
+      for (const o of list) {
+        if (o.userId === caster.userId) continue;
+        if (isProtected(o, now) || isProtected(caster, now)) continue;
+        const dist = Math.hypot(o.x - caster.x, o.y - caster.y);
+        if (dist > FREEZE_AURA_RADIUS) continue;
+        o.slowUntil = Math.max(o.slowUntil, now + FREEZE_AURA_TICK_SLOW_MS);
+      }
+    }
+
+    for (const b of list) {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       const wallFx = this.resolveWalls(b, now);
@@ -583,6 +636,131 @@ export class PhysicsWorld {
     return { damages, fx };
   }
 
+
+  /** Soft pull toward nearby balls — see MILD_ATTRACTION_* in shared. */
+  private applyMildAttraction(list: BallBody[], now: number, dt: number): void {
+    if (dt <= 0 || list.length < 2) return;
+    const R = MILD_ATTRACTION_RADIUS;
+    const acc = new Map<string, { ax: number; ay: number }>();
+    for (const b of list) acc.set(b.userId, { ax: 0, ay: 0 });
+
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        if (isProtected(a, now) || isProtected(b, now)) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1 || dist > R) continue;
+        const falloff = 1 - dist / R;
+        const mag = MILD_ATTRACTION_ACCEL * falloff;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const aa = acc.get(a.userId)!;
+        const bb = acc.get(b.userId)!;
+        aa.ax += nx * mag;
+        aa.ay += ny * mag;
+        bb.ax -= nx * mag;
+        bb.ay -= ny * mag;
+      }
+    }
+
+    for (const b of list) {
+      const a = acc.get(b.userId)!;
+      let ax = a.ax;
+      let ay = a.ay;
+      const amag = Math.hypot(ax, ay);
+      if (amag > MILD_ATTRACTION_MAX_ACCEL && amag > 0) {
+        const k = MILD_ATTRACTION_MAX_ACCEL / amag;
+        ax *= k;
+        ay *= k;
+      }
+      b.vx += ax * dt;
+      b.vy += ay * dt;
+    }
+  }
+
+  /** Zap nearest unprotected foe: damage + brief slow. */
+  applyLightningZap(casterId: string): { targetId: string | null; damage: number } {
+    const src = this.balls.get(casterId);
+    if (!src) return { targetId: null, damage: 0 };
+    const now = Date.now();
+    let best: BallBody | null = null;
+    let bestDist = LIGHTNING_RANGE;
+    for (const o of this.balls.values()) {
+      if (o.userId === casterId) continue;
+      if (isProtected(o, now)) continue;
+      const d = Math.hypot(o.x - src.x, o.y - src.y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = o;
+      }
+    }
+    if (!best) return { targetId: null, damage: 0 };
+    best.vx *= LIGHTNING_SLOW_FACTOR;
+    best.vy *= LIGHTNING_SLOW_FACTOR;
+    best.slowUntil = Math.max(best.slowUntil, now + LIGHTNING_SLOW_MS);
+    best.hitFlashTicks = 10;
+    this.dealDamage(best, LIGHTNING_DAMAGE, src, now);
+    return { targetId: best.userId, damage: LIGHTNING_DAMAGE };
+  }
+
+  /** Strong short pull of nearby balls toward caster. */
+  applyMagnetPulse(casterId: string): number {
+    const src = this.balls.get(casterId);
+    if (!src) return 0;
+    const now = Date.now();
+    src.magnetPulseUntil = Math.max(src.magnetPulseUntil, now + MAGNET_PULSE_VISUAL_MS);
+    let n = 0;
+    for (const o of this.balls.values()) {
+      if (o.userId === casterId) continue;
+      if (isProtected(o, now) || isProtected(src, now)) continue;
+      const dx = src.x - o.x;
+      const dy = src.y - o.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1 || dist > MAGNET_PULSE_RADIUS) continue;
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const falloff = 1 - dist / MAGNET_PULSE_RADIUS;
+      const pull = MAGNET_PULSE_PULL * (0.45 + 0.55 * falloff);
+      o.vx += nx * pull;
+      o.vy += ny * pull;
+      capSpeed(o, now);
+      n += 1;
+    }
+    return n;
+  }
+
+  applyFreezeAura(casterId: string): void {
+    this.setTimedBuff(casterId, 'freeze', Date.now() + FREEZE_AURA_MS);
+  }
+
+  applyDashBurst(casterId: string): void {
+    const b = this.balls.get(casterId);
+    if (!b) return;
+    const now = Date.now();
+    const s = speedOf(b);
+    let nx = 1;
+    let ny = 0;
+    if (s > 20) {
+      nx = b.vx / s;
+      ny = b.vy / s;
+    } else {
+      const ang = Math.random() * Math.PI * 2;
+      nx = Math.cos(ang);
+      ny = Math.sin(ang);
+    }
+    b.vx += nx * DASH_BURST_BOOST;
+    b.vy += ny * DASH_BURST_BOOST;
+    this.setTimedBuff(casterId, 'dash', now + DASH_BURST_SPEED_MS);
+    capSpeed(b, now);
+  }
+
+  applyReflectShield(casterId: string): void {
+    this.setTimedBuff(casterId, 'reflect', Date.now() + REFLECT_SHIELD_MS);
+  }
+
   toPublicStates(): BallState[] {
     const now = Date.now();
     const out: BallState[] = [];
@@ -593,6 +771,11 @@ export class PhysicsWorld {
       if (now < b.sugarBurstUntil) buffs.push('sugar_burst');
       if (now < b.titanUntil) buffs.push('capybara_titan');
       if (b.galaxy) buffs.push('galaxy_god');
+      if (now < b.freezeAuraUntil) buffs.push('freeze_aura');
+      if (now < b.reflectUntil) buffs.push('reflect_shield');
+      if (now < b.slowUntil) buffs.push('slowed');
+      if (now < b.magnetPulseUntil) buffs.push('magnet_pulse');
+      if (now < b.dashUntil) buffs.push('dash_burst');
       const sizeScale = b.radius / b.baseRadius;
       out.push({
         id: b.id,
@@ -644,6 +827,16 @@ export class PhysicsWorld {
         shieldBroke = true;
       }
     }
+    // Reflect shield: bounce portion back (no infinite loop — only if victim has reflect)
+    if (attacker && now < victim.reflectUntil && dmg > 0 && !(now < attacker.reflectUntil)) {
+      const bounced = Math.max(1, Math.round(dmg * REFLECT_RATIO));
+      if (!attacker.galaxy) {
+        // Non-lethal bounce — avoids orphan deaths without a kill event path
+        attacker.hp = Math.max(1, attacker.hp - bounced);
+        attacker.hitFlashTicks = 6;
+      }
+    }
+
     if (victim.galaxy) {
       // Cannot die — cosmetic chip only
       victim.hp = Math.max(5000, victim.hp - Math.min(dmg, 50));

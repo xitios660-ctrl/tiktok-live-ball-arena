@@ -7,7 +7,12 @@ export type AbilityKey =
   | 'dino_rage'
   | 'donut_overdrive'
   | 'capybara_titan'
-  | 'galaxy_god';
+  | 'galaxy_god'
+  | 'lightning_zap'
+  | 'magnet_pulse'
+  | 'freeze_aura'
+  | 'dash_burst'
+  | 'reflect_shield';
 
 /** Active buff keys mirrored to client for VFX */
 export type BuffKey =
@@ -15,7 +20,12 @@ export type BuffKey =
   | 'donut_overdrive'
   | 'sugar_burst'
   | 'capybara_titan'
-  | 'galaxy_god';
+  | 'galaxy_god'
+  | 'freeze_aura'
+  | 'reflect_shield'
+  | 'slowed'
+  | 'magnet_pulse'
+  | 'dash_burst';
 
 export interface GiftConfigEntry {
   id: string;
@@ -347,12 +357,55 @@ export const GIFT_ABILITY_BY_ID: Record<string, AbilityKey> = {
   rosquinha: 'donut_overdrive',
   capivara: 'capybara_titan',
   galaxia: 'galaxy_god',
+  raio: 'lightning_zap',
+  lightning: 'lightning_zap',
+  ima: 'magnet_pulse',
+  magnet: 'magnet_pulse',
+  gelo: 'freeze_aura',
+  freeze: 'freeze_aura',
+  foguete: 'dash_burst',
+  rocket: 'dash_burst',
+  espelho: 'reflect_shield',
+  mirror: 'reflect_shield',
 };
 
 export function resolveAbilityKey(giftId: string | number): AbilityKey | null {
   const id = String(giftId).toLowerCase();
   return GIFT_ABILITY_BY_ID[id] ?? null;
 }
+
+
+/** —— Mild mutual attraction (keeps fights clustered; not a glue magnet) ——
+ * Each tick, balls within MILD_ATTRACTION_RADIUS get accel toward each other:
+ *   a = MILD_ATTRACTION_ACCEL * (1 - dist/R)   (soft falloff)
+ * Acceleration vector is capped at MILD_ATTRACTION_MAX_ACCEL.
+ * Spawn-protected balls neither pull nor are pulled.
+ */
+export const MILD_ATTRACTION_ACCEL = 55; // px/s² scale
+export const MILD_ATTRACTION_RADIUS = 420; // px
+export const MILD_ATTRACTION_MAX_ACCEL = 90; // px/s² hard cap per ball per tick
+
+/** —— Extra gift powers (mid-tier; F2P still viable via kills) —— */
+export const LIGHTNING_SLOW_MS = 2_200;
+export const LIGHTNING_SLOW_FACTOR = 0.35; // velocity mult on hit
+export const LIGHTNING_RANGE = 520;
+export const LIGHTNING_DAMAGE = 8;
+
+export const MAGNET_PULSE_RADIUS = 480;
+export const MAGNET_PULSE_PULL = 320; // impulse toward caster
+export const MAGNET_PULSE_VISUAL_MS = 1_200;
+
+export const FREEZE_AURA_MS = 8_000;
+export const FREEZE_AURA_RADIUS = 260;
+export const FREEZE_AURA_SLOW = 0.55; // speed mult while in aura
+export const FREEZE_AURA_TICK_SLOW_MS = 400; // refresh slow on nearby
+
+export const DASH_BURST_BOOST = 380; // add speed along facing
+export const DASH_BURST_SPEED_MS = 2_500;
+export const DASH_BURST_SPEED_MULT = 1.35;
+
+export const REFLECT_SHIELD_MS = 5_000;
+export const REFLECT_RATIO = 0.55; // portion of incoming raw dmg bounced
 
 /** —— Likes / Shares / Random arena events —— */
 export const LIKE_THRESHOLD_DEFAULT = 100;

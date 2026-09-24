@@ -140,6 +140,80 @@ export function applyGiftAbility(
         }
         break;
       }
+      case 'lightning_zap': {
+        if (i === 0) {
+          const zap = physics.applyLightningZap(userId);
+          announces.push({
+            type: 'announce',
+            kind: 'gift',
+            message: zap.targetId
+              ? `⚡ RAIO! @${name} eletrocutou o mais próximo`
+              : `⚡ RAIO! @${name} — sem alvo perto`,
+            userId,
+            username: name,
+            targetId: zap.targetId || undefined,
+            timestamp: Date.now(),
+          });
+        }
+        break;
+      }
+      case 'magnet_pulse': {
+        if (i === 0) {
+          const n = physics.applyMagnetPulse(userId);
+          announces.push({
+            type: 'announce',
+            kind: 'gift',
+            message: `🧲 ÍMÃ! @${name} puxou ${n} bola(s)`,
+            userId,
+            username: name,
+            value: n,
+            timestamp: Date.now(),
+          });
+        }
+        break;
+      }
+      case 'freeze_aura': {
+        physics.applyFreezeAura(userId);
+        if (i === times - 1) {
+          announces.push({
+            type: 'announce',
+            kind: 'gift',
+            message: `❄️ AURA GELADA! @${name} — inimigos perto ficam lentos`,
+            userId,
+            username: name,
+            timestamp: Date.now(),
+          });
+        }
+        break;
+      }
+      case 'dash_burst': {
+        if (i === 0) {
+          physics.applyDashBurst(userId);
+          announces.push({
+            type: 'announce',
+            kind: 'gift',
+            message: `🚀 DASH! @${name} acelerou`,
+            userId,
+            username: name,
+            timestamp: Date.now(),
+          });
+        }
+        break;
+      }
+      case 'reflect_shield': {
+        physics.applyReflectShield(userId);
+        if (i === times - 1) {
+          announces.push({
+            type: 'announce',
+            kind: 'gift',
+            message: `🪞 REFLECT! @${name} devolve dano por alguns segundos`,
+            userId,
+            username: name,
+            timestamp: Date.now(),
+          });
+        }
+        break;
+      }
     }
   }
 

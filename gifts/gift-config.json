@@ -1,10 +1,13 @@
 {
-  "version": 2,
+  "version": 3,
   "description": "Hierarquia Rosa→Galaxy. Beneficia apenas o SENDER. abilityKey dispara a habilidade no servidor.",
   "gifts": [
     {
       "id": "rosa",
-      "tiktokGiftNames": ["Rose", "Rosa"],
+      "tiktokGiftNames": [
+        "Rose",
+        "Rosa"
+      ],
       "name": "Rosa",
       "coinValue": 1,
       "tier": 1,
@@ -13,7 +16,10 @@
     },
     {
       "id": "mini_dino",
-      "tiktokGiftNames": ["Mini Dino", "Dinosaur"],
+      "tiktokGiftNames": [
+        "Mini Dino",
+        "Dinosaur"
+      ],
       "name": "Mini Dino",
       "coinValue": 10,
       "tier": 2,
@@ -22,7 +28,11 @@
     },
     {
       "id": "rosquinha",
-      "tiktokGiftNames": ["Doughnut", "Donut", "Rosquinha"],
+      "tiktokGiftNames": [
+        "Doughnut",
+        "Donut",
+        "Rosquinha"
+      ],
       "name": "Rosquinha",
       "coinValue": 30,
       "tier": 3,
@@ -31,7 +41,10 @@
     },
     {
       "id": "capivara",
-      "tiktokGiftNames": ["Capybara", "Capivara"],
+      "tiktokGiftNames": [
+        "Capybara",
+        "Capivara"
+      ],
       "name": "Capivara",
       "coinValue": 100,
       "tier": 4,
@@ -40,12 +53,85 @@
     },
     {
       "id": "galaxia",
-      "tiktokGiftNames": ["Galaxy", "Galaxy Gift", "Galáxia", "Galaxia"],
+      "tiktokGiftNames": [
+        "Galaxy",
+        "Galaxy Gift",
+        "Galáxia",
+        "Galaxia"
+      ],
       "name": "Galaxia",
       "coinValue": 1000,
       "tier": 5,
       "abilityKey": "galaxy_god",
       "description": "GALAXY GOD até o fim da rodada atual: imortal, +300% strength, +100% speed, +50% size; limpa no reset"
+    },
+    {
+      "id": "raio",
+      "tiktokGiftNames": [
+        "GG",
+        "Lightning",
+        "Raio",
+        "Thunder"
+      ],
+      "name": "Raio",
+      "coinValue": 15,
+      "tier": 2,
+      "abilityKey": "lightning_zap",
+      "description": "LIGHTNING ZAP: slow + small dmg to nearest foe (~2.2s)"
+    },
+    {
+      "id": "ima",
+      "tiktokGiftNames": [
+        "Finger Heart",
+        "Magnet",
+        "Ímã",
+        "Ima"
+      ],
+      "name": "Ímã",
+      "coinValue": 20,
+      "tier": 2,
+      "abilityKey": "magnet_pulse",
+      "description": "MAGNET PULSE: strong short pull of nearby balls toward sender"
+    },
+    {
+      "id": "gelo",
+      "tiktokGiftNames": [
+        "Ice Cream Cone",
+        "Freeze",
+        "Gelo",
+        "Snow"
+      ],
+      "name": "Gelo",
+      "coinValue": 25,
+      "tier": 3,
+      "abilityKey": "freeze_aura",
+      "description": "FREEZE AURA 8s: nearby enemies stay slowed"
+    },
+    {
+      "id": "foguete",
+      "tiktokGiftNames": [
+        "Rocket",
+        "Foguete",
+        "Perfume"
+      ],
+      "name": "Foguete",
+      "coinValue": 15,
+      "tier": 2,
+      "abilityKey": "dash_burst",
+      "description": "DASH BURST: instant boost + 2.5s speed"
+    },
+    {
+      "id": "espelho",
+      "tiktokGiftNames": [
+        "Mirror",
+        "Espelho",
+        "Hand Hearts"
+      ],
+      "name": "Espelho",
+      "coinValue": 35,
+      "tier": 3,
+      "abilityKey": "reflect_shield",
+      "description": "REFLECT SHIELD 5s: ~55% incoming damage bounced to attacker"
     }
   ]
 }

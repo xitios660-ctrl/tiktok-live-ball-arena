@@ -724,6 +724,11 @@ export class ArenaScene extends Phaser.Scene {
     const isDonut = buffs.includes('donut_overdrive');
     const isTitan = buffs.includes('capybara_titan');
     const isSugar = buffs.includes('sugar_burst');
+    const isFreeze = buffs.includes('freeze_aura');
+    const isReflect = buffs.includes('reflect_shield');
+    const isSlowed = buffs.includes('slowed');
+    const isMagnet = buffs.includes('magnet_pulse');
+    const isDash = buffs.includes('dash_burst');
 
     view.circle.setFillStyle(
       flash ? 0xffffff : isGalaxy ? 0x9b5de5 : b.color,
@@ -746,7 +751,11 @@ export class ArenaScene extends Phaser.Scene {
     if (isDino) view.aura.setStrokeStyle(5, 0x7cfc00, 0.7);
     else if (isGalaxy) view.aura.setStrokeStyle(6, 0xc77dff, 0.85);
     else if (isTitan) view.aura.setStrokeStyle(5, 0xc4a484, 0.55);
-    else if (isSugar) view.aura.setStrokeStyle(4, 0xff66aa, 0.7);
+    else if (isFreeze) view.aura.setStrokeStyle(5, 0x7dd3fc, 0.8);
+    else if (isReflect) view.aura.setStrokeStyle(5, 0xe0e7ff, 0.85);
+    else if (isMagnet) view.aura.setStrokeStyle(6, 0xf472b6, 0.75);
+    else if (isDash || isSugar) view.aura.setStrokeStyle(4, 0xff66aa, 0.7);
+    else if (isSlowed) view.aura.setStrokeStyle(3, 0x38bdf8, 0.45);
     else view.aura.setStrokeStyle(0, 0x000000, 0);
 
     // Donut shield ring
@@ -791,6 +800,11 @@ export class ArenaScene extends Phaser.Scene {
     if (isDino) icons.push('🦖');
     if (isDonut || sh > 0) icons.push('🍩');
     if (isSugar) icons.push('💥');
+    if (isFreeze) icons.push('❄️');
+    if (isReflect) icons.push('🪞');
+    if (isMagnet) icons.push('🧲');
+    if (isDash) icons.push('🚀');
+    if (isSlowed) icons.push('🥶');
     view.buffIcon.setText(icons.join(''));
     view.buffIcon.setY(b.radius + 40);
 
