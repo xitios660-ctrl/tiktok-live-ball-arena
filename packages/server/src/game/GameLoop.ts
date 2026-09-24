@@ -34,6 +34,13 @@ import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
 import { GlobalArenaEvents } from './GlobalArenaEvents';
 import { PickupSystem, pickupAbilityFromGiftId } from './PickupSystem';
 import { AutoBotSpawner } from './AutoBotSpawner';
+import {
+  ChatGPTBossController,
+  CHATGPT_BOSS_NAME,
+  CHATGPT_BOSS_REWARD_KILLS,
+  CHATGPT_BOSS_USER_ID,
+  CHATGPT_BOSS_USERNAME,
+} from './ChatGPTBoss';
 
 export type RoundListener = (state: RoundState) => void;
 export type LiveListener = (event: ArenaLiveEvent) => void;
@@ -95,6 +102,7 @@ export class GameLoop {
   private readonly globalEvents = new GlobalArenaEvents();
   private readonly pickups = new PickupSystem();
   private readonly autoBots: AutoBotSpawner;
+  private readonly boss: ChatGPTBossController;
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
 
@@ -108,6 +116,7 @@ export class GameLoop {
       mode,
       playerCount: 0,
     };
+    this.boss = new ChatGPTBossController(this.physics);
     this.autoBots = new AutoBotSpawner({
       getPlayerCount: () => this.physics.count,
       canAcceptJoin: () => {
@@ -125,6 +134,7 @@ export class GameLoop {
   /** Clear timers (tests / graceful shutdown) */
   destroy(): void {
     this.autoBots.stop();
+    this.boss.destroy();
     this.stopRoundTimer();
     this.stopPhysics();
   }
@@ -146,6 +156,9 @@ export class GameLoop {
     const balls = this.physics.toPublicStates().map((b) => ({
       ...b,
       isKing: !!kingUserId && b.userId === kingUserId,
+      isBoss: b.userId === CHATGPT_BOSS_USER_ID,
+      bossRewardKills:
+        b.userId === CHATGPT_BOSS_USER_ID ? CHATGPT_BOSS_REWARD_KILLS : undefined,
     }));
     return {
       tick: this.tick,
@@ -167,6 +180,7 @@ export class GameLoop {
   getStats(): PlayerStats[] {
     const list: PlayerStats[] = [];
     for (const p of this.players.values()) {
+      if (p.userId === CHATGPT_BOSS_USER_ID) continue;
       const ball = this.physics.getBall(p.userId);
       list.push({
         userId: p.userId,
@@ -276,6 +290,7 @@ export class GameLoop {
     this.lastKingAnnounceAt = 0;
     this.lastMinuteAnnounced = false;
     this.countdownAnnounced.clear();
+    this.boss.resetRound();
     this.state = {
       ...this.state,
       phase: 'running',
@@ -312,6 +327,7 @@ export class GameLoop {
     this.hitPowerCooldown.clear();
     this.pickups.clear();
     this.recentCombat = [];
+    this.boss.resetRound();
     this.tick = 0;
     this.winner = null;
     this.kingUserId = null;
@@ -653,6 +669,7 @@ export class GameLoop {
     this.resultsRemainingSec = 0;
     this.lastMinuteAnnounced = false;
     this.countdownAnnounced.clear();
+    this.boss.resetRound();
     this.pickups.onRoundStart();
     this.state = {
       ...this.state,
@@ -673,6 +690,29 @@ export class GameLoop {
 
   private physicsTick(): void {
     if (this.state.phase !== 'running') return;
+
+    const bossSpawned = this.boss.tick(this.state.phase, this.dt);
+    if (bossSpawned) {
+      const rec = this.ensurePlayerRecord(
+        CHATGPT_BOSS_USER_ID,
+        CHATGPT_BOSS_USERNAME,
+        CHATGPT_BOSS_NAME
+      );
+      rec.alive = true;
+      rec.deadAt = null;
+      this.pushCombat({
+        type: 'announce',
+        kind: 'boss_spawn',
+        message: '🤖 CHEFE CHATGPT ENTROU NA ARENA — vale +' + CHATGPT_BOSS_REWARD_KILLS + '☠!',
+        userId: CHATGPT_BOSS_USER_ID,
+        username: CHATGPT_BOSS_NAME,
+        value: CHATGPT_BOSS_REWARD_KILLS,
+        timestamp: Date.now(),
+      });
+      this.state = { ...this.state, playerCount: this.physics.count };
+      this.emitRound();
+    }
+
     const { damages, fx } = this.physics.step(this.dt);
     if (damages.length) this.processDamages(damages);
 
@@ -843,6 +883,7 @@ export class GameLoop {
   }
 
   private handleDeath(d: DamageApplication): KillEvent | null {
+    const victimIsBoss = this.boss.isBoss(d.victimId);
     const body = this.physics.getBall(d.victimId);
     const x = body?.x ?? d.x;
     const y = body?.y ?? d.y;
@@ -850,6 +891,7 @@ export class GameLoop {
     const lastHitterName = body?.lastHitterName ?? d.attackerName;
 
     this.physics.removeBall(d.victimId);
+    if (victimIsBoss) this.boss.markDefeated();
 
     const victim = this.ensurePlayerRecord(d.victimId, d.victimName);
     victim.alive = false;
@@ -868,7 +910,8 @@ export class GameLoop {
 
     if (attackerId && attackerId !== 'admin') {
       const atk = this.ensurePlayerRecord(attackerId, attackerName || '???');
-      atk.kills += 1;
+      const killReward = victimIsBoss ? CHATGPT_BOSS_REWARD_KILLS : 1;
+      atk.kills += killReward;
       attackerName = atk.nickname || atk.username;
       // Kill → strength (round-permanent); live ball picks it up immediately
       this.physics.setKills(attackerId, atk.kills);
@@ -890,10 +933,12 @@ export class GameLoop {
         });
       }
 
-      // Rivalry: A killed B
-      const prev = atk.killsAgainst.get(d.victimId) || 0;
-      rivalryCount = prev + 1;
-      atk.killsAgainst.set(d.victimId, rivalryCount);
+      // Rivalry: boss is a one-off objective, so it does not create rivalry spam.
+      if (!victimIsBoss) {
+        const prev = atk.killsAgainst.get(d.victimId) || 0;
+        rivalryCount = prev + 1;
+        atk.killsAgainst.set(d.victimId, rivalryCount);
+      }
 
       // Revenge fulfilled?
       if (atk.revengeTargetId === d.victimId) {
@@ -912,7 +957,13 @@ export class GameLoop {
     }
 
     let message: string;
-    if (isRevenge && attackerName) {
+    if (victimIsBoss && attackerName) {
+      message =
+        '🏆 @' + attackerName +
+        ' DERROTOU O CHATGPT BOSS E GANHOU +' +
+        CHATGPT_BOSS_REWARD_KILLS +
+        '☠!';
+    } else if (isRevenge && attackerName) {
       message = `VINGANÇA! @${attackerName} se vingou de @${d.victimName}`;
     } else if (attackerName) {
       message = `@${attackerName} eliminou @${d.victimName}`;
@@ -936,23 +987,37 @@ export class GameLoop {
       rivalryCount: rivalryCount || undefined,
     };
 
-    // Elimination + respawn hint
-    const hint: AnnounceEvent = {
-      type: 'announce',
-      kind: 'eliminated',
-      message: attackerName
-        ? `@${d.victimName} eliminado por @${attackerName} — COMENTE NOVAMENTE PARA VOLTAR`
-        : `@${d.victimName} eliminado — COMENTE NOVAMENTE PARA VOLTAR`,
-      userId: d.victimId,
-      username: d.victimName,
-      targetId: attackerId || undefined,
-      targetName: attackerName || undefined,
-      timestamp: Date.now(),
-    };
-    this.pushCombat(hint);
+    if (victimIsBoss) {
+      this.pushCombat({
+        type: 'announce',
+        kind: 'boss_defeated',
+        message,
+        userId: attackerId || undefined,
+        username: attackerName || undefined,
+        targetId: CHATGPT_BOSS_USER_ID,
+        targetName: CHATGPT_BOSS_NAME,
+        value: CHATGPT_BOSS_REWARD_KILLS,
+        timestamp: Date.now(),
+      });
+    } else {
+      // Elimination + respawn hint
+      const hint: AnnounceEvent = {
+        type: 'announce',
+        kind: 'eliminated',
+        message: attackerName
+          ? `@${d.victimName} eliminado por @${attackerName} — COMENTE NOVAMENTE PARA VOLTAR`
+          : `@${d.victimName} eliminado — COMENTE NOVAMENTE PARA VOLTAR`,
+        userId: d.victimId,
+        username: d.victimName,
+        targetId: attackerId || undefined,
+        targetName: attackerName || undefined,
+        timestamp: Date.now(),
+      };
+      this.pushCombat(hint);
+    }
 
     // Occasional rivalry announcement (2nd+ kill in round, not every time spam — every 2+)
-    if (rivalryCount >= 2 && attackerName && !isRevenge) {
+    if (!victimIsBoss && rivalryCount >= 2 && attackerName && !isRevenge) {
       const riv: AnnounceEvent = {
         type: 'announce',
         kind: 'rivalry',
