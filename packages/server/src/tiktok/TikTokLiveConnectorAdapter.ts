@@ -187,7 +187,8 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       undefined;
     const conn = new TikTokLiveConnection(this.username, {
       processInitialData: false,
-      enableExtendedGiftInfo: true,
+      // Extended gift gallery hits Euler Business routes; gifts still work via Webcast events.
+      enableExtendedGiftInfo: false,
       fetchRoomInfoOnConnect: true,
       ...(signApiKey ? { signApiKey } : {}),
     });
