@@ -22,6 +22,13 @@ import {
   spawnReflectActivate,
   tickBuffParticles,
 } from '../fx/AbilityFx';
+import { paintArenaFloor, paintArenaRim } from '../fx/ArenaFloor';
+import {
+  createGlossParts,
+  syncGlossParts,
+  skinFromBall,
+  type GlossSkin,
+} from '../fx/GlossBall';
 import {
   createCinematicTitle,
   setPhaseChrome,
@@ -44,13 +51,18 @@ interface BallView {
   ring: Phaser.GameObjects.Arc;
   aura: Phaser.GameObjects.Arc;
   shieldRing: Phaser.GameObjects.Arc;
+  shadow: Phaser.GameObjects.Ellipse;
+  gloss: Phaser.GameObjects.Image;
+  crownGfx: Phaser.GameObjects.Graphics;
+  glossKey: string;
+  skin: GlossSkin;
+  avatar?: Phaser.GameObjects.Image;
   initials: Phaser.GameObjects.Text;
   label: Phaser.GameObjects.Text;
   hpBg: Phaser.GameObjects.Rectangle;
   hpFg: Phaser.GameObjects.Rectangle;
   shieldFg: Phaser.GameObjects.Rectangle;
   revengeMark: Phaser.GameObjects.Text;
-  crown: Phaser.GameObjects.Text;
   buffIcon: Phaser.GameObjects.Text;
   strengthMark: Phaser.GameObjects.Text;
   lastHp: number;
@@ -92,6 +104,10 @@ export class ArenaScene extends Phaser.Scene {
   private winnerBody!: Phaser.GameObjects.Text;
   private resultsHint!: Phaser.GameObjects.Text;
   private border!: Phaser.GameObjects.Rectangle;
+  private arenaFloor!: Phaser.GameObjects.Graphics;
+  private arenaRim!: Phaser.GameObjects.Graphics;
+  private rimSpin = 0;
+  private overlayTransparent = false;
   private feed: string[] = [];
   private ballsLayer!: Phaser.GameObjects.Container;
   private killFeedLayer!: Phaser.GameObjects.Container;
@@ -109,6 +125,7 @@ export class ArenaScene extends Phaser.Scene {
   private fpsText!: Phaser.GameObjects.Text;
   private likesText!: Phaser.GameObjects.Text;
   private lastRemaining = 300;
+  private lastPhase = 'waiting';
 
   constructor() {
     super('ArenaScene');
@@ -120,51 +137,19 @@ export class ArenaScene extends Phaser.Scene {
     const side = SAFE.side;
     const bottom = SAFE.bottom;
 
-    // Subtle arena backdrop (skip solid fills in OBS transparent mode)
-    if (!opts.transparent) {
-      this.add.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT, THEME.charcoal);
-      const g = this.add.graphics().setDepth(0);
-      // Soft vertical gradient bands
-      g.fillStyle(THEME.card, 0.45);
-      g.fillRect(0, 0, CANVAS_WIDTH, 420);
-      g.fillStyle(THEME.coral, 0.07);
-      g.fillRect(0, 0, CANVAS_WIDTH, 180);
-      g.fillStyle(THEME.teal, 0.05);
-      g.fillRect(0, CANVAS_HEIGHT - 480, CANVAS_WIDTH, 480);
-      // Faint hex / diamond grid (few lines — cheap)
-      g.lineStyle(1, THEME.teal, 0.05);
-      const step = 72;
-      for (let x = 0; x < CANVAS_WIDTH; x += step) {
-        g.lineBetween(x, 0, x, CANVAS_HEIGHT);
-      }
-      for (let y = 0; y < CANVAS_HEIGHT; y += step) {
-        g.lineBetween(0, y, CANVAS_WIDTH, y);
-      }
-      g.lineStyle(1, THEME.lavender, 0.04);
-      for (let x = -CANVAS_HEIGHT; x < CANVAS_WIDTH + CANVAS_HEIGHT; x += step * 2) {
-        g.lineBetween(x, 0, x + CANVAS_HEIGHT, CANVAS_HEIGHT);
-        g.lineBetween(x, CANVAS_HEIGHT, x + CANVAS_HEIGHT, 0);
-      }
-      // Richer vignette rings
-      g.lineStyle(110, 0x000000, 0.4);
-      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 920);
-      g.lineStyle(160, 0x000000, 0.32);
-      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 1080);
-      g.lineStyle(200, 0x000000, 0.22);
-      g.strokeCircle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 1240);
-      // Soft neon edge wash
-      g.lineStyle(3, THEME.teal, 0.2);
-      g.strokeRect(10, 10, CANVAS_WIDTH - 20, CANVAS_HEIGHT - 20);
-      g.lineStyle(2, THEME.lavender, 0.14);
-      g.strokeRect(18, 18, CANVAS_WIDTH - 36, CANVAS_HEIGHT - 36);
-      g.lineStyle(1.5, THEME.gold, 0.08);
-      g.strokeRect(26, 26, CANVAS_WIDTH - 52, CANVAS_HEIGHT - 52);
-    }
+    // Glossy arena floor (skip opaque fills in OBS transparent mode)
+    this.overlayTransparent = !!opts.transparent;
+    this.arenaFloor = this.add.graphics().setDepth(0);
+    paintArenaFloor(this.arenaFloor, CANVAS_WIDTH, CANVAS_HEIGHT, this.overlayTransparent);
     this.ambientTwinkles = createAmbientTwinkles(this, 16, 1);
+    // Legacy border rect kept for layout hooks; stroke owned by arenaRim Graphics
     this.border = this.add
-      .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, THEME.card, opts.transparent ? 0 : 0.12)
-      .setStrokeStyle(5, THEME.coral, 0.85)
+      .rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH - 16, CANVAS_HEIGHT - 16, THEME.card, 0)
+      .setStrokeStyle(0)
       .setDepth(2);
+    this.arenaRim = this.add.graphics().setDepth(3);
+    this.rimSpin = 0;
+    paintArenaRim(this.arenaRim, CANVAS_WIDTH, CANVAS_HEIGHT, this.rimSpin, false);
 
     // Cinematic title treatment
     this.cinematicHud = createCinematicTitle(this, CANVAS_WIDTH / 2, top + 22, 100);
@@ -416,9 +401,10 @@ export class ArenaScene extends Phaser.Scene {
       this.toastUntil = 0;
     }
 
-    if (this.intensity) {
-      const pulse = 0.5 + Math.sin(now / 120) * 0.5;
-      this.border.setStrokeStyle(6 + pulse * 4, THEME.coral);
+    this.rimSpin += delta * 0.04;
+    const urgent = this.lastPhase === 'running' && this.lastRemaining <= 30;
+    if (this.arenaRim) {
+      paintArenaRim(this.arenaRim, CANVAS_WIDTH, CANVAS_HEIGHT, this.rimSpin, urgent);
     }
   }
 
@@ -545,6 +531,7 @@ export class ArenaScene extends Phaser.Scene {
     const label = this.formatTime(remaining);
     this.timerText.setText(label);
     if (this.timerGlow) this.timerGlow.setText(label);
+    this.lastPhase = phase;
     if (this.cinematicHud) setPhaseChrome(this.cinematicHud, phase, remaining, this);
     if (phase === 'results') {
       this.timerText.setColor(THEME_HEX.gold).setFontSize('64px');
@@ -570,7 +557,7 @@ export class ArenaScene extends Phaser.Scene {
       this.intensity = false;
       this.timerText.setColor(THEME_HEX.sage).setFontSize('58px');
       if (this.timerGlow) this.timerGlow.setColor(THEME_HEX.sage).setFontSize('64px').setAlpha(0.22);
-      this.border.setStrokeStyle(5, THEME.coral, 0.85);
+      if (this.border) this.border.setStrokeStyle(0);
       if (this.titleText) this.titleText.setColor(THEME_HEX.cream);
     }
     this.lastRemaining = remaining;
@@ -771,10 +758,12 @@ export class ArenaScene extends Phaser.Scene {
 
   private createBallView(b: BallState): BallView {
     const container = this.add.container(b.x, b.y);
+    const glossParts = createGlossParts(this, b);
     const aura = this.add.circle(0, 0, b.radius + 14, 0x7cfc00, 0).setStrokeStyle(5, 0x7cfc00, 0);
     const shieldRing = this.add.circle(0, 0, b.radius + 8, 0xff9f1c, 0).setStrokeStyle(3, 0xff9f1c, 0);
     const ring = this.add.circle(0, 0, b.radius + 3, THEME.cream, 0).setStrokeStyle(4, THEME.cream, 0.55);
-    const circle = this.add.circle(0, 0, b.radius, b.color, 1);
+    // Arc keeps stroke/outline only — fill comes from glossy texture
+    const circle = this.add.circle(0, 0, b.radius, b.color, 0);
     circle.setStrokeStyle(3, THEME.cream, 0.9);
 
     const initials = this.add
@@ -792,7 +781,7 @@ export class ArenaScene extends Phaser.Scene {
         fontFamily: FONT_BLACK,
         fontSize: '17px',
         color: THEME_HEX.cream,
-        backgroundColor: '#1E1E1Ecc',
+        backgroundColor: '#14110ecc',
         padding: { x: 8, y: 3 },
       })
       .setOrigin(0.5, 0);
@@ -807,11 +796,6 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
 
-    const crown = this.add
-      .text(0, -b.radius - 36, '👑', { fontSize: '34px' })
-      .setOrigin(0.5)
-      .setVisible(false);
-
     const buffIcon = this.add
       .text(0, b.radius + 40, '', { fontSize: '20px' })
       .setOrigin(0.5, 0);
@@ -821,20 +805,62 @@ export class ArenaScene extends Phaser.Scene {
         fontFamily: FONT_BLACK,
         fontSize: '14px',
         color: THEME_HEX.gold,
-        backgroundColor: '#1E1E1Ecc',
+        backgroundColor: '#14110ecc',
         padding: { x: 4, y: 1 },
       })
       .setOrigin(0.5)
       .setVisible(false);
 
-    container.add([aura, shieldRing, ring, circle, initials, hpBg, hpFg, shieldFg, label, revengeMark, crown, buffIcon, strengthMark]);
-    if (b.avatarUrl) this.tryLoadAvatar(b, circle, initials, container);
+    // Order: shadow → aura/shield/ring → circle(stroke) → gloss → initials → HUD → crown
+    container.add([
+      glossParts.shadow,
+      aura,
+      shieldRing,
+      ring,
+      circle,
+      glossParts.gloss,
+      initials,
+      hpBg,
+      hpFg,
+      shieldFg,
+      label,
+      revengeMark,
+      buffIcon,
+      strengthMark,
+      glossParts.crownGfx,
+    ]);
 
-    return {
-      container, circle, ring, aura, shieldRing, initials, label, hpBg, hpFg, shieldFg,
-      revengeMark, crown, buffIcon, strengthMark, lastHp: b.hp, lastHealFlash: false, lastStrengthTier: 0,
-      prevX: b.x, prevY: b.y, lastBuffFxAt: 0, hadFreeze: false, hadReflect: false, hadDash: false,
+    const view: BallView = {
+      container,
+      circle,
+      ring,
+      aura,
+      shieldRing,
+      shadow: glossParts.shadow,
+      gloss: glossParts.gloss,
+      crownGfx: glossParts.crownGfx,
+      glossKey: glossParts.glossKey,
+      skin: glossParts.skin,
+      initials,
+      label,
+      hpBg,
+      hpFg,
+      shieldFg,
+      revengeMark,
+      buffIcon,
+      strengthMark,
+      lastHp: b.hp,
+      lastHealFlash: false,
+      lastStrengthTier: 0,
+      prevX: b.x,
+      prevY: b.y,
+      lastBuffFxAt: 0,
+      hadFreeze: false,
+      hadReflect: false,
+      hadDash: false,
     };
+    if (b.avatarUrl) this.tryLoadAvatar(b, view);
+    return view;
   }
 
   private updateBallView(view: BallView, b: BallState): void {
@@ -874,10 +900,8 @@ export class ArenaScene extends Phaser.Scene {
     const isMagnet = buffs.includes('magnet_pulse');
     const isDash = buffs.includes('dash_burst');
 
-    view.circle.setFillStyle(
-      flash ? THEME.cream : isGalaxy ? THEME.lavender : b.color,
-      protected_ ? 0.35 : flash ? 0.9 : 1
-    );
+    // Fill owned by gloss texture; Arc is stroke-only
+    view.circle.setFillStyle(b.color, 0);
     let stroke = THEME.cream;
     let strokeW = b.isKing ? 7 : 3;
     if (isGalaxy) { stroke = THEME.lavender; strokeW = 6; }
@@ -926,8 +950,24 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     view.revengeMark.setVisible(!!b.revengeMarked);
-    view.crown.setVisible(!!b.isKing);
-    view.crown.setY(-b.radius - 38);
+    syncGlossParts(
+      this,
+      {
+        shadow: view.shadow,
+        gloss: view.gloss,
+        crownGfx: view.crownGfx,
+        glossKey: view.glossKey,
+        skin: view.skin,
+      },
+      b,
+      { hitFlash: flash, spawnProtected: protected_ }
+    );
+    view.glossKey = view.gloss.texture.key;
+    view.skin = skinFromBall(b);
+    if (view.avatar) {
+      view.avatar.setDisplaySize(b.radius * 1.7, b.radius * 1.7);
+      view.avatar.setAlpha(protected_ ? 0.55 : 1);
+    }
 
     // Kill-strength cue (tier = floor(bonus% / 24) roughly every 3 kills)
     const sm = b.strengthMult ?? 1;
@@ -1075,39 +1115,39 @@ export class ArenaScene extends Phaser.Scene {
     }
   }
 
-  private tryLoadAvatar(
-    b: BallState,
-    circle: Phaser.GameObjects.Arc,
-    initials: Phaser.GameObjects.Text,
-    container: Phaser.GameObjects.Container
-  ): void {
+  private tryLoadAvatar(b: BallState, view: BallView): void {
     if (!b.avatarUrl || this.pendingAvatars.has(b.id)) return;
     this.pendingAvatars.add(b.id);
     const key = `avatar-${b.id}`;
     if (this.textures.exists(key)) {
-      this.applyAvatar(key, b.radius, circle, initials, container);
+      this.applyAvatar(key, b.radius, view);
       return;
     }
     this.load.image(key, b.avatarUrl);
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       if (!this.textures.exists(key)) return;
-      this.applyAvatar(key, b.radius, circle, initials, container);
+      // View may have been destroyed while loading
+      if (!this.views.has(b.id)) return;
+      this.applyAvatar(key, b.radius, this.views.get(b.id)!);
     });
     this.load.start();
   }
 
-  private applyAvatar(
-    key: string,
-    radius: number,
-    circle: Phaser.GameObjects.Arc,
-    initials: Phaser.GameObjects.Text,
-    container: Phaser.GameObjects.Container
-  ): void {
-    initials.setVisible(false);
+  private applyAvatar(key: string, radius: number, view: BallView): void {
+    view.initials.setVisible(false);
+    if (view.avatar) {
+      view.avatar.setTexture(key);
+      view.avatar.setDisplaySize(radius * 1.7, radius * 1.7);
+      return;
+    }
     const img = this.add.image(0, 0, key);
     img.setDisplaySize(radius * 1.7, radius * 1.7);
-    container.addAt(img, 1);
-    circle.setFillStyle(circle.fillColor, 0.25);
+    // Place avatar at circle z-index (after gloss) — not behind gloss, no geometric mask
+    const glossIdx = view.container.getIndex(view.gloss);
+    view.container.addAt(img, glossIdx >= 0 ? glossIdx + 1 : 6);
+    view.avatar = img;
+    // Keep Arc fill transparent — gloss + avatar provide the body
+    view.circle.setFillStyle(view.circle.fillColor, 0);
   }
 
   private getInitials(label: string): string {
