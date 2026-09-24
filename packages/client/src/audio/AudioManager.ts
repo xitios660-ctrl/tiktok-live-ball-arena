@@ -32,12 +32,24 @@ export class AudioManager {
   private quality = 1; // 1 = full, 0.3 = reduced (fewer beeps)
 
   ensure(): void {
-    if (this.ctx) return;
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') void this.ctx.resume();
+      return;
+    }
     try {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new Ctx();
+      if (this.ctx.state === 'suspended') void this.ctx.resume();
     } catch {
       this.ctx = null;
+    }
+  }
+
+  /** Call from first touch/click — required for mobile autoplay policy. */
+  unlock(): void {
+    this.ensure();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      void this.ctx.resume();
     }
   }
 

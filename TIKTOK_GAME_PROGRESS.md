@@ -1,8 +1,31 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **OBS polish** (DEMO overlay 1080×1920)
+## Etapa atual: **Mobile-friendly** (overlay FIT + admin touch)
 
 Data: 2026-09-24 (America/Sao_Paulo)
+
+## Mobile
+
+1. **Overlay:** viewport `device-width` + `viewport-fit=cover`; `#game-container` 100% / 100dvh flex center; black letterbox (transparent if `?transparent=1`).
+2. **Phaser:** logical size stays **1080×1920**; `Scale.FIT` + `CENTER_BOTH`; refresh on resize/orientation/visualViewport.
+3. **Audio:** `audio.unlock()` on first touch/pointer/keydown (iOS/Android autoplay).
+4. **Admin:** sticky topbar with quick actions; stacked grid on narrow screens; min tap ~44px; `font-size:16px` inputs (no iOS zoom); no horizontal overflow; safe-area insets.
+
+## Como testar (mobile)
+
+```bash
+TIKTOK_MODE=demo npm run build && npm start
+# No telefone (mesma rede ou Render):
+#   https://tiktok-live-ball-arena.onrender.com/overlay
+#   https://tiktok-live-ball-arena.onrender.com/admin
+# Rotacionar landscape/portrait → canvas re-FIT; toque → áudio desbloqueia.
+```
+
+## Public
+
+- Render: https://tiktok-live-ball-arena.onrender.com (auto-deploy on push master)
+
+## Anterior (OBS polish)
 
 ## Decisões
 

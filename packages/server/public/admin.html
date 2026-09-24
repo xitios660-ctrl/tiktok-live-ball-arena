@@ -2,42 +2,133 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>Arena Admin — DEMO</title>
   <style>
-    :root { --bg:#0f1115; --card:#1a1d24; --accent:#fe2c55; --ok:#20d68a; --text:#e8eaed; --muted:#9aa0a6; }
+    :root {
+      --bg:#0f1115; --card:#1a1d24; --accent:#fe2c55; --ok:#20d68a;
+      --text:#e8eaed; --muted:#9aa0a6; --tap:44px;
+      --safe-t: env(safe-area-inset-top, 0px);
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-l: env(safe-area-inset-left, 0px);
+      --safe-r: env(safe-area-inset-right, 0px);
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); padding:20px; }
-    h1 { font-size:1.4rem; margin:0 0 4px; }
-    .sub { color:var(--muted); margin-bottom:16px; font-size:.9rem; }
-    .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:#333; font-size:.75rem; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin:0; font-family: system-ui, -apple-system, sans-serif;
+      background:var(--bg); color:var(--text);
+      padding: 12px;
+      padding-top: calc(12px + var(--safe-t));
+      padding-bottom: calc(16px + var(--safe-b));
+      padding-left: calc(12px + var(--safe-l));
+      padding-right: calc(12px + var(--safe-r));
+      max-width: 100vw;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .topbar {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(15,17,21,.94);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      margin: -12px -12px 12px;
+      padding: 10px 12px 12px;
+      padding-top: calc(10px + var(--safe-t));
+      border-bottom: 1px solid #2a2f3a;
+    }
+    .topbar h1 { font-size:1.2rem; margin:0 0 4px; line-height:1.25; }
+    .sub { color:var(--muted); margin:0 0 8px; font-size:.85rem; line-height:1.4; word-break: break-word; }
+    .badges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .badge { display:inline-block; padding:4px 10px; border-radius:999px; background:#333; font-size:.75rem; }
     .badge.demo { background:#3d2a00; color:#ffb020; }
-    .grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-    .card { background:var(--card); border-radius:12px; padding:14px; }
+    .quick { display:flex; flex-wrap:wrap; gap:8px; }
+    .quick button { flex: 1 1 auto; min-width: calc(50% - 8px); }
+    @media (min-width: 520px) {
+      .quick button { min-width: 0; flex: 0 1 auto; }
+    }
+    .grid {
+      display:grid; gap:12px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) {
+      .grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+      body { padding: 16px 20px; }
+      .topbar { margin: -16px -20px 16px; padding-left: 20px; padding-right: 20px; }
+    }
+    .card {
+      background:var(--card); border-radius:12px; padding:14px;
+      min-width: 0; /* prevent grid blowout */
+    }
     .card h2 { font-size:1rem; margin:0 0 10px; }
-    button { cursor:pointer; border:none; border-radius:8px; padding:10px 12px; margin:4px 4px 4px 0; background:#2a2f3a; color:var(--text); font-weight:600; }
+    button {
+      cursor:pointer; border:none; border-radius:10px;
+      padding: 12px 14px;
+      margin: 0;
+      min-height: var(--tap);
+      background:#2a2f3a; color:var(--text); font-weight:600;
+      font-size: .95rem;
+      touch-action: manipulation;
+    }
+    button:active { transform: scale(0.98); }
     button:hover { background:#3a4150; }
     button.gift { background:#2a1f3d; }
     button.gift:hover { background:#3d2a55; }
     button.danger { background:#4a1520; }
     button.ok { background:#0d3d2a; }
     button.revenge { background:#5a3a00; }
-    input[type=number], input[type=text] { background:#111; border:1px solid #333; color:var(--text); border-radius:6px; padding:8px; width:80px; }
-    #log { font-family: ui-monospace, monospace; font-size:.75rem; max-height:280px; overflow:auto; background:#0a0c10; padding:10px; border-radius:8px; white-space:pre-wrap; }
-    .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; }
+    input[type=number], input[type=text], select {
+      background:#111; border:1px solid #333; color:var(--text);
+      border-radius:8px; padding:10px 12px;
+      min-height: var(--tap);
+      font-size: 16px; /* avoid iOS zoom on focus */
+      max-width: 100%;
+    }
+    input[type=number] { width: 88px; }
+    input[type=text] { width: 100%; max-width: 220px; flex: 1 1 140px; }
+    select { min-width: 0; max-width: 100%; flex: 1 1 160px; }
+    label { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:.9rem; }
+    #log {
+      font-family: ui-monospace, monospace; font-size:.75rem;
+      max-height: min(280px, 40vh); overflow:auto;
+      background:#0a0c10; padding:10px; border-radius:8px;
+      white-space:pre-wrap; word-break: break-word;
+      -webkit-overflow-scrolling: touch;
+    }
+    .row {
+      display:flex; flex-wrap:wrap; align-items:center;
+      gap:8px; margin-bottom:10px;
+    }
+    .row > button { flex: 1 1 auto; }
     a { color:#7ab7ff; }
-    .dead-btn { font-size:.8rem; }
+    .dead-btn { font-size:.85rem; min-height: var(--tap); }
+    .status-line {
+      font-size:.85rem; color:var(--muted);
+      word-break: break-word; line-height:1.35;
+    }
+    #winner { margin-top:6px; color:#ffd60a; font-size:.85rem; word-break:break-word; }
   </style>
 </head>
 <body>
-  <h1>Ball Arena — Painel DEMO</h1>
-  <p class="sub">
-    Eventos <strong>simulados</strong>. Morto → <strong>comentário</strong> respawna (vingança se tiver killer).
-    Overlay: <a href="/overlay" target="_blank">/overlay</a> ·
-    Health: <a href="/health" target="_blank">/health</a>
-    <span class="badge demo" id="modeBadge">DEMO</span>
-    <span class="badge" id="tiktokStatus" style="margin-left:6px;background:#1a3a2a">tiktok: —</span>
-  </p>
+  <header class="topbar">
+    <h1>Ball Arena — Painel DEMO</h1>
+    <p class="sub">
+      Eventos <strong>simulados</strong>. Morto → <strong>comentário</strong> respawna (vingança se tiver killer).
+      Overlay: <a href="/overlay" target="_blank">/overlay</a> ·
+      Health: <a href="/health" target="_blank">/health</a>
+    </p>
+    <div class="badges">
+      <span class="badge demo" id="modeBadge">DEMO</span>
+      <span class="badge" id="tiktokStatus" style="background:#1a3a2a">tiktok: —</span>
+    </div>
+    <div class="quick">
+      <button class="ok" onclick="post('/admin/round/start')">▶ Iniciar</button>
+      <button class="danger" onclick="post('/admin/round/force-end')">⏹ Force end</button>
+      <button onclick="post('/admin/round/next')">⏭ Next</button>
+      <button onclick="post('/admin/sim/like', { likeCount: 100 })">❤️ +100</button>
+    </div>
+  </header>
 
   <div class="grid">
     <div class="card">
@@ -53,19 +144,19 @@
         <button onclick="post('/admin/round/set-time', { seconds: 65 })">⏱ 65s</button>
         <button onclick="post('/admin/round/set-time', { seconds: 300 })">⏱ 5:00</button>
       </div>
-      <div id="round">—</div>
-      <div id="winner" style="margin-top:6px;color:#ffd60a;font-size:.85rem"></div>
+      <div id="round" class="status-line">—</div>
+      <div id="winner"></div>
     </div>
 
     <div class="card">
       <h2>Presentes (→ alvo vivo)</h2>
       <div class="row">
         <label>Alvo
-          <select id="giftTarget" style="background:#111;color:#e8eaed;border:1px solid #333;border-radius:6px;padding:6px;min-width:140px">
+          <select id="giftTarget">
             <option value="">último / 1º vivo</option>
           </select>
         </label>
-        <label>x<input id="giftRepeat" type="number" value="1" min="1" max="50" style="width:56px" /></label>
+        <label>x<input id="giftRepeat" type="number" value="1" min="1" max="50" style="width:72px" /></label>
       </div>
       <button class="gift" onclick="gift('rosa')">🌹 Rosa (+2HP)</button>
       <button class="gift" onclick="gift('mini_dino')">🦖 Dino Rage</button>
@@ -78,7 +169,7 @@
     <div class="card">
       <h2>Eventos</h2>
       <div class="row">
-        <input id="comment" type="text" placeholder="comentário" style="width:140px" />
+        <input id="comment" type="text" placeholder="comentário" />
         <button onclick="comment()">💬 Comentário</button>
       </div>
             <button onclick="post('/admin/sim/join')">👋 Join</button>
