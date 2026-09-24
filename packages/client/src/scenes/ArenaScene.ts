@@ -27,6 +27,7 @@ import {
 import { playKillImpact } from '../fx/KillImpactFx';
 import { paintArenaFloor, paintArenaRim } from '../fx/ArenaFloor';
 import { createArenaEnergyRings, type ArenaEnergyRingsHandles } from '../fx/ArenaEnergyRings';
+import { paintBallShield, type ShieldChromeMode } from '../fx/BallShieldChrome';
 import {
   createGlossParts,
   syncGlossParts,
@@ -68,7 +69,8 @@ interface BallView {
   circle: Phaser.GameObjects.Arc;
   ring: Phaser.GameObjects.Arc;
   aura: Phaser.GameObjects.Arc;
-  shieldRing: Phaser.GameObjects.Arc;
+  /** Cinematic dual-ring + dash shield (Donut / reflect) */
+  shieldGfx: Phaser.GameObjects.Graphics;
   shadow: Phaser.GameObjects.Ellipse;
   gloss: Phaser.GameObjects.Image;
   crownGfx: Phaser.GameObjects.Graphics;
@@ -848,7 +850,7 @@ export class ArenaScene extends Phaser.Scene {
     const container = this.add.container(b.x, b.y);
     const glossParts = createGlossParts(this, b);
     const aura = this.add.circle(0, 0, b.radius + 14, 0x7cfc00, 0).setStrokeStyle(5, 0x7cfc00, 0);
-    const shieldRing = this.add.circle(0, 0, b.radius + 8, 0xff9f1c, 0).setStrokeStyle(3, 0xff9f1c, 0);
+    const shieldGfx = this.add.graphics();
     const ring = this.add.circle(0, 0, b.radius + 3, THEME.cream, 0).setStrokeStyle(4, THEME.cream, 0.55);
     // Arc keeps stroke/outline only — fill comes from glossy texture
     const circle = this.add.circle(0, 0, b.radius, b.color, 0);
@@ -884,7 +886,10 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setStrokeStyle(2, THEME.gold, 0.35);
     const hpFg = this.add.rectangle(-barW / 2, hpY, barW, 12, THEME.sage).setOrigin(0, 0.5);
-    const shieldFg = this.add.rectangle(-barW / 2, hpY - 14, 0, 6, 0xff9f1c).setOrigin(0, 0.5);
+    const shieldFg = this.add
+      .rectangle(-barW / 2, hpY - 14, 0, 6, 0xff9f1c)
+      .setOrigin(0, 0.5)
+      .setStrokeStyle(1.5, THEME.gold, 0.75);
 
     const revengeMark = this.add
       .text(b.radius * 0.65, -b.radius - 8, '🎯', { fontSize: '26px' })
@@ -912,7 +917,7 @@ export class ArenaScene extends Phaser.Scene {
     container.add([
       glossParts.shadow,
       aura,
-      shieldRing,
+      shieldGfx,
       ring,
       circle,
       glossParts.gloss,
@@ -934,7 +939,7 @@ export class ArenaScene extends Phaser.Scene {
       circle,
       ring,
       aura,
-      shieldRing,
+      shieldGfx,
       shadow: glossParts.shadow,
       gloss: glossParts.gloss,
       crownGfx: glossParts.crownGfx,
@@ -1009,7 +1014,6 @@ export class ArenaScene extends Phaser.Scene {
     view.circle.setRadius(b.radius);
     view.ring.setRadius(b.radius + 3);
     view.aura.setRadius(b.radius + 14);
-    view.shieldRing.setRadius(b.radius + 8);
 
     const protected_ = !!b.spawnProtected;
     const flash = !!b.hitFlash;
@@ -1068,20 +1072,18 @@ export class ArenaScene extends Phaser.Scene {
     else if (b.isKing) view.aura.setStrokeStyle(7, THEME.gold, 0.35);
     else view.aura.setStrokeStyle(0, 0x000000, 0);
 
-    // Shield / reflect ring (donut orange wins over reflect silver)
+    // Cinematic shield chrome (donut/gold-ember wins over reflect silver)
     const sh = b.shieldHp || 0;
-    if (sh > 0 || isDonut) {
-      view.shieldRing.setStrokeStyle(4, 0xff9f1c, 0.85);
-      view.shieldRing.setRadius(b.radius + 8);
-      view.shieldRing.rotation += 0.04;
-    } else if (isReflect) {
-      view.shieldRing.setStrokeStyle(5, 0xe0e7ff, 0.9);
-      view.shieldRing.setRadius(b.radius + 12);
-      view.shieldRing.rotation += 0.07;
-    } else {
-      view.shieldRing.setStrokeStyle(0, 0x000000, 0);
-      view.shieldRing.setRadius(b.radius + 8);
-    }
+    let shieldMode: ShieldChromeMode = 'off';
+    if (sh > 0 || isDonut) shieldMode = 'donut';
+    else if (isReflect) shieldMode = 'reflect';
+    paintBallShield(view.shieldGfx, {
+      radius: b.radius,
+      mode: shieldMode,
+      timeMs: this.time.now,
+      phoneLite: this.phoneLite,
+      budget: this.particleBudget ?? 1,
+    });
 
     view.revengeMark.setVisible(!!b.revengeMarked);
     syncGlossParts(
@@ -1226,7 +1228,9 @@ export class ArenaScene extends Phaser.Scene {
     }
     const shieldRatio = Math.min(1, sh / 300);
     view.shieldFg.setPosition(-barW / 2, hpY - 14);
-    view.shieldFg.setSize(barW * shieldRatio, 6);
+    view.shieldFg.setSize(Math.max(0, barW * shieldRatio), 6);
+    view.shieldFg.setFillStyle(0xff9f1c, 0.95);
+    view.shieldFg.setStrokeStyle(1.5, THEME.gold, sh > 0 ? 0.8 : 0);
     view.shieldFg.setVisible(sh > 0);
 
     if (b.healFlash && !view.lastHealFlash) {
