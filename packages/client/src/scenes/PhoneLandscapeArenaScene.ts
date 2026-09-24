@@ -41,14 +41,18 @@ interface LandscapePickupView {
   sourceRadius: number;
 }
 
-const PANEL_W = 300;
-const PANEL_TOP = 156;
-const PANEL_ROW_H = 39;
+const PANEL_W = 320;
+const PANEL_TOP = 112;
+const PANEL_ROW_H = 42;
+const PANEL_CYCLE_MS = 10_000;
+const PANEL_VISIBLE_MS = 3_000;
 
 export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private bg!: Phaser.GameObjects.Graphics;
   private field!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Graphics;
+  private topPanel!: Phaser.GameObjects.Graphics;
+  private giftPanel!: Phaser.GameObjects.Graphics;
   private title!: Phaser.GameObjects.Text;
   private timer!: Phaser.GameObjects.Text;
   private players!: Phaser.GameObjects.Text;
@@ -72,6 +76,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private lastPlayerCount = 0;
   private feedLines: string[] = [];
   private toastTween: Phaser.Tweens.Tween | null = null;
+  private panelTween: Phaser.Tweens.Tween | null = null;
+  private panelsVisible = true;
 
   constructor() {
     super('ArenaScene');
@@ -84,6 +90,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.bg = this.add.graphics().setDepth(0);
     this.field = this.add.graphics().setDepth(1);
     this.hud = this.add.graphics().setDepth(80);
+    this.topPanel = this.add.graphics().setDepth(80);
+    this.giftPanel = this.add.graphics().setDepth(80);
 
     this.title = this.add
       .text(0, 0, 'BALL ARENA', {
@@ -131,7 +139,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.topTitle = this.add
       .text(0, 0, '👑  TOP 5', {
         fontFamily: FONT_ACCENT,
-        fontSize: '28px',
+        fontSize: '30px',
         color: THEME_HEX.gold,
         stroke: '#000000',
         strokeThickness: 4,
@@ -143,7 +151,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         this.add
           .text(0, 0, '—', {
             fontFamily: FONT,
-            fontSize: '18px',
+            fontSize: '19px',
             color: i === 0 ? RANK_HEX.gold : THEME_HEX.light,
             stroke: '#000000',
             strokeThickness: 3,
@@ -155,7 +163,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.giftTitle = this.add
       .text(0, 0, '★ POWER-UPS', {
         fontFamily: FONT_ACCENT,
-        fontSize: '28px',
+        fontSize: '30px',
         color: THEME_HEX.gold,
         stroke: '#000000',
         strokeThickness: 4,
@@ -175,7 +183,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         this.add
           .text(0, 0, line, {
             fontFamily: FONT,
-            fontSize: '17px',
+            fontSize: '18px',
             color: THEME_HEX.light,
             stroke: '#000000',
             strokeThickness: 3,
@@ -276,6 +284,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       this.game.events.off(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
       this.game.events.off(SOCKET_EVENTS.COMBAT_EVENT, this.onCombat, this);
       this.toastTween?.stop();
+      this.panelTween?.stop();
       this.ballViews.clear();
       this.pickupViews.clear();
     });
@@ -291,9 +300,11 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     }
 
     this.layout();
+    this.setCornerPanelsVisible(true, false);
   }
 
   update(time: number): void {
+    this.tickCornerPanels(time);
     for (const view of this.pickupViews.values()) {
       const bob = Math.sin(time / 280 + view.sourceX * 0.01) * 4;
       view.emoji.y = bob;
@@ -406,9 +417,10 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.players.setPosition(cx, 162);
     this.likes.setPosition(24, 24);
 
-    const sideInset = Math.max(22, (w - 1920) / 2 + 22);
-    const left = sideInset;
-    const right = w - sideInset - PANEL_W;
+    // Temporary information panels live at the actual outer screen corners,
+    // not at the edges of the centered 16:9 gameplay area.
+    const left = 18;
+    const right = w - PANEL_W - 18;
 
     this.topTitle.setPosition(left + 18, PANEL_TOP + 16);
     for (let i = 0; i < this.topRows.length; i++) {
@@ -450,38 +462,111 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
     const field = this.field;
     field.clear();
+
+    // Full-screen stadium floor. The side wings are scenery only; gameplay
+    // still maps into the centered, proportion-correct 1920×1080 arena.
     field.fillStyle(THEME.stone, 0.34);
-    field.fillRoundedRect(
-      mapper.offsetX + 12,
-      mapper.offsetY + 12,
-      mapper.playWidth - 24,
-      mapper.playHeight - 24,
-      28
-    );
-    field.lineStyle(3, THEME.light, 0.22);
-    field.strokeRoundedRect(
-      mapper.offsetX + 12,
-      mapper.offsetY + 12,
-      mapper.playWidth - 24,
-      mapper.playHeight - 24,
-      28
-    );
-    field.lineStyle(4, THEME.emberOrange, 0.55);
-    field.strokeEllipse(w / 2, h * 0.58, Math.min(1050, mapper.playWidth * 0.58), h * 0.38);
-    field.lineStyle(2, THEME.gold, 0.38);
-    field.strokeEllipse(w / 2, h * 0.58, Math.min(760, mapper.playWidth * 0.42), h * 0.27);
-    field.lineStyle(2, THEME.electricCyan, 0.3);
-    field.strokeEllipse(w / 2, h * 0.58, Math.min(440, mapper.playWidth * 0.25), h * 0.16);
+    field.fillRoundedRect(8, 8, w - 16, h - 16, 24);
+
+    const wingW = Math.max(0, mapper.offsetX);
+    if (wingW > 8) {
+      field.fillStyle(THEME.electricCyan, 0.055);
+      field.fillRect(8, 8, wingW, h - 16);
+      field.fillStyle(THEME.emberOrange, 0.055);
+      field.fillRect(w - wingW - 8, 8, wingW, h - 16);
+
+      field.lineStyle(2, THEME.electricCyan, 0.16);
+      field.lineBetween(wingW * 0.28, h * 0.12, wingW * 0.72, h * 0.88);
+      field.lineBetween(wingW * 0.72, h * 0.12, wingW * 0.28, h * 0.88);
+
+      field.lineStyle(2, THEME.emberOrange, 0.16);
+      field.lineBetween(w - wingW * 0.28, h * 0.12, w - wingW * 0.72, h * 0.88);
+      field.lineBetween(w - wingW * 0.72, h * 0.12, w - wingW * 0.28, h * 0.88);
+
+      // Soft crowd / light pools keep the ultra-wide extensions visually alive.
+      field.fillStyle(THEME.electricCyan, 0.045);
+      field.fillEllipse(wingW * 0.5, h * 0.52, Math.max(180, wingW * 1.35), h * 0.72);
+      field.fillStyle(THEME.emberOrange, 0.045);
+      field.fillEllipse(w - wingW * 0.5, h * 0.52, Math.max(180, wingW * 1.35), h * 0.72);
+    }
+
+    field.lineStyle(2, THEME.light, 0.18);
+    field.strokeRoundedRect(12, 12, w - 24, h - 24, 22);
+
+    // Arena markings stay within the undistorted gameplay region.
+    const arenaCx = mapper.offsetX + mapper.playWidth / 2;
+    const arenaCy = mapper.offsetY + mapper.playHeight * 0.58;
+    field.lineStyle(4, THEME.emberOrange, 0.58);
+    field.strokeEllipse(arenaCx, arenaCy, mapper.playWidth * 0.56, mapper.playHeight * 0.38);
+    field.lineStyle(2, THEME.gold, 0.4);
+    field.strokeEllipse(arenaCx, arenaCy, mapper.playWidth * 0.41, mapper.playHeight * 0.27);
+    field.lineStyle(2, THEME.electricCyan, 0.32);
+    field.strokeEllipse(arenaCx, arenaCy, mapper.playWidth * 0.24, mapper.playHeight * 0.16);
+
+    const left = 18;
+    const right = w - PANEL_W - 18;
+
+    this.topPanel.clear();
+    this.drawPanel(this.topPanel, left, PANEL_TOP, PANEL_W, 292);
+
+    this.giftPanel.clear();
+    this.drawPanel(this.giftPanel, right, PANEL_TOP, PANEL_W, 304);
 
     const hud = this.hud;
     hud.clear();
-    const sideInset = Math.max(22, (w - 1920) / 2 + 22);
-    const left = sideInset;
-    const right = w - sideInset - PANEL_W;
-    this.drawPanel(hud, left, PANEL_TOP, PANEL_W, 275);
-    this.drawPanel(hud, right, PANEL_TOP, PANEL_W, 282);
     hud.lineStyle(2, THEME.gold, 0.35);
     hud.strokeRoundedRect(w / 2 - 94, 82, 188, 62, 26);
+  }
+
+  private cornerPanelTargets(): Phaser.GameObjects.GameObject[] {
+    return [
+      this.topPanel,
+      this.giftPanel,
+      this.topTitle,
+      ...this.topRows,
+      this.giftTitle,
+      ...this.giftRows,
+    ];
+  }
+
+  private tickCornerPanels(time: number): void {
+    const phase = time % PANEL_CYCLE_MS;
+    const shouldShow = phase < PANEL_VISIBLE_MS;
+    if (shouldShow !== this.panelsVisible) {
+      this.setCornerPanelsVisible(shouldShow, true);
+    }
+  }
+
+  private setCornerPanelsVisible(visible: boolean, animate: boolean): void {
+    this.panelsVisible = visible;
+    const targets = this.cornerPanelTargets();
+    this.panelTween?.stop();
+
+    if (!animate) {
+      for (const target of targets) {
+        (target as Phaser.GameObjects.Components.Alpha).setAlpha(visible ? 1 : 0);
+      }
+      return;
+    }
+
+    if (visible) {
+      for (const target of targets) {
+        (target as Phaser.GameObjects.Components.Alpha).setAlpha(0);
+      }
+      this.panelTween = this.tweens.add({
+        targets,
+        alpha: 1,
+        duration: 280,
+        ease: 'Cubic.Out',
+      });
+    } else {
+      this.panelTween = this.tweens.add({
+        targets,
+        alpha: 0,
+        duration: 320,
+        ease: 'Cubic.In',
+      });
+    }
   }
 
   private drawPanel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number): void {
