@@ -1288,7 +1288,7 @@ export class ArenaScene extends Phaser.Scene {
     view.buffIcon.setY(b.radius + 46);
 
     view.label.setText(
-      b.isBoss ? '🤖 CHATGPT BOSS · +10☠' : this.truncate(b.label, 14)
+      b.isBoss ? '👑 BOSS · +10☠' : this.truncate(b.label, 14)
     );
     view.label.setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
     view.label.setY(b.radius + 18);
