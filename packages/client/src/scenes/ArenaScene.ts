@@ -185,8 +185,6 @@ export class ArenaScene extends Phaser.Scene {
   private likesText!: Phaser.GameObjects.Text;
   private lastRemaining = 300;
   private lastPhase = 'waiting';
-  /** True while ?phone=1 is being presented on a landscape viewport. */
-  private landscapePhone = false;
 
   constructor() {
     super('ArenaScene');
@@ -446,10 +444,6 @@ export class ArenaScene extends Phaser.Scene {
       if (!this.phoneLite) audio.startAmbient(ambientIntensity);
     });
 
-    // Apply the correct presentation immediately if the phone was already
-    // landscape when this scene was created.
-    this.syncPhoneLandscapePresentation(true);
-
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.game.events.on(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
     this.game.events.on(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
@@ -470,7 +464,6 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    this.syncPhoneLandscapePresentation();
     this.trackFps(delta);
     const now = Date.now();
     const t = this.time.now;
@@ -494,11 +487,11 @@ export class ArenaScene extends Phaser.Scene {
     this.pickupsLayer?.tick(t);
     if (this.giftLegend) {
       tickGiftLegend(this.giftLegend, t);
-      const bob = this.landscapePhone ? 0 : Math.sin(t / 900) * 3;
+      const bob = Math.sin(t / 900) * 3;
       this.giftLegend.root.y = this.giftLegendBaseY + bob;
     }
     if (this.premiumTop5) {
-      const bob = this.landscapePhone ? 0 : Math.sin(t / 1100 + 1.2) * 2.5;
+      const bob = Math.sin(t / 1100 + 1.2) * 2.5;
       this.premiumTop5.root.y = this.top5BaseY + bob;
       tickPremiumTop5(this.premiumTop5, t);
     }
@@ -526,120 +519,6 @@ export class ArenaScene extends Phaser.Scene {
     if (this.arenaRim) {
       paintArenaRim(this.arenaRim, CANVAS_WIDTH, CANVAS_HEIGHT, this.rimSpin, urgent);
     }
-  }
-
-  /**
-   * The phone layout uses a CSS 90° canvas rotation to turn the portrait
-   * physics world into a landscape arena. Counter-rotate UI/ball containers
-   * inside Phaser so text, avatars and HUD stay upright for the viewer.
-   *
-   * Desired landscape coordinates are mapped back into the portrait source
-   * canvas with: sourceX = landscapeY, sourceY = CANVAS_HEIGHT - landscapeX.
-   * Physics/server coordinates never change.
-   */
-  private syncPhoneLandscapePresentation(force = false): void {
-    if (!this.phoneLite) return;
-    const landscape = document.documentElement.classList.contains('spin-landscape');
-    if (!force && landscape === this.landscapePhone) return;
-    this.landscapePhone = landscape;
-
-    const rot = landscape ? -Math.PI / 2 : 0;
-    const pose = (
-      target: {
-        setPosition: (x: number, y: number) => unknown;
-        setRotation: (r: number) => unknown;
-      } | null | undefined,
-      landscapeX: number,
-      landscapeY: number,
-      portraitX: number,
-      portraitY: number
-    ) => {
-      if (!target) return;
-      if (landscape) {
-        target.setPosition(landscapeY, CANVAS_HEIGHT - landscapeX);
-        target.setRotation(rot);
-      } else {
-        target.setPosition(portraitX, portraitY);
-        target.setRotation(0);
-      }
-    };
-
-    const top = SAFE.top;
-    const side = SAFE.side;
-    const bottom = SAFE.bottom;
-
-    // Main HUD. Cover-fill crops the top/bottom on ultra-wide phones.
-    // Derive the actually visible landscape band so HUD never lands under
-    // that crop (or under Android's very wide fullscreen aspect ratios).
-    const vv = window.visualViewport;
-    const viewportW = Math.max(1, vv?.width ?? window.innerWidth);
-    const viewportH = Math.max(1, vv?.height ?? window.innerHeight);
-    const visibleLandscapeH = Math.min(
-      CANVAS_WIDTH,
-      (CANVAS_HEIGHT * viewportH) / viewportW
-    );
-    const landscapeCropY = Math.max(0, (CANVAS_WIDTH - visibleLandscapeH) / 2);
-    const landTop = landscapeCropY + 34;
-    const landBottom = CANVAS_WIDTH - landscapeCropY - 34;
-    const landMid = (landTop + landBottom) / 2;
-
-    pose(this.cinematicHud?.root, 960, landTop + 54, CANVAS_WIDTH / 2, top + 28);
-    pose(this.aoVivoPill, 118, landTop + 18, side + 56, top + 20);
-    pose(this.timerCapsule?.root, 960, landTop + 168, CANVAS_WIDTH / 2, top + 118);
-    pose(this.playersText, 960, landTop + 252, CANVAS_WIDTH / 2, top + 178);
-
-    pose(this.premiumTop5?.root, 48, landTop + 92, side, top + 200);
-    this.top5BaseY = this.premiumTop5?.root.y ?? this.top5BaseY;
-
-    pose(this.giftLegend?.root, 1550, landTop + 92, CANVAS_WIDTH - side - 318, top + 200);
-    this.giftLegendBaseY = this.giftLegend?.root.y ?? this.giftLegendBaseY;
-
-    if (this.eventCard) {
-      if (landscape) {
-        this.eventCard.setPresentation(
-          landTop + 322,
-          CANVAS_HEIGHT - 960,
-          -Math.PI / 2
-        );
-      } else {
-        this.eventCard.setPresentation(CANVAS_WIDTH / 2, top + 248, 0);
-      }
-    }
-    pose(this.toastText, 960, landTop + 338, CANVAS_WIDTH / 2, top + 250);
-    pose(this.bigCountdown, 960, landMid, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-    pose(this.winnerPanel, 960, landMid, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-
-    if (this.bottomCta) {
-      pose(
-        this.bottomCta.root,
-        960,
-        landBottom - 38,
-        CANVAS_WIDTH / 2,
-        CANVAS_HEIGHT - SAFE.bottom + 36
-      );
-    }
-
-    pose(this.likesText, 54, landTop + 18, side, top + 16);
-    pose(
-      this.muteBtn,
-      1855,
-      landTop + 18,
-      CANVAS_WIDTH - side,
-      top + (getOverlayOptions().debug ? 32 : 8)
-    );
-
-    // The legacy multiline event feed is portrait-only; landscape keeps the
-    // cleaner EventCard HUD and avoids a rotated text block over the arena.
-    this.feedCard?.setVisible(!landscape);
-    this.feedText?.setVisible(!landscape);
-    this.killFeedLayer?.setVisible(!landscape);
-
-    // Ball internals (avatar, label, HP, strength pill) stay upright while
-    // their world positions still rotate with the arena.
-    for (const view of this.views.values()) {
-      view.container.setRotation(rot);
-    }
-    this.pickupsLayer?.setPresentationRotation(rot);
   }
 
   private onRound = (state: RoundState) => {
@@ -1021,7 +900,6 @@ export class ArenaScene extends Phaser.Scene {
         }
       }
       this.updateBallView(view, b);
-      view.container.setRotation(this.landscapePhone ? -Math.PI / 2 : 0);
     }
     for (const [id, view] of this.views) {
       if (!seen.has(id)) {
