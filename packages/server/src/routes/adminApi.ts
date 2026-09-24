@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { GameLoop } from '../game/GameLoop';
 import type { DemoEventSimulator } from '../demo/DemoEventSimulator';
 import { DEMO_GIFT_PRESETS, DEMO_PICKUP_PRESETS } from '../demo/DemoEventSimulator';
-import { PICKUP_META } from '@arena/shared';
+import { PICKUP_META, isBotUser } from '@arena/shared';
 import { pickupAbilityFromGiftId } from '../game/PickupSystem';
 
 export function adminApiRouter(deps: {
@@ -49,8 +49,8 @@ export function adminApiRouter(deps: {
     return event;
   };
 
-  /** Spawn bots via GameLoop joins (works in DEMO + PRODUCTION). */
-  const spawnBotsDirect = (count: number, withGift = false) => {
+  /** Spawn bots via GameLoop joins (works in DEMO + PRODUCTION). Bots never receive paid gifts. */
+  const spawnBotsDirect = (count: number) => {
     const n = Math.max(1, Math.min(150, Math.floor(count)));
     const events: Array<{ type: string; [k: string]: unknown }> = [];
     const seq = Date.now();
@@ -63,9 +63,6 @@ export function adminApiRouter(deps: {
       const join = { type: 'join' as const, user, timestamp: Date.now() };
       deps.game.handleLiveEvent(join);
       events.push(join);
-      if (withGift) {
-        events.push(injectGiftDirect('rosa', { user }));
-      }
     }
     return events;
   };
@@ -269,8 +266,7 @@ export function adminApiRouter(deps: {
 
   router.post('/admin/sim/bots', (req, res) => {
     const count = Number(req.body?.count) || 5;
-    const withGift = Boolean(req.body?.withGift);
-    const events = spawnBotsDirect(count, withGift);
+    const events = spawnBotsDirect(count);
     res.json({
       ok: true,
       count: events.filter((e) => e.type === 'join').length,
@@ -282,13 +278,13 @@ export function adminApiRouter(deps: {
 
   router.post('/admin/sim/loadtest', (req, res) => {
     const count = Math.min(150, Math.max(1, Number(req.body?.count) || 50));
-    const withGift = Boolean(req.body?.withGift);
     const giftSpam = Boolean(req.body?.giftSpam);
-    const events = spawnBotsDirect(count, withGift);
+    const events = spawnBotsDirect(count);
     let gifts = 0;
     if (giftSpam) {
       const balls = deps.game.getSnapshot().balls;
       for (const b of balls.slice(0, Math.min(20, balls.length))) {
+        if (isBotUser(b)) continue;
         injectGiftDirect('rosa', {
           user: { userId: b.userId, username: b.username, nickname: b.nickname },
         });

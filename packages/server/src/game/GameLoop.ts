@@ -12,6 +12,7 @@ import {
   HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
   isPickupAbility,
+  isBotUser,
   type RoundState,
   type TikTokMode,
   type ArenaLiveEvent,
@@ -417,6 +418,11 @@ export class GameLoop {
       return emitted;
     }
 
+    if (isBotUser(event.user)) {
+      console.log(`[Gift] blocked paid gift for bot @${event.user.username}`);
+      return [];
+    }
+
     // Ensure sender has a ball (gift can also be entry)
     this.spawnNewOrNudge(event.user);
     this.lastSpawnedUserId = event.user.userId;
@@ -458,13 +464,16 @@ export class GameLoop {
     return { ok: true, pickup };
   }
 
-  /** Prefer explicit userId, else last spawned, else first alive ball */
+  /** Prefer explicit userId, else last non-bot spawned, else first non-bot alive ball */
   resolveGiftTargetUserId(preferred?: string | null): string | null {
     if (preferred && this.physics.hasUser(preferred)) return preferred;
+
     if (this.lastSpawnedUserId && this.physics.hasUser(this.lastSpawnedUserId)) {
-      return this.lastSpawnedUserId;
+      const last = this.physics.getBall(this.lastSpawnedUserId);
+      if (last && !isBotUser(last)) return last.userId;
     }
-    const first = this.physics.getAll()[0];
+
+    const first = this.physics.getAll().find((ball) => !isBotUser(ball));
     return first?.userId ?? null;
   }
 

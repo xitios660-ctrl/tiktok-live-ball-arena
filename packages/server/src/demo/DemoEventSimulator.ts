@@ -179,8 +179,8 @@ export class DemoEventSimulator implements ITikTokConnector {
     return payload;
   }
 
-  /** Spawn N fake bots that each emit a join (+ optional random gift). */
-  spawnBots(count: number, withGift = false): ArenaLiveEvent[] {
+  /** Spawn N fake bots that each emit a join; paid gifts are never injected for bots. */
+  spawnBots(count: number, _withGift = false): ArenaLiveEvent[] {
     const n = Math.max(1, Math.min(150, Math.floor(count)));
     const emitted: ArenaLiveEvent[] = [];
     for (let i = 0; i < n; i++) {
@@ -191,9 +191,6 @@ export class DemoEventSimulator implements ITikTokConnector {
         nickname: `Bot ${this.botSeq}`,
       };
       emitted.push(this.injectJoin(user));
-      if (withGift) {
-        emitted.push(this.injectGift(pick(DEMO_GIFT_PRESETS).giftId, { user }));
-      }
     }
     return emitted;
   }

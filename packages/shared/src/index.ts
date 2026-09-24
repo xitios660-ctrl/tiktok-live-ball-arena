@@ -50,6 +50,18 @@ export interface ArenaUser {
   avatarUrl?: string;
 }
 
+/** Identifies synthetic users that must not receive paid gift abilities. */
+export function isBotUser(user: { userId?: string; username?: string }): boolean {
+  const userId = user.userId || '';
+  const username = user.username || '';
+  return (
+    userId.startsWith('bot-') ||
+    userId.startsWith('autobot-') ||
+    /^bot[_-]/i.test(username) ||
+    username.startsWith('bot_auto_')
+  );
+}
+
 export interface ArenaCommentEvent {
   type: 'comment';
   user: ArenaUser;
