@@ -15,35 +15,6 @@ if (opts.phoneLite) audio.setPhoneLite(true);
 /** Session flag — don't re-show unlock banner after first successful unlock. */
 let audioUnlockedThisSession = false;
 
-/**
- * On phones the browser chrome can keep part of the screen occupied even
- * after the canvas has rotated. Fullscreen can only be requested from a
- * user gesture, so piggy-back on the same first tap already required to
- * unlock audio. Failure is intentionally silent: CSS/Phaser landscape fill
- * still works as the fallback and gameplay is untouched.
- */
-type FullscreenRoot = HTMLElement & {
-  webkitRequestFullscreen?: () => void | Promise<void>;
-};
-
-function tryEnterPhoneFullscreen(): void {
-  if (!opts.phoneLite || document.fullscreenElement) return;
-
-  const root = document.documentElement as FullscreenRoot;
-  try {
-    const result =
-      typeof root.requestFullscreen === 'function'
-        ? root.requestFullscreen()
-        : root.webkitRequestFullscreen?.();
-
-    if (result && typeof (result as Promise<void>).catch === 'function') {
-      void (result as Promise<void>).catch(() => undefined);
-    }
-  } catch {
-    // Unsupported / denied by browser. Keep normal viewport mode.
-  }
-}
-
 /** Brief toast when BGM fails to start — invite another tap. */
 function showAudioRetryToast(msg = 'toque de novo'): void {
   const existing = document.getElementById('audio-retry-toast');
@@ -93,7 +64,6 @@ function setupAudioUnlockGate(): void {
     // Fallback: invisible gesture unlock if DOM banner missing
     const unlock = async () => {
       if (audioUnlockedThisSession) return;
-      tryEnterPhoneFullscreen();
       const ok = await audio.unlock();
       if (ok) {
         audioUnlockedThisSession = true;
@@ -115,8 +85,6 @@ function setupAudioUnlockGate(): void {
 
   const doUnlock = async () => {
     if (audioUnlockedThisSession) return;
-    // Must run synchronously inside the tap handler to preserve user activation.
-    tryEnterPhoneFullscreen();
     const ok = await audio.unlock();
     if (ok) {
       audioUnlockedThisSession = true;
@@ -225,9 +193,6 @@ function boot(): void {
   }
   // Some WebViews fire this after rotate settles.
   window.addEventListener('pageshow', scheduleRefresh);
-  // Fullscreen transition changes the usable viewport; refresh without
-  // recreating the Phaser game or touching scene/gameplay state.
-  document.addEventListener('fullscreenchange', scheduleRefresh);
 
   (window as unknown as { __arenaGame?: Phaser.Game }).__arenaGame = game;
 }
