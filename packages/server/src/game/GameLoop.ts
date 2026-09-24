@@ -9,6 +9,8 @@ import {
   KILL_STRENGTH_ANNOUNCE_EVERY,
   combatStrengthMult,
   displayStrengthScore,
+  LIKE_PERSONAL_STEP,
+  LIKE_PERSONAL_HEAL,
   HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
   isPickupAbility,
@@ -279,6 +281,7 @@ export class GameLoop {
     this.physics.clear();
     this.players.clear();
     this.hitPowerCooldown.clear();
+    this.personalLikeProgress.clear();
     this.recentCombat = [];
     this.lastSpawnedUserId = null;
     this.globalEvents.resetRound();
@@ -325,6 +328,7 @@ export class GameLoop {
     this.physics.clear();
     this.players.clear();
     this.hitPowerCooldown.clear();
+    this.personalLikeProgress.clear();
     this.pickups.clear();
     this.recentCombat = [];
     this.boss.resetRound();
@@ -360,21 +364,47 @@ export class GameLoop {
     } else if (event.type === 'gift') {
       this.handleGift(event);
     } else if (event.type === 'like') {
-      this.handleLikes(event.likeCount || 1);
+      this.handleLikes(event.user, event.likeCount || 1);
     } else if (event.type === 'share') {
       this.handleShare(event.user);
     }
   }
 
-  handleLikes(count: number): void {
-    if (this.state.phase !== 'running') {
-      // still accumulate? Spec: during round. Skip if not running.
-      return;
-    }
-    const anns = this.globalEvents.addLikes(count, this.physics);
+  handleLikes(user: ArenaUser, count: number): void {
+    if (this.state.phase !== 'running') return;
+
+    const n = Math.max(0, Math.floor(count));
+    if (n <= 0) return;
+
+    // Community meter: every threshold triggers a small heal for all living players.
+    const anns = this.globalEvents.addLikes(n, this.physics);
     for (const a of anns) this.pushCombat(a);
-    if (anns.length) this.emitSnapshot();
-    console.log(`[LIKE] +${count} → accum=${this.globalEvents.likesAccumulated}/${this.globalEvents.likesThreshold}`);
+
+    // Personal meter: every 10 likes from the same viewer heals their own ball +2 HP.
+    // Remainder is kept, so 7 likes now + 3 later still triggers the heal.
+    let healed = 0;
+    if (
+      user.userId !== CHATGPT_BOSS_USER_ID &&
+      this.physics.hasUser(user.userId)
+    ) {
+      const total = (this.personalLikeProgress.get(user.userId) || 0) + n;
+      const pulses = Math.floor(total / LIKE_PERSONAL_STEP);
+      this.personalLikeProgress.set(user.userId, total % LIKE_PERSONAL_STEP);
+
+      if (pulses > 0) {
+        healed = this.physics.heal(
+          user.userId,
+          pulses * LIKE_PERSONAL_HEAL
+        );
+      }
+    }
+
+    if (anns.length || healed > 0) this.emitSnapshot();
+
+    console.log(
+      `[LIKE] @${user.username} +${n} personalHeal=+${healed} ` +
+      `global=${this.globalEvents.likesAccumulated}/${this.globalEvents.likesThreshold}`
+    );
   }
 
   handleShare(user: ArenaUser): void {
@@ -960,7 +990,7 @@ export class GameLoop {
     if (victimIsBoss && attackerName) {
       message =
         '🏆 @' + attackerName +
-        ' DERROTOU O CHATGPT BOSS E GANHOU +' +
+        ' DERROTOU O BOSS E GANHOU +' +
         CHATGPT_BOSS_REWARD_KILLS +
         '☠!';
     } else if (isRevenge && attackerName) {
