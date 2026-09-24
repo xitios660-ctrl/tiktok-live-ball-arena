@@ -22,6 +22,10 @@ interface LandscapeBallView {
   aura: Phaser.GameObjects.Arc;
   body: Phaser.GameObjects.Arc;
   ring: Phaser.GameObjects.Arc;
+  avatar?: Phaser.GameObjects.Image;
+  avatarGlow?: Phaser.GameObjects.Arc;
+  avatarRing?: Phaser.GameObjects.Graphics;
+  avatarSrcKey?: string;
   initials: Phaser.GameObjects.Text;
   crown: Phaser.GameObjects.Text;
   hpBg: Phaser.GameObjects.Rectangle;
@@ -69,6 +73,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private winnerTitle!: Phaser.GameObjects.Text;
   private winnerBody!: Phaser.GameObjects.Text;
   private ballViews = new Map<string, LandscapeBallView>();
+  private pendingAvatars = new Set<string>();
   private pickupViews = new Map<string, LandscapePickupView>();
   private lastTop5: PlayerStats[] = [];
   private lastRemaining = 300;
@@ -665,10 +670,29 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     root.setScale(0.15);
     this.tweens.add({ targets: root, scale: 1, duration: 260, ease: 'Back.Out' });
 
-    return { root, aura, body, ring, initials, crown, hpBg, hpFg, name, strength, buffs, lastHp: b.hp };
+    const view: LandscapeBallView = {
+      root,
+      aura,
+      body,
+      ring,
+      initials,
+      crown,
+      hpBg,
+      hpFg,
+      name,
+      strength,
+      buffs,
+      lastHp: b.hp,
+    };
+    if (b.avatarUrl && !b.isBoss) this.tryLoadAvatar(b, view);
+    return view;
   }
 
   private positionBall(_id: string, view: LandscapeBallView, b: BallState): void {
+    if (b.avatarUrl && !b.isBoss && !view.avatar) {
+      this.tryLoadAvatar(b, view);
+    }
+
     const mapper = makeLandscapeMapper(this.cameras.main.width);
     const p = mapper.map(b.x, b.y);
     const r = Math.max(10, b.radius * mapper.scale);
@@ -677,6 +701,13 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     view.body.setRadius(r);
     view.ring.setRadius(r + 4);
     view.aura.setRadius(r + 16);
+    if (view.avatar) {
+      const avSize = r * 1.98;
+      view.avatar.setDisplaySize(avSize, avSize);
+      view.initials.setVisible(false);
+      if (view.avatarGlow) view.avatarGlow.setRadius(avSize * 0.5 + 5);
+      if (view.avatarRing) this.paintAvatarRing(view.avatarRing, avSize * 0.5, b);
+    }
 
     const barW = Math.max(54, r * 2.1);
     const hpY = -r - 22;
@@ -723,6 +754,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         : b.spawnProtected
           ? THEME.electricCyan
           : THEME.light;
+    view.body.setFillStyle(b.color, view.avatar ? 0 : 1);
     view.body.setStrokeStyle(b.isBoss ? 8 : b.isKing ? 6 : 3, stroke, b.spawnProtected ? 0.55 : 0.95);
     view.ring.setStrokeStyle(b.isBoss ? 7 : b.isKing ? 5 : 3, stroke, b.isBoss ? 0.85 : b.isKing ? 0.65 : 0.42);
     if (b.isBoss) {
@@ -734,6 +766,133 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       this.tweens.add({ targets: view.root, scaleX: 1.12, scaleY: 1.12, duration: 65, yoyo: true });
     }
     view.lastHp = b.hp;
+  }
+
+  private tryLoadAvatar(b: BallState, view: LandscapeBallView): void {
+    if (!b.avatarUrl || b.isBoss || view.avatar || this.pendingAvatars.has(b.id)) return;
+    this.pendingAvatars.add(b.id);
+    const key = 'landscape-avatar-' + b.id;
+
+    const apply = () => {
+      if (!this.textures.exists(key)) {
+        this.pendingAvatars.delete(b.id);
+        return;
+      }
+      const current = this.ballViews.get(b.id);
+      if (!current || current.avatar) {
+        this.pendingAvatars.delete(b.id);
+        return;
+      }
+      this.applyAvatar(key, b, current);
+      this.pendingAvatars.delete(b.id);
+    };
+
+    if (this.textures.exists(key)) {
+      apply();
+      return;
+    }
+
+    this.load.image(key, b.avatarUrl);
+    this.load.once(Phaser.Loader.Events.COMPLETE, apply);
+    this.load.once(Phaser.Loader.Events.LOAD_ERROR, () => {
+      this.pendingAvatars.delete(b.id);
+    });
+    if (!this.load.isLoading()) this.load.start();
+  }
+
+  private applyAvatar(srcKey: string, b: BallState, view: LandscapeBallView): void {
+    const roundKey = this.ensureRoundAvatar(srcKey);
+    const r = Math.max(10, b.radius * makeLandscapeMapper(this.cameras.main.width).scale);
+    const avSize = r * 1.98;
+
+    const glow = this.add.circle(0, 0, avSize * 0.5 + 5, THEME.gold, 0.2);
+    const img = this.add.image(0, 0, roundKey).setDisplaySize(avSize, avSize);
+    const ringGfx = this.add.graphics();
+
+    const initialsIndex = view.root.getIndex(view.initials);
+    const insertAt = initialsIndex >= 0 ? initialsIndex : 4;
+    view.root.addAt(glow, insertAt);
+    view.root.addAt(img, insertAt + 1);
+    view.root.addAt(ringGfx, insertAt + 2);
+
+    view.avatarGlow = glow;
+    view.avatar = img;
+    view.avatarRing = ringGfx;
+    view.avatarSrcKey = srcKey;
+    view.initials.setVisible(false);
+    view.body.setFillStyle(view.body.fillColor, 0);
+    this.paintAvatarRing(ringGfx, avSize * 0.5, b);
+  }
+
+  private ensureRoundAvatar(srcKey: string, size = 192): string {
+    const destKey = srcKey + '-round-cover';
+    if (this.textures.exists(destKey)) return destKey;
+    if (!this.textures.exists(srcKey)) return srcKey;
+
+    const canvasTex = this.textures.createCanvas(destKey, size, size);
+    if (!canvasTex) return srcKey;
+
+    const ctx = canvasTex.getContext();
+    const src = this.textures.get(srcKey).getSourceImage() as CanvasImageSource;
+    const srcAny = src as unknown as {
+      naturalWidth?: number;
+      naturalHeight?: number;
+      videoWidth?: number;
+      videoHeight?: number;
+      width?: number;
+      height?: number;
+    };
+    const sw = srcAny.naturalWidth || srcAny.videoWidth || srcAny.width || size;
+    const sh = srcAny.naturalHeight || srcAny.videoHeight || srcAny.height || size;
+    const scale = Math.max(size / sw, size / sh);
+    const dw = sw * scale;
+    const dh = sh * scale;
+    const dx = (size - dw) / 2;
+    const dy = (size - dh) / 2;
+    const radius = size / 2;
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(radius, radius, radius - 1, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(src, dx, dy, dw, dh);
+
+    const vignette = ctx.createRadialGradient(
+      radius,
+      radius,
+      radius * 0.58,
+      radius,
+      radius,
+      radius
+    );
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.22)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, size, size);
+    ctx.restore();
+    canvasTex.refresh();
+    return destKey;
+  }
+
+  private paintAvatarRing(
+    g: Phaser.GameObjects.Graphics,
+    radius: number,
+    b: BallState
+  ): void {
+    g.clear();
+    const stroke = b.isGalaxy
+      ? THEME.lavender
+      : b.isKing
+        ? THEME.gold
+        : b.spawnProtected
+          ? THEME.electricCyan
+          : THEME.light;
+    g.lineStyle(b.isKing ? 5 : 4, stroke, b.spawnProtected ? 0.5 : 0.98);
+    g.strokeCircle(0, 0, radius + 1);
+    g.lineStyle(6, stroke, b.spawnProtected ? 0.08 : 0.16);
+    g.strokeCircle(0, 0, radius + 5);
   }
 
   private syncPickups(pickups: PickupState[]): void {
