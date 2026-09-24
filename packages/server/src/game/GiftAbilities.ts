@@ -1,15 +1,18 @@
 import {
   ROSA_HEAL,
   DINO_DURATION_MS,
+  DINO_STACK_MAX,
   DONUT_HEAL,
   DONUT_SHIELD_PER,
   DONUT_SHIELD_MAX,
   DONUT_DURATION_MS,
   DONUT_SHIELD_DURATION_MS,
+  DONUT_STACK_MAX,
   SUGAR_BURST_DURATION_MS,
   TITAN_DURATION_MS,
   TITAN_HP_GAIN,
   TITAN_RESTACK_HP,
+  TITAN_STACK_MAX,
   resolveAbilityKey,
   PICKUP_META,
   type AbilityKey,
@@ -70,15 +73,16 @@ export function applyGiftAbility(
       }
       case 'dino_rage': {
         const until = Math.max(ball.dinoRageUntil, now) + DINO_DURATION_MS;
-        // Cap attributes: setTimedBuff only extends; multipliers are binary while active
-        physics.setTimedBuff(userId, 'dino', until);
+        const stacks = physics.addGiftStack(userId, 'dino', until);
         if (i === times - 1) {
+          const sx = stacks > 1 ? ` x${stacks}` : '';
           announces.push({
             type: 'announce',
             kind: 'gift',
-            message: `🦖 DINO RAGE! @${name} (+25% força / +15% speed)`,
+            message: `🦖 DINO RAGE${sx}! @${name} (+força/+speed, máx x${DINO_STACK_MAX})`,
             userId,
             username: name,
+            value: stacks,
             timestamp: Date.now(),
           });
         }
@@ -89,15 +93,17 @@ export function applyGiftAbility(
         physics.addShield(userId, DONUT_SHIELD_PER, DONUT_SHIELD_MAX);
         physics.refreshShieldUntil(userId, DONUT_SHIELD_DURATION_MS);
         const until = Math.max(ball.donutUntil, now) + DONUT_DURATION_MS;
-        physics.setTimedBuff(userId, 'donut', until);
+        const stacks = physics.addGiftStack(userId, 'donut', until);
         if (i === times - 1) {
           const b = physics.getBall(userId)!;
+          const sx = stacks > 1 ? ` x${stacks}` : '';
           announces.push({
             type: 'announce',
             kind: 'gift',
-            message: `🍩 DONUT OVERDRIVE! @${name} escudo ${b.shieldHp} (~${Math.round(DONUT_SHIELD_DURATION_MS / 1000)}s)`,
+            message: `🍩 DONUT${sx}! @${name} escudo ${b.shieldHp} (máx x${DONUT_STACK_MAX})`,
             userId,
             username: name,
+            value: stacks,
             timestamp: Date.now(),
           });
         }
@@ -105,29 +111,33 @@ export function applyGiftAbility(
       }
       case 'capybara_titan': {
         const b = physics.getBall(userId)!;
-        const already = Date.now() < b.titanUntil && b.titanApplied;
+        const already = Date.now() < b.titanUntil && b.titanStacks > 0;
         if (already) {
           physics.heal(userId, TITAN_RESTACK_HP);
-          physics.setTimedBuff(userId, 'titan', Math.max(b.titanUntil, Date.now()) + TITAN_DURATION_MS);
         } else {
           physics.heal(userId, TITAN_HP_GAIN);
           b.maxHp = Math.max(b.maxHp, Math.min(150, b.hp));
-          physics.setTimedBuff(userId, 'titan', Date.now() + TITAN_DURATION_MS);
         }
+        const until = Math.max(b.titanUntil, Date.now()) + TITAN_DURATION_MS;
+        const stacks = physics.addGiftStack(userId, 'titan', until);
         if (i === times - 1) {
-          const still = physics.getBall(userId);
-          const wasRestack = already || times > 1;
+          let message: string;
+          if (stacks >= TITAN_STACK_MAX) {
+            message = `🦫 CAPIVARA x${stacks}! @${name} GIGANTE`;
+          } else if (already || stacks > 1) {
+            message = `🦫 CAPIVARA x${stacks}! @${name} +20s +${TITAN_RESTACK_HP} HP`;
+          } else {
+            message = `🦫 CAPYBARA TITAN! @${name} (Ultra Calma)`;
+          }
           announces.push({
             type: 'announce',
             kind: 'gift',
-            message: wasRestack && already
-              ? `🦫 CAPIVARA restack! @${name} +20s +${TITAN_RESTACK_HP} HP`
-              : `🦫 CAPYBARA TITAN! @${name} (Ultra Calma)`,
+            message,
             userId,
             username: name,
+            value: stacks,
             timestamp: Date.now(),
           });
-          void still;
         }
         break;
       }

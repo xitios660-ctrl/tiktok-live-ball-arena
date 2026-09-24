@@ -145,10 +145,16 @@ export interface BallState {
   sugarBurstFlash?: boolean;
   stompFlash?: boolean;
   galaxyImpactFlash?: boolean;
-  /** Round kills (for strength cue) */
+  /** Round kills (for strength / size cue) */
   kills?: number;
-  /** 1 + kill bonus (capped) — collision damage power */
+  /** Kill → strength mult (capped) — collision damage power */
   strengthMult?: number;
+  /** Kill → size mult (capped) */
+  killSizeMult?: number;
+  /** Active gift stacks while buff timers run (0 when expired) */
+  titanStacks?: number;
+  dinoStacks?: number;
+  donutStacks?: number;
 }
 
 export interface PlayerStats {
@@ -365,6 +371,8 @@ export const DINO_DURATION_MS = 10_000;
 export const DINO_STRENGTH_MULT = 1.25;
 export const DINO_SPEED_MULT = 1.15;
 export const DINO_COLLISION_DMG_MULT = 1.2;
+/** Mini Dino true stacks — slight strength/speed scale; duration refresh */
+export const DINO_STACK_MAX = 3;
 
 export const DONUT_HEAL = 20;
 export const DONUT_SHIELD_PER = 100;
@@ -374,6 +382,9 @@ export const DONUT_DURATION_MS = 12_000;
 export const DONUT_SHIELD_DURATION_MS = 15_000;
 export const DONUT_SPEED_MULT = 1.2;
 export const DONUT_RESIST = 0.25;
+/** Rosquinha stacks — more shield (still max 300) + slight size while overdrive */
+export const DONUT_STACK_MAX = 3;
+export const DONUT_SIZE_PER_STACK = 0.08;
 export const SUGAR_BURST_SPEED_MULT = 1.25;
 export const SUGAR_BURST_DURATION_MS = 3_000;
 export const SUGAR_BURST_PUSH = 420;
@@ -381,6 +392,7 @@ export const SUGAR_BURST_DAMAGE = 8;
 export const SUGAR_BURST_RADIUS = 220;
 
 export const TITAN_DURATION_MS = 20_000;
+/** Per-stack size factor (stack1=1.6, stack2=2.2, stack3=2.8 via titanSizeMult) */
 export const TITAN_SIZE_MULT = 1.6;
 export const TITAN_MASS_MULT = 2.0;
 export const TITAN_STRENGTH_MULT = 1.75;
@@ -389,6 +401,12 @@ export const TITAN_COLLISION_DMG_MULT = 1.35;
 export const TITAN_SPEED_MULT = 1.2;
 export const TITAN_HP_GAIN = 50;
 export const TITAN_RESTACK_HP = 25;
+/** Capivara true stacks — each gift +1 while buff active; timer expiry resets to 0 */
+export const TITAN_STACK_MAX = 3;
+/** Soft cap on stacked titan strength mult (linear would hit 3.25 at x3) */
+export const TITAN_STRENGTH_STACK_CAP = 3.0;
+/** Soft cap on stacked titan resist contribution */
+export const TITAN_RESIST_STACK_CAP = 0.7;
 export const TITAN_REGEN_PER_SEC = 2;
 export const TITAN_ULTRA_CALMA_KB = 0.5;
 export const TITAN_STOMP_SPEED = 280;
@@ -517,18 +535,75 @@ export const RANDOM_EVENT_INTERVAL_SEC = 45;
 export const RANDOM_EVENT_CHANCE = 0.35; // per tick check
 
 
-/** —— Kill → strength (round-permanent while alive/dead; resets next round) ——
- * Mult = 1 + min(kills * KILL_STRENGTH_PER, KILL_STRENGTH_BONUS_CAP)
- * e.g. 0.08/kill, cap +1.0 ⇒ 2.0× at 12+ kills. Free-to-play scale; gifts still stack on top.
+/** —— Kill → strength + size (round-permanent on ball; resets next round) ——
+ * Strength: 1 + kills * KILL_STRENGTH_PER, capped at KILL_STRENGTH_CAP (2.0 ⇒ ~12 kills).
+ * Size:     1 + kills * KILL_SIZE_PER,     capped at KILL_SIZE_CAP   (1.75 ⇒ ~15 kills).
+ * Free-to-play can grow big without gifts; gift stacks multiply on top (then MAX_BALL_RADIUS clamp).
  */
 export const KILL_STRENGTH_PER = 0.08;
-export const KILL_STRENGTH_BONUS_CAP = 1.0;
+/** Absolute strength mult cap from kills alone (was bonus cap +1.0 → same 2.0×) */
+export const KILL_STRENGTH_CAP = 2.0;
+/** @deprecated alias — prefer KILL_STRENGTH_CAP */
+export const KILL_STRENGTH_BONUS_CAP = KILL_STRENGTH_CAP - 1;
+export const KILL_SIZE_PER = 0.05;
+/** Absolute size mult cap from kills alone (~+75% at 15 kills) */
+export const KILL_SIZE_CAP = 1.75;
 /** Announce FORÇA+ every N kills (not every kill) */
 export const KILL_STRENGTH_ANNOUNCE_EVERY = 3;
 
+/** Hard radius clamp — diameter ~70% width max; prevents arena blowout */
+export const MAX_BALL_RADIUS_FRAC = 0.35;
+export const MAX_BALL_RADIUS = Math.floor(CANVAS_WIDTH * MAX_BALL_RADIUS_FRAC);
+
 export function killStrengthMult(kills: number): number {
   const k = Math.max(0, Math.floor(kills || 0));
-  return 1 + Math.min(k * KILL_STRENGTH_PER, KILL_STRENGTH_BONUS_CAP);
+  return Math.min(1 + k * KILL_STRENGTH_PER, KILL_STRENGTH_CAP);
+}
+
+export function killSizeMult(kills: number): number {
+  const k = Math.max(0, Math.floor(kills || 0));
+  return Math.min(1 + k * KILL_SIZE_PER, KILL_SIZE_CAP);
+}
+
+/** Linear stack scale: 1 + (baseMult - 1) * stacks (stacks≤0 ⇒ 1) */
+export function stackLinearMult(baseMult: number, stacks: number): number {
+  const s = Math.max(0, Math.floor(stacks || 0));
+  if (s <= 0) return 1;
+  return 1 + (baseMult - 1) * s;
+}
+
+export function titanSizeMult(stacks: number): number {
+  return stackLinearMult(TITAN_SIZE_MULT, stacks);
+}
+export function titanMassMult(stacks: number): number {
+  return stackLinearMult(TITAN_MASS_MULT, stacks);
+}
+export function titanStrengthMult(stacks: number): number {
+  return Math.min(stackLinearMult(TITAN_STRENGTH_MULT, stacks), TITAN_STRENGTH_STACK_CAP);
+}
+export function titanResistAmount(stacks: number): number {
+  const s = Math.max(0, Math.floor(stacks || 0));
+  if (s <= 0) return 0;
+  return Math.min(TITAN_RESIST * s, TITAN_RESIST_STACK_CAP);
+}
+export function titanCollisionDmgMult(stacks: number): number {
+  return stackLinearMult(TITAN_COLLISION_DMG_MULT, stacks);
+}
+
+export function dinoStrengthMult(stacks: number): number {
+  return stackLinearMult(DINO_STRENGTH_MULT, stacks);
+}
+export function dinoSpeedMult(stacks: number): number {
+  return stackLinearMult(DINO_SPEED_MULT, stacks);
+}
+export function dinoCollisionDmgMult(stacks: number): number {
+  return stackLinearMult(DINO_COLLISION_DMG_MULT, stacks);
+}
+
+export function donutSizeMult(stacks: number): number {
+  const s = Math.max(0, Math.floor(stacks || 0));
+  if (s <= 0) return 1;
+  return 1 + DONUT_SIZE_PER_STACK * s;
 }
 
 export const SOCKET_EVENTS = {

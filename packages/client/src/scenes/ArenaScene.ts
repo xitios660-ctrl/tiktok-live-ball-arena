@@ -927,10 +927,12 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     const icons: string[] = [];
+    const stackLabel = (emoji: string, n: number | undefined) =>
+      n && n > 1 ? `${emoji}×${n}` : emoji;
     if (isGalaxy) icons.push('🌌');
-    if (isTitan) icons.push('🦫');
-    if (isDino) icons.push('🦖');
-    if (isDonut || sh > 0) icons.push('🍩');
+    if (isTitan) icons.push(stackLabel('🦫', b.titanStacks));
+    if (isDino) icons.push(stackLabel('🦖', b.dinoStacks));
+    if (isDonut || sh > 0) icons.push(stackLabel('🍩', b.donutStacks));
     if (isSugar) icons.push('💥');
     if (isFreeze) icons.push('❄️');
     if (isReflect) icons.push('🪞');

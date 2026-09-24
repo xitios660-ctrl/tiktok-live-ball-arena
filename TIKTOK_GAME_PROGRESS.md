@@ -1,75 +1,57 @@
 # TikTok Live Ball Arena — Progress Log
 
-## Etapa atual: **Arena floor pickups + futuristic overlay**
+## Etapa atual: **Kill size/strength (cap) + gift stacking (Capivara x3)**
 
 Data: 2026-09-24 (America/Sao_Paulo)
 
-### Pickups (powers no chão)
+### Kills → tamanho + força (com limite)
 
-Powers that are **not** TikTok gifts spawn on the arena floor and activate only when a living ball rolls over them:
+| Const | Valor | Efeito |
+|-------|-------|--------|
+| KILL_STRENGTH_PER | 0.08 | +8% força / kill |
+| KILL_STRENGTH_CAP | 2.0 | máx ~12 kills → 2× força |
+| KILL_SIZE_PER | 0.05 | +5% tamanho / kill |
+| KILL_SIZE_CAP | 1.75 | máx ~15 kills → +75% size |
+| MAX_BALL_RADIUS | 0.35 × width (378) | clamp absoluto pós-multiplicadores |
 
-| Ability | Emoji | Admin giftId |
-|---------|-------|--------------|
-| lightning_zap | ⚡ | raio |
-| magnet_pulse | 🧲 | ima |
-| freeze_aura | ❄️ | gelo |
-| dash_burst | 🚀 | foguete |
-| reflect_shield | 🪞 | espelho |
+`finalSize = base × killSize × titanSize(stacks) × donutSize(stacks) × galaxySize` → clamp radius.
 
-**Still TikTok gifts:** rosa, mini_dino, rosquinha, capivara, galaxia.
+F2P com muitos kills fica grande sem presentear.
 
-Behavior:
-- During `running`: keep ~3–5 pickups; spawn every 6–10s if under max; lifetime ~32s then despawn/respawn elsewhere.
-- Collect when ball center within `ball.radius + pickup.radius`; immediate ability apply + feed `⚡ @name pegou Raio!`.
-- Clear on round start / results / waiting.
-- Galaxy gods can collect. Dead balls / results: no collect.
-- Admin: `POST /admin/sim/pickup` (near center). Gift buttons for the 5 diverted to floor spawn.
+### Gift stacking (true stacks)
 
-### Overlay futuristic pass
+| Gift | Stack max | Escalamento |
+|------|-----------|-------------|
+| 🦫 Capivara | **3** | size `1+(1.6-1)×s` → 1.6 / 2.2 / 2.8; strength linear cap 3.0; mass linear; resist×s cap 0.7; +20s + HP (50 / 25 restack) |
+| 🦖 Mini Dino | 3 | strength/speed/collision linear por stack; refresh duração |
+| 🍩 Rosquinha | 3 | escudo +100 (máx 300) + size +8%/stack enquanto overdrive |
+| 🌹 Rosa | — | só cura (quantity) |
+| 🌌 Galáxia | 1 | re-gift = refresh; sem explosão de size |
 
-- Title: dual neon glow + drifting scanline + pulsing gold accent
-- Ambient star twinkles (perf-safe ~16 dots)
-- TOP5 / gabarito: teal/lavender neon border pulse + soft float bob
-- Pickups: orbiting rings, emoji bob, color-coded glow
-- Kill feed: scale punch then settle
-- Phase labels: fade+scale cinema transition
-- High-speed balls: cheap ghost motion smear
-
-### Constantes
-
-| Key | Value |
-|-----|-------|
-| MAX_PICKUPS | 5 |
-| PICKUP_RADIUS | 32 |
-| PICKUP_SPAWN_INTERVAL | 6–10s |
-| PICKUP_LIFETIME_MS | 32000 |
-| PICKUP_EDGE_MARGIN | 120 |
+Announce Capivara x3: `🦫 CAPIVARA x3! @name GIGANTE`. Timer expire → stacks = 0.
 
 ### Como testar (DEMO)
 
 ```bash
 TIKTOK_MODE=demo npm run build && npm start
 # Overlay: /overlay · Admin: /admin.html
-# 1) Spawn 5 bots → Iniciar
-# 2) “Spawn pickup” → ⚡ Raio (aparece no centro)
-# 3) Espere bolas passarem → feed “pegou Raio!” + FX
-# 4) Ou aguarde auto-spawn (~6–10s) em posições aleatórias
+# 1) Spawn bots → Iniciar
+# 2) Doar Capivara 3× no mesmo bot → size ~2.8× + announce GIGANTE
+# 3) Matar spam → bola cresce (cap 1.75×) + 💪 força (cap 2.0×)
 ```
 
 ### Arquivos
 
-- `packages/shared/src/index.ts` — PickupState, constants, announce `pickup`
-- `packages/server/src/game/PickupSystem.ts` — spawn / collect / expire
-- `packages/server/src/game/GiftAbilities.ts` — `applyPickupAbility`
-- `packages/server/src/game/GameLoop.ts` — tick + snapshot.pickups
-- `packages/server/src/routes/adminApi.ts` + `public/admin.html`
-- `packages/client/src/ui/PickupsLayer.ts`, `GiftLegend.ts`, `CinematicHud.ts`
-- `packages/client/src/scenes/ArenaScene.ts`
+- `packages/shared/src/index.ts` — caps, `killSizeMult`, stack helpers
+- `packages/server/src/game/PhysicsWorld.ts` — stacks, recomputeGeometry, MAX_BALL_RADIUS
+- `packages/server/src/game/GiftAbilities.ts` — `addGiftStack` on gift
+- `packages/client/src/ui/GiftLegend.ts` — Capivara empilha até x3
+- `packages/client/src/scenes/ArenaScene.ts` — buff icon `🦫×3`
 
 ### Public
 
 - Render: https://tiktok-live-ball-arena.onrender.com/overlay
 
-## Anterior (Balance + cinematic + gabarito)
+## Anterior (Arena floor pickups + futuristic overlay)
 
-Donut shield TTL, Cosmic Duel, Cinematic HUD, gift gabarito.
+Pickups no chão (raio/ima/gelo/foguete/espelho) + overlay neon.

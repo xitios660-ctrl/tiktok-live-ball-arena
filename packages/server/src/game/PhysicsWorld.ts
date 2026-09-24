@@ -13,6 +13,20 @@ import {
   DAMAGE_IMPACT_THRESHOLD,
   SPAWN_PROTECTION_MS,
   killStrengthMult,
+  killSizeMult,
+  titanSizeMult,
+  titanMassMult,
+  titanStrengthMult,
+  titanResistAmount,
+  titanCollisionDmgMult,
+  dinoStrengthMult,
+  dinoSpeedMult,
+  dinoCollisionDmgMult,
+  donutSizeMult,
+  MAX_BALL_RADIUS,
+  TITAN_STACK_MAX,
+  DINO_STACK_MAX,
+  DONUT_STACK_MAX,
   MILD_ATTRACTION_ACCEL,
   MILD_ATTRACTION_RADIUS,
   MILD_ATTRACTION_MAX_ACCEL,
@@ -33,9 +47,6 @@ import {
   REFLECT_SHIELD_MS,
   REFLECT_RATIO,
   GIFT_SOFT_MAX_HP,
-  DINO_STRENGTH_MULT,
-  DINO_SPEED_MULT,
-  DINO_COLLISION_DMG_MULT,
   DONUT_SPEED_MULT,
   DONUT_RESIST,
   SUGAR_BURST_SPEED_MULT,
@@ -43,11 +54,6 @@ import {
   SUGAR_BURST_PUSH,
   SUGAR_BURST_DAMAGE,
   SUGAR_BURST_RADIUS,
-  TITAN_SIZE_MULT,
-  TITAN_MASS_MULT,
-  TITAN_STRENGTH_MULT,
-  TITAN_RESIST,
-  TITAN_COLLISION_DMG_MULT,
   TITAN_SPEED_MULT,
   TITAN_ULTRA_CALMA_KB,
   TITAN_STOMP_SPEED,
@@ -110,8 +116,12 @@ export interface BallBody {
   donutUntil: number;
   sugarBurstUntil: number;
   titanUntil: number;
-  /** Titan multipliers applied once until buff ends */
+  /** @deprecated prefer titanStacks > 0; kept for brief expire sync */
   titanApplied: boolean;
+  /** True gift stacks while buff active (reset to 0 on timer expiry) */
+  titanStacks: number;
+  dinoStacks: number;
+  donutStacks: number;
   galaxy: boolean;
   shieldHp: number;
   /** When shieldHp expires by time (ms timestamp); 0 = none */
@@ -181,11 +191,11 @@ function speedOf(b: BallBody): number {
 
 function activeSpeedMult(b: BallBody, now: number): number {
   let m = 1;
-  if (now < b.dinoRageUntil) m *= DINO_SPEED_MULT;
+  if (now < b.dinoRageUntil && b.dinoStacks > 0) m *= dinoSpeedMult(b.dinoStacks);
   if (now < b.donutUntil) m *= DONUT_SPEED_MULT;
   if (now < b.sugarBurstUntil) m *= SUGAR_BURST_SPEED_MULT;
   if (now < b.dashUntil) m *= DASH_BURST_SPEED_MULT;
-  if (now < b.titanUntil) m *= TITAN_SPEED_MULT;
+  if (now < b.titanUntil && b.titanStacks > 0) m *= TITAN_SPEED_MULT;
   if (b.galaxy) m *= GALAXY_SPEED_MULT;
   if (now < b.slowUntil) m *= FREEZE_AURA_SLOW;
   return m;
@@ -193,16 +203,16 @@ function activeSpeedMult(b: BallBody, now: number): number {
 
 function activeStrength(b: BallBody, now: number): number {
   let s = b.baseStrength * killStrengthMult(b.kills);
-  if (now < b.dinoRageUntil) s *= DINO_STRENGTH_MULT;
-  if (now < b.titanUntil) s *= TITAN_STRENGTH_MULT;
+  if (now < b.dinoRageUntil && b.dinoStacks > 0) s *= dinoStrengthMult(b.dinoStacks);
+  if (now < b.titanUntil && b.titanStacks > 0) s *= titanStrengthMult(b.titanStacks);
   if (b.galaxy) s *= GALAXY_STRENGTH_MULT;
   return s;
 }
 
 function activeCollisionDmgMult(b: BallBody, now: number): number {
   let m = 1;
-  if (now < b.dinoRageUntil) m *= DINO_COLLISION_DMG_MULT;
-  if (now < b.titanUntil) m *= TITAN_COLLISION_DMG_MULT;
+  if (now < b.dinoRageUntil && b.dinoStacks > 0) m *= dinoCollisionDmgMult(b.dinoStacks);
+  if (now < b.titanUntil && b.titanStacks > 0) m *= titanCollisionDmgMult(b.titanStacks);
   if (b.galaxy) m *= GALAXY_IMPACT_EXTRA_DMG;
   return m;
 }
@@ -210,7 +220,7 @@ function activeCollisionDmgMult(b: BallBody, now: number): number {
 function activeResist(b: BallBody, now: number): number {
   let r = 0;
   if (now < b.donutUntil) r += DONUT_RESIST;
-  if (now < b.titanUntil) r += TITAN_RESIST;
+  if (now < b.titanUntil && b.titanStacks > 0) r += titanResistAmount(b.titanStacks);
   return Math.min(0.85, r);
 }
 
@@ -264,18 +274,26 @@ function isProtected(b: BallBody, now = Date.now()): boolean {
 }
 
 function recomputeGeometry(b: BallBody, now: number): void {
-  let size = 1;
+  // finalSize = base * killSize * titanSize(stacks) * donutSize(stacks) * galaxySize
+  let size = killSizeMult(b.kills);
   let massM = 1;
-  if (now < b.titanUntil && b.titanApplied) {
-    size *= TITAN_SIZE_MULT;
-    massM *= TITAN_MASS_MULT;
+  if (now < b.titanUntil && b.titanStacks > 0) {
+    size *= titanSizeMult(b.titanStacks);
+    massM *= titanMassMult(b.titanStacks);
+  }
+  if (now < b.donutUntil && b.donutStacks > 0) {
+    size *= donutSizeMult(b.donutStacks);
   }
   if (b.galaxy) {
     size *= GALAXY_SIZE_MULT;
     massM *= GALAXY_MASS_MULT;
   }
-  b.radius = b.baseRadius * size;
-  b.mass = b.baseMass * massM;
+  const rawR = b.baseRadius * size;
+  b.radius = Math.min(rawR, MAX_BALL_RADIUS);
+  // Preserve mass ratio if radius was clamped
+  const sizeApplied = b.radius / b.baseRadius;
+  const massScale = size > 0 ? (sizeApplied / size) * massM : massM;
+  b.mass = b.baseMass * massScale;
   b.strength = activeStrength(b, now);
 }
 
@@ -395,6 +413,40 @@ export class PhysicsWorld {
       b.vy *= k;
     }
     capSpeed(b, now);
+  }
+
+  /**
+   * Increment a gift stack (capped) and refresh its timed buff.
+   * Returns the new stack count (0 if ball missing).
+   */
+  addGiftStack(
+    userId: string,
+    kind: 'titan' | 'dino' | 'donut',
+    until: number
+  ): number {
+    const b = this.balls.get(userId);
+    if (!b) return 0;
+    const now = Date.now();
+    if (kind === 'titan') {
+      if (now >= b.titanUntil) b.titanStacks = 0;
+      b.titanStacks = Math.min(TITAN_STACK_MAX, b.titanStacks + 1);
+      b.titanApplied = b.titanStacks > 0;
+      this.setTimedBuff(userId, 'titan', until);
+      return b.titanStacks;
+    }
+    if (kind === 'dino') {
+      if (now >= b.dinoRageUntil) b.dinoStacks = 0;
+      b.dinoStacks = Math.min(DINO_STACK_MAX, b.dinoStacks + 1);
+      this.setTimedBuff(userId, 'dino', until);
+      return b.dinoStacks;
+    }
+    if (kind === 'donut') {
+      if (now >= b.donutUntil) b.donutStacks = 0;
+      b.donutStacks = Math.min(DONUT_STACK_MAX, b.donutStacks + 1);
+      this.setTimedBuff(userId, 'donut', until);
+      return b.donutStacks;
+    }
+    return 0;
   }
 
   /** Living balls currently in God Mode */
@@ -526,6 +578,9 @@ export class PhysicsWorld {
       b.sugarBurstUntil = 0;
       b.titanUntil = 0;
       b.titanApplied = false;
+      b.titanStacks = 0;
+      b.dinoStacks = 0;
+      b.donutStacks = 0;
       b.galaxy = false;
       b.shieldHp = 0;
       b.shieldUntil = 0;
@@ -643,6 +698,9 @@ export class PhysicsWorld {
       sugarBurstUntil: 0,
       titanUntil: 0,
       titanApplied: false,
+      titanStacks: 0,
+      dinoStacks: 0,
+      donutStacks: 0,
       galaxy: false,
       shieldHp: 0,
       shieldUntil: 0,
@@ -690,9 +748,16 @@ export class PhysicsWorld {
       if (b.stompFlashTicks > 0) b.stompFlashTicks -= 1;
       if (b.galaxyImpactFlashTicks > 0) b.galaxyImpactFlashTicks -= 1;
 
-      // Expire titan flag
-      if (b.titanApplied && now >= b.titanUntil) {
+      // Expire timed gift stacks when buff timers end
+      if (b.titanStacks > 0 && now >= b.titanUntil) {
+        b.titanStacks = 0;
         b.titanApplied = false;
+      }
+      if (b.dinoStacks > 0 && now >= b.dinoRageUntil) {
+        b.dinoStacks = 0;
+      }
+      if (b.donutStacks > 0 && now >= b.donutUntil) {
+        b.donutStacks = 0;
       }
       // Donut shield time expiry (no Sugar Burst — just fades)
       if (b.shieldHp > 0 && b.shieldUntil > 0 && now >= b.shieldUntil) {
@@ -967,6 +1032,10 @@ export class PhysicsWorld {
         galaxyImpactFlash: b.galaxyImpactFlashTicks > 0,
         kills: b.kills,
         strengthMult: killStrengthMult(b.kills),
+        killSizeMult: killSizeMult(b.kills),
+        titanStacks: now < b.titanUntil ? b.titanStacks : 0,
+        dinoStacks: now < b.dinoRageUntil ? b.dinoStacks : 0,
+        donutStacks: now < b.donutUntil ? b.donutStacks : 0,
       });
     }
     return out;

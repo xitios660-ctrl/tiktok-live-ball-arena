@@ -8,9 +8,9 @@ import { THEME, THEME_HEX, FONT, FONT_BLACK } from '../theme';
 export const GIFT_GABARITO_LINES: readonly string[] = [
   '🎁 PRESENTES',
   '🌹 Rosa — cura leve (+2 HP)',
-  '🦖 Mini Dino — +força/+speed ~10s',
+  '🦖 Mini Dino — +força/+speed (empilha x3)',
   '🍩 Rosquinha — escudo (+100) ~15s',
-  '🦫 Capivara — Titan ~20s (stomp)',
+  '🦫 Capivara empilha até x3 (gigante)',
   '🌌 Galáxia — God Mode / Duelo',
   '',
   '⬇ NO CHÃO (passe por cima)',
@@ -18,6 +18,7 @@ export const GIFT_GABARITO_LINES: readonly string[] = [
   '🚀 Foguete · 🪞 Espelho',
   '',
   '💬 Comente p/ entrar / respawn',
+  '💪 Kills → tamanho/força (cap)',
 ];
 
 export interface GiftLegendHandles {
