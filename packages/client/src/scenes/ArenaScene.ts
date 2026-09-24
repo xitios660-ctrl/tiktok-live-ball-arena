@@ -385,7 +385,7 @@ export class ArenaScene extends Phaser.Scene {
     // Mute — smaller / less prominent in clean (non-debug) mode
     const muteSize = opts.debug ? '36px' : '26px';
     this.muteBtn = this.add
-      .text(CANVAS_WIDTH - side, top + (opts.debug ? 32 : 8), '🔊', {
+      .text(CANVAS_WIDTH - side, top + (opts.debug ? 32 : 8), audio.isMuted() ? '🔇' : '🔊', {
         fontFamily: FONT,
         fontSize: muteSize,
       })
@@ -396,7 +396,13 @@ export class ArenaScene extends Phaser.Scene {
     this.muteBtn.on('pointerdown', () => {
       const m = audio.toggleMute();
       this.muteBtn.setText(m ? '🔇' : '🔊');
-      audio.ensure();
+      // Unmute path: unlock AudioContext + restart ambient (autoplay-safe)
+      if (!m) {
+        audio.unlock();
+        audio.startAmbient(this.phoneLite ? 0.75 : 0.95);
+      } else {
+        audio.ensure();
+      }
     });
 
     if (opts.demoBadge) {
@@ -428,13 +434,13 @@ export class ArenaScene extends Phaser.Scene {
         .setAlpha(0.6);
     }
 
-    // Unlock audio on first tap anywhere; start arena ambient bed
-    // Phone lite: lower ambient intensity (0.4) so device stays cooler during screen-share
-    const ambientIntensity = this.phoneLite ? 0.4 : 0.85;
+    // Start arena ambient bed (AudioContext unlocks via banner / mute / tap)
+    // Phone lite: hearable but softer than desktop (~0.75 vs ~0.95)
+    const ambientIntensity = this.phoneLite ? 0.75 : 0.95;
     audio.ensure();
     audio.startAmbient(ambientIntensity);
     this.input.once('pointerdown', () => {
-      audio.ensure();
+      audio.unlock();
       audio.startAmbient(ambientIntensity);
     });
 

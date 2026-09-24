@@ -12,19 +12,62 @@ applyOverlayDom(opts);
 // Phone screen-share: lower ambient ceiling immediately (mute still wins).
 if (opts.phoneLite) audio.setPhoneLite(true);
 
-/** Unlock Web Audio on first user gesture (required on iOS/Android). */
-function bindAudioUnlock(): void {
-  const unlock = () => {
+/** Session flag — don't re-show unlock banner after first unlock. */
+let audioUnlockedThisSession = false;
+
+/**
+ * Visible unlock gate for mobile autoplay policy.
+ * ?mute=1 keeps silent (OBS) and skips the banner.
+ */
+function setupAudioUnlockGate(): void {
+  const gate = document.getElementById('audio-unlock-gate');
+
+  if (opts.startMuted) {
+    audio.setMuted(true);
+    gate?.classList.add('hidden');
+    audioUnlockedThisSession = true; // suppress banner for silent OBS
+    return;
+  }
+
+  if (!gate) {
+    // Fallback: invisible gesture unlock if DOM banner missing
+    const unlock = () => {
+      if (audioUnlockedThisSession) return;
+      audioUnlockedThisSession = true;
+      audio.unlock();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock, { once: true, passive: true });
+    window.addEventListener('touchstart', unlock, { once: true, passive: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return;
+  }
+
+  const doUnlock = () => {
+    if (audioUnlockedThisSession) return;
+    audioUnlockedThisSession = true;
     audio.unlock();
-    window.removeEventListener('pointerdown', unlock);
-    window.removeEventListener('touchstart', unlock);
-    window.removeEventListener('keydown', unlock);
+    gate.classList.add('hidden');
+    gate.removeEventListener('pointerdown', onGateTap);
+    gate.removeEventListener('touchstart', onGateTap);
+    window.removeEventListener('keydown', onKey);
   };
-  window.addEventListener('pointerdown', unlock, { once: true, passive: true });
-  window.addEventListener('touchstart', unlock, { once: true, passive: true });
-  window.addEventListener('keydown', unlock, { once: true });
+
+  const onGateTap = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    doUnlock();
+  };
+  const onKey = () => doUnlock();
+
+  gate.addEventListener('pointerdown', onGateTap, { passive: false });
+  gate.addEventListener('touchstart', onGateTap, { passive: false });
+  window.addEventListener('keydown', onKey, { once: true });
 }
-bindAudioUnlock();
+
+setupAudioUnlockGate();
 
 function boot(): void {
   const config: Phaser.Types.Core.GameConfig = {

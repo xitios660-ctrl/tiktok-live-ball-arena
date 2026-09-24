@@ -27,6 +27,11 @@ export interface OverlayOptions {
    * softer ambient. From ?phone=1 or ?lite=1.
    */
   phoneLite: boolean;
+  /**
+   * Start muted (OBS silent capture). From ?mute=1.
+   * Default = sound on after unlock gesture.
+   */
+  startMuted: boolean;
 }
 
 /** TikTok Live chrome insets — keep HUD out of username/status and comments/gift bar. */
@@ -44,11 +49,12 @@ export function readOverlayOptions(): OverlayOptions {
   const debug = params.get('debug') === '1';
   const demoBadge = params.get('demo') === '1';
   const phoneLite = params.get('phone') === '1' || params.get('lite') === '1';
+  const startMuted = params.get('mute') === '1';
   const q = (params.get('quality') || 'max').toLowerCase();
   let qualityMode: QualityMode = q === 'auto' ? 'auto' : q === 'phone' ? 'phone' : 'max';
   // Phone screen-share always uses the dedicated budget curve.
   if (phoneLite) qualityMode = 'phone';
-  return { transparent, debug, demoBadge, qualityMode, phoneLite };
+  return { transparent, debug, demoBadge, qualityMode, phoneLite, startMuted };
 }
 
 /** Apply transparent CSS class to html/body/#game-container. */

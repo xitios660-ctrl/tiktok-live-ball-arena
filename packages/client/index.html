@@ -79,10 +79,74 @@
       html.obs-transparent body {
         background: transparent !important;
       }
+
+      /* Audio unlock gate — visible CTA until first tap (autoplay policy) */
+      #audio-unlock-gate {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 0 16px calc(28px + env(safe-area-inset-bottom, 0));
+        box-sizing: border-box;
+        pointer-events: auto;
+        cursor: pointer;
+        background: radial-gradient(ellipse at center, rgba(11, 11, 15, 0.35) 0%, rgba(11, 11, 15, 0.72) 100%);
+        -webkit-tap-highlight-color: transparent;
+      }
+      #audio-unlock-gate.hidden {
+        display: none;
+        pointer-events: none;
+      }
+      #audio-unlock-gate .gate-card {
+        width: min(520px, 100%);
+        padding: 22px 28px 24px;
+        border-radius: 18px;
+        background: linear-gradient(145deg, rgba(30, 26, 22, 0.92), rgba(11, 11, 15, 0.88));
+        border: 1.5px solid rgba(34, 211, 238, 0.55);
+        box-shadow:
+          0 0 24px rgba(34, 211, 238, 0.35),
+          0 0 48px rgba(255, 209, 102, 0.18),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        text-align: center;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        animation: gate-pulse 2.2s ease-in-out infinite;
+      }
+      #audio-unlock-gate .gate-title {
+        margin: 0;
+        font-family: var(--font-accent);
+        font-size: clamp(22px, 5.5vw, 32px);
+        letter-spacing: 0.06em;
+        color: var(--arena-gold);
+        text-shadow:
+          0 0 12px rgba(34, 211, 238, 0.65),
+          0 0 28px rgba(255, 209, 102, 0.4),
+          0 2px 4px #000;
+      }
+      #audio-unlock-gate .gate-sub {
+        margin: 8px 0 0;
+        font-family: var(--font-ui);
+        font-size: clamp(12px, 3vw, 14px);
+        font-weight: 600;
+        color: rgba(242, 235, 215, 0.78);
+        letter-spacing: 0.02em;
+      }
+      @keyframes gate-pulse {
+        0%, 100% { box-shadow: 0 0 24px rgba(34, 211, 238, 0.35), 0 0 48px rgba(255, 209, 102, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08); border-color: rgba(34, 211, 238, 0.55); }
+        50% { box-shadow: 0 0 36px rgba(34, 211, 238, 0.55), 0 0 64px rgba(255, 209, 102, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.1); border-color: rgba(255, 209, 102, 0.7); }
+      }
     </style>
   </head>
   <body>
     <div id="game-container"></div>
+    <div id="audio-unlock-gate" role="button" aria-label="Toque para ativar o som">
+      <div class="gate-card">
+        <p class="gate-title">🔊 TOQUE PARA ATIVAR O SOM</p>
+        <p class="gate-sub">precisa de um toque no celular</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

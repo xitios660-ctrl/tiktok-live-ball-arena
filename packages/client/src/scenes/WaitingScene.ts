@@ -69,12 +69,12 @@ export class WaitingScene extends Phaser.Scene {
     const twinkleCount = phoneLite ? 6 : this.overlayTransparent ? 8 : 18;
     this.twinkles = createAmbientTwinkles(this, twinkleCount, 2);
 
-    // Soft arena atmosphere (full intensity resumes in ArenaScene; phone stays softer)
-    const ambientIntensity = phoneLite ? 0.35 : 0.55;
+    // Soft arena atmosphere (ArenaScene raises further; phone stays a bit softer)
+    const ambientIntensity = phoneLite ? 0.55 : 0.75;
     audio.ensure();
     audio.startAmbient(ambientIntensity);
     this.input.once('pointerdown', () => {
-      audio.ensure();
+      audio.unlock();
       audio.startAmbient(ambientIntensity);
     });
 

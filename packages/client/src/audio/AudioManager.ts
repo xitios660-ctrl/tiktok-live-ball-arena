@@ -25,12 +25,12 @@ const FILE_MAP: Partial<Record<SfxKind, string>> = {
 };
 
 /** Soft ceiling so ambient never drowns TikTok LIVE mic when screen-sharing. */
-const AMBIENT_BASE = 0.045;
+const AMBIENT_BASE = 0.11;
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private muted = false;
-  private volumes: Record<VolKey, number> = { master: 0.7, sfx: 0.85, music: 0.55 };
+  private volumes: Record<VolKey, number> = { master: 0.85, sfx: 1.0, music: 0.75 };
   private lastPlay = new Map<string, number>();
   private quality = 1; // 1 = full, 0.3 = reduced (fewer beeps)
 
@@ -144,7 +144,7 @@ export class AudioManager {
 
   private ambientTargetGain(): number {
     if (this.muted || !this.ambientWanted) return 0;
-    const phoneMul = this.phoneLite ? 0.55 : 1;
+    const phoneMul = this.phoneLite ? 0.8 : 1;
     return (
       this.volumes.master *
       this.volumes.music *
@@ -358,7 +358,7 @@ export class AudioManager {
 
     const t0 = ctx.currentTime;
     const inten = Math.max(0.05, Math.min(1, intensity));
-    const vol = this.volumes.master * this.volumes.sfx * inten * 0.15;
+    const vol = this.volumes.master * this.volumes.sfx * inten * 0.38;
 
     switch (kind) {
       case 'collision':
