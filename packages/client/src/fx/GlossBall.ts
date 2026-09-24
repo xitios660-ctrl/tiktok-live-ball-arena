@@ -98,11 +98,16 @@ export function ensureGlossTexture(
 
   paintSkinAccent(ctx, cx, cy, r, skin);
 
-  // Thin cream rim hint (not king gold)
+  // Cream rim + soft outer halo so photos pop on dark floor
   ctx.beginPath();
   ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(242,235,215,0.4)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(242,235,215,0.55)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,209,102,0.22)';
+  ctx.lineWidth = 4;
   ctx.stroke();
 
   canvasTex.refresh();

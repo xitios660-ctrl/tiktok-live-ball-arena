@@ -68,8 +68,16 @@ interface BallView {
   glossKey: string;
   skin: GlossSkin;
   avatar?: Phaser.GameObjects.Image;
+  /** Soft rim glow behind circular avatar */
+  avatarGlow?: Phaser.GameObjects.Arc;
+  /** Premium ring stroked around avatar */
+  avatarRing?: Phaser.GameObjects.Graphics;
+  /** Source texture key before circular bake */
+  avatarSrcKey?: string;
   initials: Phaser.GameObjects.Text;
   label: Phaser.GameObjects.Text;
+  /** Glass pill behind name */
+  namePlate: Phaser.GameObjects.Graphics;
   hpBg: Phaser.GameObjects.Rectangle;
   hpFg: Phaser.GameObjects.Rectangle;
   shieldFg: Phaser.GameObjects.Rectangle;
@@ -223,7 +231,7 @@ export class ArenaScene extends Phaser.Scene {
     this.premiumTop5 = createPremiumTop5(this, side, this.top5BaseY, 100);
 
     // Gift gabarito — right side (opposite TOP5; kill feed stays bottom-right)
-    const legendW = 292;
+    const legendW = 318;
     this.giftLegendBaseY = top + 200;
     this.giftLegend = createGiftLegend(this, CANVAS_WIDTH - side - legendW, this.giftLegendBaseY, {
       compact: true,
@@ -800,20 +808,27 @@ export class ArenaScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const namePlate = this.add.graphics();
     const label = this.add
-      .text(0, b.radius + 16, this.truncate(b.label, 14), {
-        fontFamily: FONT_BLACK,
-        fontSize: '17px',
-        color: THEME_HEX.cream,
-        backgroundColor: '#14110ecc',
-        padding: { x: 8, y: 3 },
+      .text(0, b.radius + 18, this.truncate(b.label, 14), {
+        fontFamily: FONT,
+        fontSize: '15px',
+        fontStyle: '700',
+        color: THEME_HEX.light,
+        stroke: '#0B0B0F',
+        strokeThickness: 4,
+        padding: { x: 2, y: 1 },
       })
       .setOrigin(0.5, 0);
 
-    const barW = Math.max(40, b.radius * 2.1);
-    const hpBg = this.add.rectangle(0, -b.radius - 14, barW, 12, THEME.ink).setOrigin(0.5).setStrokeStyle(1.5, THEME.cream, 0.4);
-    const hpFg = this.add.rectangle(-barW / 2, -b.radius - 14, barW, 10, THEME.sage).setOrigin(0, 0.5);
-    const shieldFg = this.add.rectangle(-barW / 2, -b.radius - 26, 0, 5, 0xff9f1c).setOrigin(0, 0.5);
+    const barW = Math.max(48, b.radius * 2.25);
+    const hpY = -b.radius - 18;
+    const hpBg = this.add
+      .rectangle(0, hpY, barW, 16, THEME.ink, 0.92)
+      .setOrigin(0.5)
+      .setStrokeStyle(2, THEME.gold, 0.35);
+    const hpFg = this.add.rectangle(-barW / 2, hpY, barW, 12, THEME.sage).setOrigin(0, 0.5);
+    const shieldFg = this.add.rectangle(-barW / 2, hpY - 14, 0, 6, 0xff9f1c).setOrigin(0, 0.5);
 
     const revengeMark = this.add
       .text(b.radius * 0.65, -b.radius - 8, '🎯', { fontSize: '26px' })
@@ -835,7 +850,7 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
 
-    // Order: shadow → aura/shield/ring → circle(stroke) → gloss → initials → HUD → crown
+    // Order: shadow → aura/shield/ring → circle → gloss → avatar chrome → initials → HUD → crown
     container.add([
       glossParts.shadow,
       aura,
@@ -847,12 +862,14 @@ export class ArenaScene extends Phaser.Scene {
       hpBg,
       hpFg,
       shieldFg,
+      namePlate,
       label,
       revengeMark,
       buffIcon,
       strengthMark,
       glossParts.crownGfx,
     ]);
+    this.drawNamePlate(namePlate, label, b.radius);
 
     const view: BallView = {
       container,
@@ -867,6 +884,7 @@ export class ArenaScene extends Phaser.Scene {
       skin: glossParts.skin,
       initials,
       label,
+      namePlate,
       hpBg,
       hpFg,
       shieldFg,
@@ -1009,8 +1027,10 @@ export class ArenaScene extends Phaser.Scene {
     view.glossKey = view.gloss.texture.key;
     view.skin = skinFromBall(b);
     if (view.avatar) {
-      view.avatar.setDisplaySize(b.radius * 1.7, b.radius * 1.7);
+      const avSize = b.radius * 1.9;
+      view.avatar.setDisplaySize(avSize, avSize);
       view.avatar.setAlpha(protected_ ? 0.55 : 1);
+      this.syncAvatarChrome(view, b.radius, stroke, !!b.isKing, isGalaxy, protected_);
     }
 
     // Kill-strength cue (tier = floor(bonus% / 24) roughly every 3 kills)
@@ -1050,36 +1070,40 @@ export class ArenaScene extends Phaser.Scene {
     if (isDash) icons.push('🚀');
     if (isSlowed) icons.push('🥶');
     view.buffIcon.setText(icons.join(''));
-    view.buffIcon.setY(b.radius + 40);
+    view.buffIcon.setY(b.radius + 46);
 
     view.label.setText(this.truncate(b.label, 14));
-    view.label.setY(b.radius + 16);
-    const barW = Math.max(40, b.radius * 2.1);
-    view.hpBg.setPosition(0, -b.radius - 14);
-    view.hpBg.setSize(barW, 12);
+    view.label.setY(b.radius + 18);
+    this.drawNamePlate(view.namePlate, view.label, b.radius);
+    const barW = Math.max(48, b.radius * 2.25);
+    const hpY = -b.radius - 18;
+    view.hpBg.setPosition(0, hpY);
+    view.hpBg.setSize(barW, 16);
     // Solo galaxy = immortal ∞ bar; Cosmic Duel uses real cosmic HP (lavender)
     const galaxyImmortal = isGalaxy && (b.maxHp ?? 0) >= 9000;
     const galaxyDuel = isGalaxy && !galaxyImmortal;
     if (galaxyImmortal) {
-      view.hpFg.setPosition(-barW / 2, -b.radius - 14);
-      view.hpFg.setSize(barW, 10);
+      view.hpFg.setPosition(-barW / 2, hpY);
+      view.hpFg.setSize(barW, 12);
       view.hpFg.setFillStyle(THEME.lavender);
       view.label.setText(this.truncate(b.label, 10) + ' ∞');
+      this.drawNamePlate(view.namePlate, view.label, b.radius);
     } else if (galaxyDuel) {
       const ratio = b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 0;
-      view.hpFg.setPosition(-barW / 2, -b.radius - 14);
-      view.hpFg.setSize(barW * ratio, 10);
+      view.hpFg.setPosition(-barW / 2, hpY);
+      view.hpFg.setSize(barW * ratio, 12);
       view.hpFg.setFillStyle(THEME.lavender);
       view.label.setText(this.truncate(b.label, 10) + ' ⚔️');
+      this.drawNamePlate(view.namePlate, view.label, b.radius);
     } else {
       const ratio = b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 0;
-      view.hpFg.setPosition(-barW / 2, -b.radius - 14);
-      view.hpFg.setSize(barW * ratio, 10);
+      view.hpFg.setPosition(-barW / 2, hpY);
+      view.hpFg.setSize(barW * ratio, 12);
       view.hpFg.setFillStyle(ratio > 0.55 ? THEME.sage : ratio > 0.25 ? THEME.gold : THEME.coral);
     }
     const shieldRatio = Math.min(1, sh / 300);
-    view.shieldFg.setPosition(-barW / 2, -b.radius - 26);
-    view.shieldFg.setSize(barW * shieldRatio, 5);
+    view.shieldFg.setPosition(-barW / 2, hpY - 14);
+    view.shieldFg.setSize(barW * shieldRatio, 6);
     view.shieldFg.setVisible(sh > 0);
 
     if (b.healFlash && !view.lastHealFlash) {
@@ -1179,19 +1203,109 @@ export class ArenaScene extends Phaser.Scene {
 
   private applyAvatar(key: string, radius: number, view: BallView): void {
     view.initials.setVisible(false);
+    view.avatarSrcKey = key;
+    const roundKey = this.ensureRoundAvatar(key);
+    const avSize = radius * 1.9;
     if (view.avatar) {
-      view.avatar.setTexture(key);
-      view.avatar.setDisplaySize(radius * 1.7, radius * 1.7);
+      view.avatar.setTexture(roundKey);
+      view.avatar.setDisplaySize(avSize, avSize);
+      this.syncAvatarChrome(view, radius, THEME.cream, false, false, false);
       return;
     }
-    const img = this.add.image(0, 0, key);
-    img.setDisplaySize(radius * 1.7, radius * 1.7);
-    // Place avatar at circle z-index (after gloss) — not behind gloss, no geometric mask
+    const img = this.add.image(0, 0, roundKey);
+    img.setDisplaySize(avSize, avSize);
     const glossIdx = view.container.getIndex(view.gloss);
-    view.container.addAt(img, glossIdx >= 0 ? glossIdx + 1 : 6);
+    const insertAt = glossIdx >= 0 ? glossIdx + 1 : 6;
+    // Glow under avatar, then photo, then premium ring
+    const glow = this.add.circle(0, 0, avSize * 0.58, THEME.gold, 0.22);
+    const ringGfx = this.add.graphics();
+    view.container.addAt(glow, insertAt);
+    view.container.addAt(img, insertAt + 1);
+    view.container.addAt(ringGfx, insertAt + 2);
+    view.avatarGlow = glow;
     view.avatar = img;
-    // Keep Arc fill transparent — gloss + avatar provide the body
+    view.avatarRing = ringGfx;
     view.circle.setFillStyle(view.circle.fillColor, 0);
+    this.syncAvatarChrome(view, radius, THEME.cream, false, false, false);
+  }
+
+  /** Bake a circular clipped avatar texture (cached) with soft edge. */
+  private ensureRoundAvatar(srcKey: string, size = 128): string {
+    const destKey = `${srcKey}-round`;
+    if (this.textures.exists(destKey)) return destKey;
+    if (!this.textures.exists(srcKey)) return srcKey;
+    const canvasTex = this.textures.createCanvas(destKey, size, size);
+    if (!canvasTex) return srcKey;
+    const ctx = canvasTex.getContext();
+    const src = this.textures.get(srcKey).getSourceImage() as CanvasImageSource;
+    const r = size / 2;
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(r, r, r - 1, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(src as CanvasImageSource, 0, 0, size, size);
+    // Soft inner vignette so photo sits on the ball
+    const vig = ctx.createRadialGradient(r, r, r * 0.55, r, r, r);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.28)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, size, size);
+    ctx.restore();
+    canvasTex.refresh();
+    return destKey;
+  }
+
+  private syncAvatarChrome(
+    view: BallView,
+    radius: number,
+    stroke: number,
+    isKing: boolean,
+    isGalaxy: boolean,
+    protected_: boolean
+  ): void {
+    const avSize = radius * 1.9;
+    const rr = avSize * 0.5;
+    if (view.avatarGlow) {
+      view.avatarGlow.setRadius(rr + 5);
+      let glowColor = THEME.electricCyan;
+      if (isGalaxy) glowColor = THEME.lavender;
+      else if (isKing) glowColor = THEME.gold;
+      else glowColor = stroke;
+      view.avatarGlow.setFillStyle(glowColor, protected_ ? 0.12 : 0.28);
+    }
+    if (view.avatarRing) {
+      const g = view.avatarRing;
+      g.clear();
+      const ringColor = isGalaxy ? THEME.lavender : isKing ? THEME.gold : stroke;
+      g.lineStyle(4.5, ringColor, protected_ ? 0.45 : 0.95);
+      g.strokeCircle(0, 0, rr + 1);
+      g.lineStyle(1.5, THEME.light, protected_ ? 0.2 : 0.45);
+      g.strokeCircle(0, 0, rr - 2);
+      // Outer soft halo
+      g.lineStyle(6, ringColor, protected_ ? 0.08 : 0.18);
+      g.strokeCircle(0, 0, rr + 5);
+    }
+  }
+
+  private drawNamePlate(
+    g: Phaser.GameObjects.Graphics,
+    label: Phaser.GameObjects.Text,
+    radius: number
+  ): void {
+    g.clear();
+    const tw = Math.max(36, label.width + 18);
+    const th = Math.max(18, label.height + 6);
+    const y = radius + 16;
+    const x = -tw / 2;
+    g.fillStyle(THEME.ink, 0.78);
+    g.fillRoundedRect(x, y, tw, th, 10);
+    g.lineStyle(1.5, THEME.gold, 0.4);
+    g.strokeRoundedRect(x, y, tw, th, 10);
+    g.lineStyle(1, THEME.electricCyan, 0.22);
+    g.strokeRoundedRect(x + 1, y + 1, tw - 2, th - 2, 9);
+    label.setY(y + (th - label.height) / 2);
   }
 
   private getInitials(label: string): string {

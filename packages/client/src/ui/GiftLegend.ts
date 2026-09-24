@@ -22,11 +22,13 @@ const POWER_ICONS: PowerIcon[] = [
   { emoji: '🌌', ring: 0xa78bfa, label: 'Galáxia' },
 ];
 
+/** Portuguese gabarito — gameplay meanings from GiftAbilities / PhysicsWorld */
 export const GIFT_GABARITO_LINES: readonly string[] = [
   '🌹 Rosa — cura leve',
   '🦖 Dino — força/speed',
   '🍩 Donut — escudo',
   '🦫 Capy — gigante',
+  '🌌 Galáxia — deus cósmico / Duelo Cósmico (2ª)',
   '💬 Comente p/ entrar',
 ];
 
@@ -51,10 +53,10 @@ export function createGiftLegend(
 ): GiftLegendHandles {
   const compact = !!opts?.compact;
   const depth = opts?.depth ?? 95;
-  const maxWidth = opts?.maxWidth ?? 300;
-  const fontSize = compact ? '14px' : '17px';
-  const padX = 12;
-  const padY = 10;
+  const maxWidth = opts?.maxWidth ?? 320;
+  const fontSize = compact ? '15px' : '18px';
+  const padX = 14;
+  const padY = 12;
 
   const root = scene.add.container(x, y).setDepth(depth);
   const bg = scene.add.graphics();
@@ -63,43 +65,45 @@ export function createGiftLegend(
 
   const title = scene.add.text(padX, padY, '★ POWER-UPS', {
     fontFamily: FONT_ACCENT,
-    fontSize: compact ? '20px' : '24px',
+    fontSize: compact ? '22px' : '26px',
     color: THEME_HEX.gold,
-    stroke: '#000000',
-    strokeThickness: 3,
+    stroke: '#0B0B0F',
+    strokeThickness: 5,
   });
 
   // Circular icon discs row
-  const iconY = padY + 36;
-  const iconR = compact ? 16 : 18;
-  const gap = compact ? 34 : 38;
+  const iconY = padY + 40;
+  const iconR = compact ? 17 : 20;
+  const gap = compact ? 36 : 40;
   const startX = padX + iconR + 2;
   const iconLabels: Phaser.GameObjects.Text[] = [];
 
   for (let i = 0; i < POWER_ICONS.length; i++) {
     const ic = POWER_ICONS[i];
     const ix = startX + (i % 4) * gap;
-    const iy = iconY + Math.floor(i / 4) * (gap + 4);
+    const iy = iconY + Math.floor(i / 4) * (gap + 6);
     drawPowerDisc(iconsGfx, ix, iy, iconR, ic.ring);
     const t = scene.add
-      .text(ix, iy, ic.emoji, { fontSize: compact ? '14px' : '16px' })
+      .text(ix, iy, ic.emoji, { fontSize: compact ? '15px' : '18px' })
       .setOrigin(0.5);
     iconLabels.push(t);
   }
 
-  const bodyY = iconY + Math.ceil(POWER_ICONS.length / 4) * (gap + 4) + 8;
+  const bodyY = iconY + Math.ceil(POWER_ICONS.length / 4) * (gap + 6) + 10;
   const body = scene.add.text(padX, bodyY, GIFT_GABARITO_LINES.join('\n'), {
     fontFamily: FONT,
     fontSize,
     color: THEME_HEX.light,
-    lineSpacing: compact ? 1 : 3,
+    stroke: '#0B0B0F',
+    strokeThickness: 3,
+    lineSpacing: compact ? 3 : 5,
     wordWrap: { width: maxWidth - padX * 2 },
   });
 
   root.add([bg, neon, iconsGfx, title, body, ...iconLabels]);
 
   const width = maxWidth;
-  const height = Math.ceil(body.y + body.height + padY + 4);
+  const height = Math.ceil(body.y + body.height + padY + 6);
   drawGlassCard(bg, neon, width, height, 0);
 
   return {
@@ -123,14 +127,14 @@ function drawPowerDisc(
   r: number,
   ring: number
 ): void {
-  g.fillStyle(THEME.ink, 0.55);
-  g.fillCircle(x, y, r);
-  g.fillStyle(THEME.stone, 0.45);
-  g.fillCircle(x, y, r - 2);
-  g.lineStyle(2.5, ring, 0.9);
+  g.fillStyle(THEME.ink, 0.75);
+  g.fillCircle(x, y, r + 1);
+  g.fillStyle(THEME.stone, 0.7);
+  g.fillCircle(x, y, r - 1);
+  g.lineStyle(3, ring, 0.95);
   g.strokeCircle(x, y, r);
-  g.lineStyle(1, THEME.light, 0.25);
-  g.strokeCircle(x, y, r - 3);
+  g.lineStyle(1.5, THEME.light, 0.35);
+  g.strokeCircle(x, y, r - 3.5);
 }
 
 function drawGlassCard(
@@ -141,20 +145,23 @@ function drawGlassCard(
   pulse: number
 ): void {
   g.clear();
-  g.fillStyle(THEME.ink, 0.4);
+  // Stronger glass backdrop for readability on busy arena
+  g.fillStyle(THEME.ink, 0.78);
   g.fillRoundedRect(0, 0, w, h, 14);
-  g.lineStyle(2, THEME.light, 0.2);
+  g.fillStyle(THEME.stone, 0.45);
+  g.fillRoundedRect(2, 2, w - 4, h - 4, 12);
+  g.lineStyle(2, THEME.gold, 0.45);
   g.strokeRoundedRect(0, 0, w, h, 14);
-  g.lineStyle(3, THEME.emberOrange, 0.7);
+  g.lineStyle(3.5, THEME.emberOrange, 0.85);
   g.lineBetween(0, 12, 0, h - 12);
-  g.lineStyle(1, THEME.gold, 0.4);
-  g.lineBetween(14, 28, w - 14, 28);
+  g.lineStyle(1.5, THEME.gold, 0.55);
+  g.lineBetween(14, 32, w - 14, 32);
 
   neon.clear();
-  const a = 0.35 + pulse * 0.35;
-  neon.lineStyle(2, THEME.electricCyan, a);
+  const a = 0.4 + pulse * 0.4;
+  neon.lineStyle(2.5, THEME.electricCyan, a);
   neon.strokeRoundedRect(1, 1, w - 2, h - 2, 13);
-  neon.lineStyle(1, THEME.emberOrange, a * 0.55);
+  neon.lineStyle(1.5, THEME.emberOrange, a * 0.6);
   neon.strokeRoundedRect(3, 3, w - 6, h - 6, 11);
 }
 
@@ -166,10 +173,10 @@ export function tickGiftLegend(handles: GiftLegendHandles, time: number): void {
 }
 
 export function setGiftLegendCompact(handles: GiftLegendHandles, compact: boolean): void {
-  const fontSize = compact ? '13px' : '17px';
+  const fontSize = compact ? '14px' : '18px';
   handles.body.setFontSize(fontSize);
-  handles.title.setFontSize(compact ? '18px' : '22px');
-  const h = Math.ceil(handles.body.y + handles.body.height + 14);
+  handles.title.setFontSize(compact ? '20px' : '26px');
+  const h = Math.ceil(handles.body.y + handles.body.height + 16);
   handles.height = h;
   drawGlassCard(handles.bg, handles.neon, handles.width, h, 0);
 }

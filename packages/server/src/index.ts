@@ -16,6 +16,7 @@ import { DemoEventSimulator } from './demo/DemoEventSimulator';
 import { GameLoop } from './game/GameLoop';
 import { healthRouter } from './routes/health';
 import { adminApiRouter } from './routes/adminApi';
+import { accessGateMiddleware, createAccessRouter, getAccessPassword } from './accessGate';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
@@ -32,6 +33,10 @@ async function main() {
   const app = express();
   app.use(cors());
   app.use(express.json());
+
+  // Password gate (SITE_ACCESS_PASSWORD). /health stays open via middleware exempt.
+  app.use(createAccessRouter());
+  app.use(accessGateMiddleware);
 
   const server = http.createServer(app);
   const io = new SocketIOServer(server, { cors: { origin: '*' } });
@@ -138,6 +143,7 @@ a{color:#fe2c55}</style></head>
     console.log(`   health:   http://localhost:${PORT}/health`);
     console.log(`   overlay:  http://localhost:${PORT}/overlay`);
     console.log(`   admin:    http://localhost:${PORT}/admin`);
+    console.log(`   access:   ${getAccessPassword() ? 'password gate ON' : 'password gate OFF (no SITE_ACCESS_PASSWORD)'}`);
     console.log(`   tiktok:   ${connector.getStatus().label}`);
     if (MODE === 'demo') {
       console.log(`   DEMO events are SIMULATED — not real TikTok`);
