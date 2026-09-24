@@ -7,8 +7,8 @@ interface IntroOverlayOptions {
   phoneLite: boolean;
 }
 
-const HOME_VIDEO = '/assets/ball-arena/cinematic/home-loop.mp4';
-const PLAY_VIDEO = '/assets/ball-arena/cinematic/play-transition.mp4';
+const HOME_VIDEO = (import.meta.env.VITE_CINEMATIC_HOME_VIDEO || '/assets/ball-arena/cinematic/home-loop.mp4').trim();
+const PLAY_VIDEO = (import.meta.env.VITE_CINEMATIC_PLAY_VIDEO || '/assets/ball-arena/cinematic/play-transition.mp4').trim();
 const LOGO = '/assets/ball-arena/logos/ball-arena-logo.svg';
 
 export function shouldShowCinematicIntro(opts: IntroOverlayOptions): boolean {
