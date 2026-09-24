@@ -8,20 +8,20 @@ export const CHATGPT_BOSS_REWARD_KILLS = 10;
 
 const BOSS_RADIUS = 84;
 const BOSS_HP = 650;
-const BOSS_BASE_STRENGTH = 1.55;
-const BOSS_MASS_MULT = 3.2;
-const LOCAL_DECISION_MS = 900;
+const BOSS_BASE_STRENGTH = 1;
+const BOSS_MASS_MULT = 1.1;
+const LOCAL_DECISION_MS = 750;
 const CHATGPT_DECISION_MS = 10_000;
-const BOSS_MAX_SPEED = 650;
-const BOSS_MIN_CRUISE = 250;
-const BOSS_ACCEL = 390;
+const BOSS_MAX_SPEED = 460;
+const BOSS_MIN_CRUISE = 170;
+const BOSS_ACCEL = 240;
 
 type BossTactic =
-  | 'hunt_leader'
-  | 'hunt_weak'
-  | 'intercept'
-  | 'center_control'
-  | 'retreat';
+  | 'keep_distance'
+  | 'dodge_nearest'
+  | 'evade_leader'
+  | 'center_orbit'
+  | 'escape_cluster';
 
 interface BossPlan {
   tactic: BossTactic;
@@ -82,7 +82,7 @@ export class ChatGPTBossController {
   private requestInFlight = false;
   private controller: AbortController | null = null;
   private plan: BossPlan = {
-    tactic: 'hunt_leader',
+    tactic: 'keep_distance',
     targetId: null,
     aggression: 0.8,
     source: 'local',
@@ -98,7 +98,7 @@ export class ChatGPTBossController {
     this.nextChatGPTDecisionAt = 0;
     this.nextBurstAt = 0;
     this.plan = {
-      tactic: 'hunt_leader',
+      tactic: 'keep_distance',
       targetId: null,
       aggression: 0.8,
       source: 'local',
@@ -212,33 +212,30 @@ export class ChatGPTBossController {
     const leader = [...opponents].sort(
       (a, b) => b.kills * 100 + b.hitPower - (a.kills * 100 + a.hitPower)
     )[0];
-    const weak = [...opponents].sort((a, b) => a.hp - b.hp)[0];
     const nearest = [...opponents].sort(
       (a, b) =>
         Math.hypot(a.x - boss.x, a.y - boss.y) -
         Math.hypot(b.x - boss.x, b.y - boss.y)
     )[0];
+    const nearestDist = nearest ? Math.hypot(nearest.x - boss.x, nearest.y - boss.y) : Infinity;
 
-    let tactic: BossTactic = 'intercept';
+    let tactic: BossTactic = 'keep_distance';
     let targetId: string | null = nearest?.userId ?? null;
-    let aggression = 0.78;
+    let aggression = 0.58;
 
-    if (hpRatio < 0.24) {
-      tactic = 'retreat';
-      targetId = nearest?.userId ?? null;
-      aggression = 0.38;
+    if (hpRatio < 0.3) {
+      tactic = 'escape_cluster';
+      aggression = 0.84;
     } else if (leader && leader.kills >= 3) {
-      tactic = 'hunt_leader';
+      tactic = 'evade_leader';
       targetId = leader.userId;
-      aggression = 0.9;
-    } else if (weak && weak.hp / Math.max(1, weak.maxHp) < 0.35) {
-      tactic = 'hunt_weak';
-      targetId = weak.userId;
-      aggression = 0.96;
-    } else if (Math.random() < 0.16) {
-      tactic = 'center_control';
-      targetId = leader?.userId ?? nearest?.userId ?? null;
-      aggression = 0.58;
+      aggression = 0.72;
+    } else if (nearestDist < 320) {
+      tactic = 'dodge_nearest';
+      aggression = 0.8;
+    } else if (Math.random() < 0.24) {
+      tactic = 'center_orbit';
+      aggression = 0.46;
     }
 
     this.plan = { tactic, targetId, aggression, source: 'local' };
@@ -253,9 +250,7 @@ export class ChatGPTBossController {
     let target = opponents.find((b) => b.userId === this.plan.targetId) ?? null;
 
     if (!target) {
-      if (this.plan.tactic === 'hunt_weak') {
-        target = [...opponents].sort((a, b) => a.hp - b.hp)[0] ?? null;
-      } else if (this.plan.tactic === 'hunt_leader') {
+      if (this.plan.tactic === 'evade_leader') {
         target =
           [...opponents].sort(
             (a, b) => b.kills * 100 + b.hitPower - (a.kills * 100 + a.hitPower)
@@ -270,46 +265,50 @@ export class ChatGPTBossController {
       }
     }
 
-    if (!target || this.plan.tactic === 'center_control') {
+    if (this.plan.tactic === 'center_orbit') {
       this.steerToCenter(boss, dt, this.plan.aggression);
       return;
     }
 
-    let aimX = target.x;
-    let aimY = target.y;
-    const targetSpeed = speedOf(target);
-
-    if (this.plan.tactic === 'intercept' || this.plan.tactic === 'hunt_leader') {
-      const lead = clamp(0.18 + targetSpeed / 1600, 0.18, 0.55);
-      aimX += target.vx * lead;
-      aimY += target.vy * lead;
-    }
-
-    let dir = normalize(aimX - boss.x, aimY - boss.y);
-
-    if (this.plan.tactic === 'retreat') {
-      dir = normalize(boss.x - target.x, boss.y - target.y);
+    let dir: { x: number; y: number };
+    if (this.plan.tactic === 'escape_cluster') {
+      const centroid = opponents.reduce(
+        (acc, b) => ({ x: acc.x + b.x, y: acc.y + b.y }),
+        { x: 0, y: 0 }
+      );
+      centroid.x /= Math.max(1, opponents.length);
+      centroid.y /= Math.max(1, opponents.length);
+      dir = normalize(boss.x - centroid.x, boss.y - centroid.y);
+    } else if (target) {
+      // Boss never hunts. It deliberately moves away from the selected threat.
+      const away = normalize(boss.x - target.x, boss.y - target.y);
+      const tangent = { x: -away.y, y: away.x };
+      const weave = Math.sin(now / 520) * 0.42;
+      dir = normalize(away.x + tangent.x * weave, away.y + tangent.y * weave);
+    } else {
       const center = normalize(540 - boss.x, 960 - boss.y);
-      dir = normalize(dir.x * 0.72 + center.x * 0.28, dir.y * 0.72 + center.y * 0.28);
+      dir = center;
     }
 
-    // Avoid scraping walls. This changes steering only, never server collision rules.
+    // Avoid scraping walls and bias gently toward usable arena space.
     const wall = this.wallAvoidance(boss);
-    dir = normalize(dir.x + wall.x * 1.4, dir.y + wall.y * 1.4);
+    const centerBias = normalize(540 - boss.x, 960 - boss.y);
+    dir = normalize(
+      dir.x + wall.x * 1.6 + centerBias.x * 0.14,
+      dir.y + wall.y * 1.6 + centerBias.y * 0.14
+    );
 
     const accel = BOSS_ACCEL * clamp(this.plan.aggression, 0.25, 1);
     boss.vx += dir.x * accel * dt;
     boss.vy += dir.y * accel * dt;
 
-    const dist = Math.hypot(target.x - boss.x, target.y - boss.y);
-    if (
-      this.plan.tactic !== 'retreat' &&
-      dist < 360 &&
-      now >= this.nextBurstAt
-    ) {
-      this.nextBurstAt = now + 2200 + Math.floor(Math.random() * 1600);
-      boss.vx += dir.x * 180;
-      boss.vy += dir.y * 180;
+    if (target) {
+      const dist = Math.hypot(target.x - boss.x, target.y - boss.y);
+      if (dist < 250 && now >= this.nextBurstAt) {
+        this.nextBurstAt = now + 1800 + Math.floor(Math.random() * 1200);
+        boss.vx += dir.x * 120;
+        boss.vy += dir.y * 120;
+      }
     }
 
     this.limitBossSpeed(boss);
@@ -383,9 +382,10 @@ export class ChatGPTBossController {
       const prompt = [
         'You control a boss in a 2D collision arena. Pick a tactical plan only.',
         'Return ONLY compact JSON with tactic, targetId, aggression, reason.',
-        'Allowed tactics: hunt_leader, hunt_weak, intercept, center_control, retreat.',
+        'The boss has NO attacks and must NEVER chase or damage players. It only evades and survives.',
+        'Allowed tactics: keep_distance, dodge_nearest, evade_leader, center_orbit, escape_cluster.',
         'aggression must be 0.25 to 1. targetId must be one of the candidate ids or null.',
-        'Prefer varied, challenging play. Retreat only when boss HP is low.',
+        'Prefer clever evasive movement, spacing, wall avoidance and survival.',
         'Boss state: ' + JSON.stringify({
           hp: Math.round(boss.hp),
           maxHp: Math.round(boss.maxHp),
@@ -425,11 +425,11 @@ export class ChatGPTBossController {
       if (!match) return;
       const parsed = JSON.parse(match[0]) as Partial<BossPlan>;
       const allowed: BossTactic[] = [
-        'hunt_leader',
-        'hunt_weak',
-        'intercept',
-        'center_control',
-        'retreat',
+        'keep_distance',
+        'dodge_nearest',
+        'evade_leader',
+        'center_orbit',
+        'escape_cluster',
       ];
 
       if (!parsed.tactic || !allowed.includes(parsed.tactic as BossTactic)) return;
