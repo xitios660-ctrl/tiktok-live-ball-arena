@@ -685,12 +685,22 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     view.hpFg.setPosition(-barW / 2, hpY).setSize(barW * ratio, 8);
     view.hpFg.setFillStyle(ratio > 0.55 ? THEME.sage : ratio > 0.25 ? THEME.gold : THEME.arenaRed);
 
-    view.name.setPosition(0, r + 14).setText(this.truncate(b.label, 14));
-    view.initials.setFontSize(Math.max(14, Math.floor(r * 0.68))).setText(this.initials(b.label));
+    view.name
+      .setPosition(0, r + 14)
+      .setText(b.isBoss ? '🤖 CHATGPT BOSS · +10☠' : this.truncate(b.label, 14))
+      .setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
+    view.initials
+      .setFontSize(Math.max(14, Math.floor(r * 0.68)))
+      .setText(b.isBoss ? 'AI' : this.initials(b.label));
     view.crown.setPosition(0, -r - 44).setVisible(!!b.isKing);
     view.strength
       .setPosition(0, -r - 48)
-      .setText('💪' + displayStrengthScore(b.kills ?? 0, b.hitPower ?? 0));
+      .setText(
+        b.isBoss
+          ? '👑 BOSS · +' + (b.bossRewardKills ?? 10) + '☠'
+          : '💪' + displayStrengthScore(b.kills ?? 0, b.hitPower ?? 0)
+      )
+      .setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.gold);
 
     const icons: string[] = [];
     const buffs = b.buffs || [];
@@ -704,15 +714,20 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     if (buffs.includes('dash_burst')) icons.push('🚀');
     view.buffs.setPosition(0, r + 43).setText(icons.join(''));
 
-    const stroke = b.isGalaxy
-      ? THEME.lavender
+    const stroke = b.isBoss
+      ? THEME.gold
+      : b.isGalaxy
+        ? THEME.lavender
       : b.isKing
         ? THEME.gold
         : b.spawnProtected
           ? THEME.electricCyan
           : THEME.light;
-    view.body.setStrokeStyle(b.isKing ? 6 : 3, stroke, b.spawnProtected ? 0.55 : 0.95);
-    view.ring.setStrokeStyle(b.isKing ? 5 : 3, stroke, b.isKing ? 0.65 : 0.42);
+    view.body.setStrokeStyle(b.isBoss ? 8 : b.isKing ? 6 : 3, stroke, b.spawnProtected ? 0.55 : 0.95);
+    view.ring.setStrokeStyle(b.isBoss ? 7 : b.isKing ? 5 : 3, stroke, b.isBoss ? 0.85 : b.isKing ? 0.65 : 0.42);
+    if (b.isBoss) {
+      view.aura.setStrokeStyle(8, THEME.electricCyan, 0.72);
+    }
     view.root.setAlpha(b.spawnProtected ? 0.58 : 1);
 
     if (b.hp < view.lastHp && !b.isGalaxy) {
