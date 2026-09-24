@@ -369,6 +369,8 @@ export function tickBuffParticles(
     isFreeze: boolean;
     isDash: boolean;
     isStrong: boolean;
+    isMagnet?: boolean;
+    isReflect?: boolean;
     lastBuffFxAt: number;
     budget: FxBudget;
   }
@@ -396,6 +398,53 @@ export function tickBuffParticles(
       alpha: 0,
       duration: 380,
       onComplete: () => flake.destroy(),
+    });
+    return now;
+  }
+  // Magnet: orbiting electricCyan dots with slight inward pull
+  if (opts.isMagnet && budget >= 0.3) {
+    const n = budget >= 0.7 ? 4 : budget >= 0.45 ? 3 : 2;
+    const baseAng = ((now / 380) % (Math.PI * 2));
+    const orbitR = opts.radius + 12;
+    for (let i = 0; i < n; i++) {
+      const ang = baseAng + (Math.PI * 2 * i) / n;
+      const sx = opts.x + Math.cos(ang) * orbitR;
+      const sy = opts.y + Math.sin(ang) * orbitR;
+      const dot = scene.add.circle(sx, sy, 2.2 + (i % 2) * 0.6, THEME.electricCyan, 0.9).setDepth(55);
+      scene.tweens.add({
+        targets: dot,
+        x: opts.x + Math.cos(ang) * (orbitR * 0.5),
+        y: opts.y + Math.sin(ang) * (orbitR * 0.5),
+        alpha: 0,
+        duration: 300 + i * 20,
+        ease: 'Cubic.easeIn',
+        onComplete: () => dot.destroy(),
+      });
+    }
+    return now;
+  }
+  // Reflect: soft cream/silver shimmer sparks on the ring
+  if (opts.isReflect && budget >= 0.3) {
+    const ang = Math.random() * Math.PI * 2;
+    const ringR = opts.radius + 10;
+    const color = Math.random() > 0.45 ? THEME.cream : 0xe0e7ff;
+    const spark = scene.add
+      .circle(
+        opts.x + Math.cos(ang) * ringR,
+        opts.y + Math.sin(ang) * ringR,
+        2 + Math.random() * 2,
+        color,
+        0.92
+      )
+      .setDepth(55);
+    scene.tweens.add({
+      targets: spark,
+      x: spark.x + Math.cos(ang) * 10,
+      y: spark.y + Math.sin(ang) * 10,
+      alpha: 0,
+      scale: 0.35,
+      duration: 260 + Math.random() * 80,
+      onComplete: () => spark.destroy(),
     });
     return now;
   }

@@ -984,14 +984,20 @@ export class ArenaScene extends Phaser.Scene {
     }
     view.container.setAlpha(protected_ ? 0.55 : 1);
 
-    // Aura
+    // Aura — floor-pickup buffs get a cheap sin pulse on width/alpha
+    const canAuraPulse =
+      (isFreeze || isMagnet || isDash || isReflect) && (this.particleBudget ?? 1) >= 0.2;
+    const pulse = canAuraPulse ? Math.sin(this.time.now / 280) : 0;
+    const pW = pulse * 0.85;
+    const pA = pulse * 0.12;
     if (isDino) view.aura.setStrokeStyle(5, 0x7cfc00, 0.7);
     else if (isGalaxy) view.aura.setStrokeStyle(6, THEME.lavender, 0.85);
     else if (isTitan) view.aura.setStrokeStyle(5, 0xc4a484, 0.55);
-    else if (isFreeze) view.aura.setStrokeStyle(5, 0x7dd3fc, 0.8);
-    else if (isReflect) view.aura.setStrokeStyle(5, 0xe0e7ff, 0.85);
-    else if (isMagnet) view.aura.setStrokeStyle(6, 0xf472b6, 0.75);
-    else if (isDash || isSugar) view.aura.setStrokeStyle(4, 0xff66aa, 0.7);
+    else if (isFreeze) view.aura.setStrokeStyle(5 + pW, 0x7dd3fc, 0.8 + pA);
+    else if (isReflect) view.aura.setStrokeStyle(5 + pW, 0xe0e7ff, 0.85 + pA);
+    else if (isMagnet) view.aura.setStrokeStyle(6 + pW, THEME.electricCyan, 0.75 + pA);
+    else if (isDash) view.aura.setStrokeStyle(4 + pW, THEME.emberOrange, 0.7 + pA);
+    else if (isSugar) view.aura.setStrokeStyle(4, THEME.arenaRed, 0.7);
     else if (isSlowed) view.aura.setStrokeStyle(3, 0x38bdf8, 0.45);
     else if (b.isKing) view.aura.setStrokeStyle(7, THEME.gold, 0.35);
     else view.aura.setStrokeStyle(0, 0x000000, 0);
@@ -1156,6 +1162,8 @@ export class ArenaScene extends Phaser.Scene {
       radius: b.radius,
       isFreeze,
       isDash,
+      isMagnet,
+      isReflect,
       isStrong: kills >= 3 && sm > 1.01,
       lastBuffFxAt: view.lastBuffFxAt,
       budget: this.particleBudget ?? 1,
@@ -1269,12 +1277,10 @@ export class ArenaScene extends Phaser.Scene {
   ): void {
     const avSize = radius * 1.9;
     const rr = avSize * 0.5;
-    // Real lavender (THEME.lavender is aliased to cyan in tokens)
-    const galaxyLavender = 0xa78bfa;
     if (view.avatarGlow) {
       view.avatarGlow.setRadius(rr + 5);
       let glowColor = stroke;
-      if (isGalaxy) glowColor = galaxyLavender;
+      if (isGalaxy) glowColor = THEME.lavender;
       else if (isKing) glowColor = THEME.gold;
       let glowA = protected_ ? 0.12 : 0.28;
       // Gentle alpha pulse for king/galaxy only — skip on low quality
@@ -1291,7 +1297,7 @@ export class ArenaScene extends Phaser.Scene {
     if (view.avatarRing) {
       const g = view.avatarRing;
       g.clear();
-      const ringColor = isGalaxy ? galaxyLavender : isKing ? THEME.gold : stroke;
+      const ringColor = isGalaxy ? THEME.lavender : isKing ? THEME.gold : stroke;
       g.lineStyle(4.5, ringColor, protected_ ? 0.45 : 0.95);
       g.strokeCircle(0, 0, rr + 1);
       g.lineStyle(1.5, THEME.light, protected_ ? 0.2 : 0.45);
