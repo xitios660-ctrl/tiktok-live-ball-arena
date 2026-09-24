@@ -1,0 +1,141 @@
+import path from 'path';
+import fs from 'fs';
+import express from 'express';
+import cors from 'cors';
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import dotenv from 'dotenv';
+import {
+  SOCKET_EVENTS,
+  DEFAULT_ROUND_DURATION_SEC,
+  type TikTokMode,
+} from '@arena/shared';
+import { createConnector } from './tiktok/createConnector';
+import { DemoEventSimulator } from './demo/DemoEventSimulator';
+import { GameLoop } from './game/GameLoop';
+import { healthRouter } from './routes/health';
+import { adminApiRouter } from './routes/adminApi';
+
+// Load root .env if present
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config();
+
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+const MODE = ((process.env.TIKTOK_MODE || 'demo').toLowerCase() === 'production'
+  ? 'production'
+  : 'demo') as TikTokMode;
+const USERNAME = process.env.TIKTOK_USERNAME || 'demo_host';
+const ROUND_SEC = Number(process.env.ROUND_DURATION_SEC) || DEFAULT_ROUND_DURATION_SEC;
+
+async function main() {
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
+
+  const server = http.createServer(app);
+  const io = new SocketIOServer(server, { cors: { origin: '*' } });
+
+  const game = new GameLoop(MODE, ROUND_SEC);
+  const connector = createConnector(MODE);
+
+  const getDemo = (): DemoEventSimulator | null =>
+    connector instanceof DemoEventSimulator ? connector : null;
+
+  // Wire connector → game → sockets
+  connector.on('event', (ev) => {
+    game.handleLiveEvent(ev);
+    io.emit(SOCKET_EVENTS.LIVE_EVENT, ev);
+  });
+  connector.on('connected', (info) => {
+    console.log(`[Connector] connected`, info);
+    io.emit(SOCKET_EVENTS.LIVE_EVENT, {
+      type: 'comment',
+      user: { userId: 'system', username: 'system', nickname: 'System' },
+      comment: `[${MODE}] connected @${info.username}`,
+      timestamp: Date.now(),
+    });
+  });
+  connector.on('disconnected', (reason) => {
+    console.log(`[Connector] disconnected`, reason);
+  });
+  connector.on('error', (err) => {
+    console.error(`[Connector] error`, err.message);
+  });
+
+  game.onRound((state) => io.emit(SOCKET_EVENTS.ROUND_STATE, state));
+
+  // HTTP routes
+  app.use(healthRouter({ game, connector, mode: MODE }));
+  app.use(adminApiRouter({ game, getDemo, mode: MODE }));
+
+  // Admin UI
+  const publicDir = path.join(__dirname, '../public');
+  app.get('/admin', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'admin.html'));
+  });
+
+  // Overlay: prefer Vite-built client, else redirect to Vite dev, else placeholder
+  const clientDist = path.resolve(__dirname, '../../client/dist');
+  const serveOverlay = (_req: express.Request, res: express.Response) => {
+    const indexHtml = path.join(clientDist, 'index.html');
+    if (fs.existsSync(indexHtml)) {
+      res.sendFile(indexHtml);
+    } else {
+      res.type('html').send(`<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"/><title>Overlay</title>
+<style>body{margin:0;background:#000;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column}
+a{color:#fe2c55}</style></head>
+<body>
+  <h1>AGUARDANDO A LIVE COMEÇAR</h1>
+  <p>Client build ainda não existe. Em dev, use o Vite: <a href="http://localhost:5173">:5173</a></p>
+  <p>Admin DEMO: <a href="/admin">/admin</a></p>
+</body></html>`);
+    }
+  };
+  app.get('/overlay', serveOverlay);
+  app.get('/', (_req, res) => res.redirect('/overlay'));
+
+  if (fs.existsSync(clientDist)) {
+    app.use('/overlay', express.static(clientDist));
+    app.use(express.static(clientDist));
+  }
+
+  io.on('connection', (socket) => {
+    console.log(`[Socket] client ${socket.id}`);
+    socket.emit(SOCKET_EVENTS.ROUND_STATE, game.getState());
+    socket.on(SOCKET_EVENTS.CLIENT_READY, () => {
+      socket.emit(SOCKET_EVENTS.ROUND_STATE, game.getState());
+    });
+  });
+
+  // Boot connector (DEMO connects; PRODUCTION stub throws — catch and log)
+  try {
+    await connector.connect(USERNAME);
+  } catch (err) {
+    console.error(
+      `[Boot] Connector connect failed (${MODE}):`,
+      err instanceof Error ? err.message : err
+    );
+    if (MODE === 'production') {
+      console.error('[Boot] Falling back advice: set TIKTOK_MODE=demo for local playtest');
+    }
+  }
+
+  // In DEMO, auto-start a waiting round (user starts via admin)
+  game.resetToWaiting();
+
+  server.listen(PORT, HOST, () => {
+    console.log(`\n🏟️  TikTok Live Ball Arena`);
+    console.log(`   mode:     ${MODE}`);
+    console.log(`   health:   http://localhost:${PORT}/health`);
+    console.log(`   overlay:  http://localhost:${PORT}/overlay`);
+    console.log(`   admin:    http://localhost:${PORT}/admin`);
+    console.log(`   DEMO events are SIMULATED — not real TikTok\n`);
+  });
+}
+
+main().catch((err) => {
+  console.error('Fatal', err);
+  process.exit(1);
+});

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Arena Admin — DEMO</title>
+  <style>
+    :root { --bg:#0f1115; --card:#1a1d24; --accent:#fe2c55; --ok:#20d68a; --text:#e8eaed; --muted:#9aa0a6; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); padding:20px; }
+    h1 { font-size:1.4rem; margin:0 0 4px; }
+    .sub { color:var(--muted); margin-bottom:16px; font-size:.9rem; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:#333; font-size:.75rem; }
+    .badge.demo { background:#3d2a00; color:#ffb020; }
+    .grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .card { background:var(--card); border-radius:12px; padding:14px; }
+    .card h2 { font-size:1rem; margin:0 0 10px; }
+    button { cursor:pointer; border:none; border-radius:8px; padding:10px 12px; margin:4px 4px 4px 0; background:#2a2f3a; color:var(--text); font-weight:600; }
+    button:hover { background:#3a4150; }
+    button.gift { background:#2a1f3d; }
+    button.gift:hover { background:#3d2a55; }
+    button.danger { background:#4a1520; }
+    button.ok { background:#0d3d2a; }
+    input[type=number], input[type=text] { background:#111; border:1px solid #333; color:var(--text); border-radius:6px; padding:8px; width:80px; }
+    #log { font-family: ui-monospace, monospace; font-size:.75rem; max-height:280px; overflow:auto; background:#0a0c10; padding:10px; border-radius:8px; white-space:pre-wrap; }
+    .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; }
+    a { color:#7ab7ff; }
+  </style>
+</head>
+<body>
+  <h1>Ball Arena — Painel DEMO</h1>
+  <p class="sub">
+    Eventos são <strong>simulados</strong> (não são TikTok real).
+    Overlay: <a href="/overlay" target="_blank">/overlay</a> ·
+    Health: <a href="/health" target="_blank">/health</a>
+    <span id="badge" class="badge demo">DEMO</span>
+  </p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Rodada</h2>
+      <div class="row">
+        <button class="ok" onclick="post('/admin/round/start')">▶ Iniciar (5 min)</button>
+        <button onclick="post('/admin/round/end')">⏹ Encerrar</button>
+        <button onclick="post('/admin/round/reset')">↺ Waiting</button>
+      </div>
+      <div id="round">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Presentes</h2>
+      <button class="gift" onclick="gift('rosa')">🌹 Rosa (1)</button>
+      <button class="gift" onclick="gift('mini_dino')">🦕 Mini Dino (5)</button>
+      <button class="gift" onclick="gift('rosquinha')">🍩 Rosquinha (30)</button>
+      <button class="gift" onclick="gift('capivara')">🦫 Capivara (99)</button>
+      <button class="gift" onclick="gift('galaxia')">🌌 Galaxia (1000)</button>
+    </div>
+
+    <div class="card">
+      <h2>Eventos</h2>
+      <div class="row">
+        <input id="comment" type="text" placeholder="comentário" style="width:140px" />
+        <button onclick="comment()">💬 Comentário</button>
+      </div>
+      <button onclick="post('/admin/sim/like', { likeCount: 10 })">❤️ Likes</button>
+      <button onclick="post('/admin/sim/share')">📤 Share</button>
+      <button onclick="post('/admin/sim/join')">👋 Join</button>
+      <button onclick="post('/admin/sim/follow')">➕ Follow</button>
+    </div>
+
+    <div class="card">
+      <h2>Bots & conexão</h2>
+      <div class="row">
+        <label>N <input id="bots" type="number" value="5" min="1" max="50" /></label>
+        <button onclick="bots(false)">👥 Spawn bots</button>
+        <button onclick="bots(true)">🎁 Bots + gift</button>
+      </div>
+      <button class="danger" onclick="post('/admin/sim/disconnect')">Disconnect</button>
+      <button class="ok" onclick="post('/admin/sim/reconnect')">Reconnect</button>
+      <button onclick="post('/admin/sim/auto', { enabled: true })">Auto ON</button>
+      <button onclick="post('/admin/sim/auto', { enabled: false })">Auto OFF</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2>Log recente</h2>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    async function post(path, body = {}) {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      log(JSON.stringify(j));
+      refresh();
+      return j;
+    }
+    function gift(giftId) { return post('/admin/sim/gift', { giftId }); }
+    function comment() {
+      const c = document.getElementById('comment').value;
+      return post('/admin/sim/comment', { comment: c || undefined });
+    }
+    function bots(withGift) {
+      const count = Number(document.getElementById('bots').value) || 5;
+      return post('/admin/sim/bots', { count, withGift });
+    }
+    function log(msg) {
+      const el = document.getElementById('log');
+      el.textContent = new Date().toLocaleTimeString() + ' ' + msg + '\n' + el.textContent;
+    }
+    async function refresh() {
+      const r = await fetch('/admin/status');
+      const j = await r.json();
+      const rd = j.round || {};
+      document.getElementById('round').textContent =
+        `phase=${rd.phase} remaining=${rd.remainingSec}s mode=${rd.mode} id=${(rd.roundId||'').slice(0,8)}`;
+      if (j.recentEvents?.length) {
+        document.getElementById('log').textContent = j.recentEvents
+          .slice().reverse().map(e => `${e.type} ${e.user?.username||''} ${e.giftName||e.comment||''}`).join('\n');
+      }
+    }
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

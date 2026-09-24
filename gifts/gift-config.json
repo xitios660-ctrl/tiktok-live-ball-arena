@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "description": "Hierarquia de presentes do Ball Arena. coinValue = diamantes TikTok aproximados; abilityKey dispara a habilidade no jogo.",
+  "gifts": [
+    {
+      "id": "rosa",
+      "tiktokGiftNames": ["Rose", "Rosa"],
+      "name": "Rosa",
+      "coinValue": 1,
+      "tier": 1,
+      "abilityKey": "spawn_small_ball",
+      "description": "Spawna uma bolinha pequena na arena"
+    },
+    {
+      "id": "mini_dino",
+      "tiktokGiftNames": ["Mini Dino", "Dinosaur"],
+      "name": "Mini Dino",
+      "coinValue": 5,
+      "tier": 2,
+      "abilityKey": "spawn_medium_ball",
+      "description": "Spawna uma bola média com impulso"
+    },
+    {
+      "id": "rosquinha",
+      "tiktokGiftNames": ["Doughnut", "Donut", "Rosquinha"],
+      "name": "Rosquinha",
+      "coinValue": 30,
+      "tier": 3,
+      "abilityKey": "boost_speed",
+      "description": "Aplica boost de velocidade nas bolas do gifter"
+    },
+    {
+      "id": "capivara",
+      "tiktokGiftNames": ["Capybara", "Capivara"],
+      "name": "Capivara",
+      "coinValue": 99,
+      "tier": 4,
+      "abilityKey": "spawn_heavy_ball",
+      "description": "Spawna bola pesada que empurra as outras"
+    },
+    {
+      "id": "galaxia",
+      "tiktokGiftNames": ["Galaxy", "Galaxy Gift", "Galáxia", "Galaxia"],
+      "name": "Galaxia",
+      "coinValue": 1000,
+      "tier": 5,
+      "abilityKey": "ultimate_chaos",
+      "description": "Ultimate: explosão / chaos na arena inteira"
+    }
+  ]
+}
