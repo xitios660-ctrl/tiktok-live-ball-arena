@@ -581,9 +581,17 @@ export class ArenaScene extends Phaser.Scene {
       } else if (event.kind === 'last_minute') {
         this.showToast('ÚLTIMO MINUTO!', 'last_minute');
         this.pushKillFeed(event.message, THEME_HEX.coral, '#1E1E1Ecc');
-      } else if (event.kind === 'new_king') {
+      } else if (
+        event.kind === 'new_king' ||
+        event.kind === 'boss_spawn' ||
+        event.kind === 'boss_defeated'
+      ) {
         this.showToast(event.message, event.kind);
-        this.pushKillFeed(event.message, THEME_HEX.gold, '#3d2e10ee');
+        this.pushKillFeed(
+          event.message,
+          THEME_HEX.gold,
+          event.kind === 'boss_spawn' ? '#10352fee' : '#3d2e10ee'
+        );
       } else if (event.kind === 'winner' || event.kind === 'next_round') {
         this.showToast(event.message, event.kind);
         this.pushKillFeed(event.message, THEME_HEX.gold, '#1E1E1Ecc');
@@ -1097,7 +1105,8 @@ export class ArenaScene extends Phaser.Scene {
     view.circle.setFillStyle(b.color, 0);
     let stroke = THEME.cream;
     let strokeW = b.isKing ? 7 : 3;
-    if (isGalaxy) { stroke = THEME.lavender; strokeW = 6; }
+    if (b.isBoss) { stroke = THEME.gold; strokeW = 8; }
+    else if (isGalaxy) { stroke = THEME.lavender; strokeW = 6; }
     else if (b.isKing) stroke = THEME.gold;
     else if (protected_) stroke = THEME.teal;
     else if (flash) stroke = THEME.coral;
@@ -1124,7 +1133,8 @@ export class ArenaScene extends Phaser.Scene {
     const pulse = canAuraPulse ? Math.sin(this.time.now / 280) : 0;
     const pW = pulse * 0.85;
     const pA = pulse * 0.12;
-    if (isDino) view.aura.setStrokeStyle(5, 0x7cfc00, 0.7);
+    if (b.isBoss) view.aura.setStrokeStyle(8, THEME.electricCyan, 0.78);
+    else if (isDino) view.aura.setStrokeStyle(5, 0x7cfc00, 0.7);
     else if (isGalaxy) view.aura.setStrokeStyle(6, THEME.lavender, 0.85);
     else if (isTitan) view.aura.setStrokeStyle(5, 0xc4a484, 0.55);
     else if (isFreeze) view.aura.setStrokeStyle(5 + pW, 0x7dd3fc, 0.8 + pA);
@@ -1199,8 +1209,10 @@ export class ArenaScene extends Phaser.Scene {
 
     view.strengthHud.setVisible(true);
     view.strengthHud.setY(strY);
-    view.strengthMark.setText(`💪${score}`);
-    view.strengthMark.setColor(accentHex);
+    view.strengthMark.setText(
+      b.isBoss ? `👑 BOSS +${b.bossRewardKills ?? 10}☠` : `💪${score}`
+    );
+    view.strengthMark.setColor(b.isBoss ? THEME_HEX.gold : accentHex);
     if (needsPillRedraw) {
       this.drawStrengthPill(view.strengthPill, view.strengthMark, tier);
       view.lastStrengthRadius = b.radius;
@@ -1269,7 +1281,10 @@ export class ArenaScene extends Phaser.Scene {
     view.buffIcon.setText(icons.join(''));
     view.buffIcon.setY(b.radius + 46);
 
-    view.label.setText(this.truncate(b.label, 14));
+    view.label.setText(
+      b.isBoss ? '🤖 CHATGPT BOSS · +10☠' : this.truncate(b.label, 14)
+    );
+    view.label.setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
     view.label.setY(b.radius + 18);
     this.drawNamePlate(view.namePlate, view.label, b.radius);
     const barW = Math.max(48, b.radius * 2.25);
