@@ -33,11 +33,24 @@ export function landscapeGameWidth(): number {
 }
 
 export function makeLandscapeMapper(viewWidth: number): LandscapeMapper {
-  const scale = Math.min(1, viewWidth / SOURCE_HEIGHT);
-  const playWidth = SOURCE_HEIGHT * scale;
-  const playHeight = SOURCE_WIDTH * scale;
-  const offsetX = (viewWidth - playWidth) / 2;
-  const offsetY = (LANDSCAPE_HEIGHT - playHeight) / 2;
+  /*
+   * Full-bleed landscape:
+   * - Server physics remains the original 1080×1920 portrait world.
+   * - Presentation maps the 1920 source-height across the ENTIRE landscape
+   *   viewport width, including ultra-wide phones.
+   * - Vertical source width maps to the full 1080 landscape height.
+   * - Object radii stay circular by using the smaller axis scale.
+   *
+   * This removes the dark side gutters without changing server collision or
+   * round logic. Only client-side presentation coordinates are stretched.
+   */
+  const xScale = viewWidth / SOURCE_HEIGHT;
+  const yScale = LANDSCAPE_HEIGHT / SOURCE_WIDTH;
+  const scale = Math.min(xScale, yScale);
+  const playWidth = viewWidth;
+  const playHeight = LANDSCAPE_HEIGHT;
+  const offsetX = 0;
+  const offsetY = 0;
 
   return {
     scale,
@@ -47,8 +60,8 @@ export function makeLandscapeMapper(viewWidth: number): LandscapeMapper {
     playHeight,
     map(x: number, y: number) {
       return {
-        x: offsetX + y * scale,
-        y: offsetY + (SOURCE_WIDTH - x) * scale,
+        x: y * xScale,
+        y: (SOURCE_WIDTH - x) * yScale,
       };
     },
   };
