@@ -7,6 +7,7 @@ const CORNER = 28;
 /**
  * Glossy cinematic stadium floor — rectangle physics bounds (margin 8), not a circle.
  * Opaque fills + vignette are skipped when transparent (OBS).
+ * Motifs from style-guide: neon cyan rings, ember floodlights, smoke-ish soft ellipses.
  * Visual only — does not change physics bounds / server authority.
  */
 export function paintArenaFloor(
@@ -16,7 +17,18 @@ export function paintArenaFloor(
   transparent: boolean
 ): void {
   g.clear();
-  if (transparent) return;
+  if (transparent) {
+    // Transparent OBS: keep only faint neon rings so gameplay stays readable, no opaque wash
+    const cx = w * 0.5;
+    const cy = h * 0.46;
+    g.lineStyle(1.5, THEME.electricCyan, 0.14);
+    g.strokeEllipse(cx, cy, w * 0.7, h * 0.36);
+    g.lineStyle(1.25, THEME.emberOrange, 0.1);
+    g.strokeEllipse(cx, cy, w * 0.5, h * 0.26);
+    g.lineStyle(2, THEME.gold, 0.22);
+    g.strokeCircle(cx, cy, Math.min(w, h) * 0.04);
+    return;
+  }
 
   g.fillStyle(THEME.arenaDark, 1);
   g.fillRect(0, 0, w, h);
@@ -24,11 +36,22 @@ export function paintArenaFloor(
   const cx = w * 0.5;
   const cy = h * 0.46;
 
-  // Ember glow under center (stadium floodlight mood)
-  g.fillStyle(THEME.emberOrange, 0.06);
+  // Ember floodlights (upper corners + center wash)
+  g.fillStyle(THEME.emberOrange, 0.08);
+  g.fillEllipse(w * 0.18, h * 0.18, w * 0.55, h * 0.35);
+  g.fillEllipse(w * 0.82, h * 0.2, w * 0.5, h * 0.32);
+  g.fillStyle(THEME.arenaRed, 0.055);
+  g.fillEllipse(cx, cy - 40, w * 0.75, h * 0.3);
+  g.fillStyle(THEME.emberOrange, 0.07);
   g.fillEllipse(cx, cy, w * 0.95, h * 0.42);
-  g.fillStyle(THEME.arenaRed, 0.045);
-  g.fillEllipse(cx, cy + 40, w * 0.7, h * 0.28);
+
+  // Smoke-ish soft ellipses (fumaça) — dark atmospheric bands
+  for (let i = 0; i < 8; i++) {
+    const sx = cx + Math.sin(i * 1.7) * w * 0.28;
+    const sy = cy + 80 + Math.cos(i * 1.1) * h * 0.12;
+    g.fillStyle(0x000000, 0.06 + (i % 3) * 0.02);
+    g.fillEllipse(sx, sy, 180 + i * 30, 50 + (i % 4) * 18);
+  }
 
   // Concentric warm stone ellipses toward center
   const bands: Array<{ rx: number; ry: number; color: number; a: number }> = [
@@ -43,7 +66,7 @@ export function paintArenaFloor(
     g.fillEllipse(cx, cy, b.rx * 2, b.ry * 2);
   }
 
-  // Subtle stadium grid (very light — stream-friendly)
+  // Subtle stadium grid
   g.lineStyle(1, THEME.steel, 0.12);
   const gridStep = 64;
   for (let x = 40; x < w - 40; x += gridStep) {
@@ -53,25 +76,29 @@ export function paintArenaFloor(
     g.lineBetween(40, y, w - 40, y);
   }
 
-  // Neon ember / cyan rings
+  // Neon cyan + ember rings (style-guide arena motif)
   const rings = [
-    { rx: w * 0.52, ry: h * 0.3, color: THEME.emberOrange, a: 0.16 },
-    { rx: w * 0.4, ry: h * 0.23, color: THEME.arenaRed, a: 0.14 },
-    { rx: w * 0.28, ry: h * 0.16, color: THEME.gold, a: 0.2 },
-    { rx: w * 0.16, ry: h * 0.09, color: THEME.electricCyan, a: 0.18 },
+    { rx: w * 0.55, ry: h * 0.32, color: THEME.electricCyan, a: 0.22, lw: 2.5 },
+    { rx: w * 0.46, ry: h * 0.27, color: THEME.emberOrange, a: 0.18, lw: 1.5 },
+    { rx: w * 0.38, ry: h * 0.22, color: THEME.arenaRed, a: 0.14, lw: 1.5 },
+    { rx: w * 0.28, ry: h * 0.16, color: THEME.gold, a: 0.22, lw: 2 },
+    { rx: w * 0.18, ry: h * 0.1, color: THEME.electricCyan, a: 0.2, lw: 1.5 },
   ];
   for (const r of rings) {
-    g.lineStyle(1.5, r.color, r.a);
+    g.lineStyle(r.lw, r.color, r.a);
     g.strokeEllipse(cx, cy, r.rx * 2, r.ry * 2);
   }
 
   // Gold crown circle at center
-  g.lineStyle(2.5, THEME.gold, 0.6);
+  g.lineStyle(2.5, THEME.gold, 0.65);
   g.strokeCircle(cx, cy, Math.min(w, h) * 0.048);
   g.fillStyle(THEME.gold, 0.14);
   g.fillCircle(cx, cy, Math.min(w, h) * 0.03);
   g.lineStyle(1, THEME.emberOrange, 0.45);
   g.strokeCircle(cx, cy, Math.min(w, h) * 0.065);
+  // Tiny crown mark
+  g.fillStyle(THEME.gold, 0.55);
+  g.fillTriangle(cx - 8, cy + 4, cx + 8, cy + 4, cx, cy - 10);
 
   // Vignette ONLY when not transparent
   g.lineStyle(140, 0x000000, 0.5);

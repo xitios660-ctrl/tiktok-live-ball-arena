@@ -34,8 +34,11 @@ import {
   setPhaseChrome,
   tickCinematicHud,
   createAmbientTwinkles,
+  createAoVivoPill,
+  createBottomCtaStrip,
   type CinematicHudHandles,
 } from '../ui/CinematicHud';
+import { fxScaleFromBudget, qualityFromBudget, type QualityTier } from '../fx/QualityTier';
 import { createGiftLegend, tickGiftLegend, type GiftLegendHandles } from '../ui/GiftLegend';
 import {
   createPremiumTop5,
@@ -120,6 +123,9 @@ export class ArenaScene extends Phaser.Scene {
   private fpsFrames = 0;
   private fps = 60;
   private particleBudget = 1;
+  private qualityTier: QualityTier = 'high';
+  private aoVivoPill: Phaser.GameObjects.Container | null = null;
+  private bottomCta: { root: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics; setVisible: (v: boolean) => void } | null = null;
   private muteBtn!: Phaser.GameObjects.Text;
   private fpsText!: Phaser.GameObjects.Text;
   private likesText!: Phaser.GameObjects.Text;
@@ -150,14 +156,19 @@ export class ArenaScene extends Phaser.Scene {
     this.rimSpin = 0;
     paintArenaRim(this.arenaRim, CANVAS_WIDTH, CANVAS_HEIGHT, this.rimSpin, false);
 
-    // Cinematic title treatment
-    this.cinematicHud = createCinematicTitle(this, CANVAS_WIDTH / 2, top + 22, 100);
+    // Cinematic title treatment (BallArenaLogo crown+stars+rings)
+    this.cinematicHud = createCinematicTitle(this, CANVAS_WIDTH / 2, top + 28, 100);
     this.titleText = this.cinematicHud.titleMain;
     setPhaseChrome(this.cinematicHud, data?.round?.phase ?? 'waiting', data?.round?.remainingSec, this);
+    this.syncBottomCta(data?.round?.phase ?? 'waiting');
+
+    // Red AO VIVO pill — top-left chrome
+    this.aoVivoPill = createAoVivoPill(this, side + 56, top + 20, 110);
+    this.cinematicHud.livePill = this.aoVivoPill;
 
     // Timer glow (behind) + main timer
     this.timerGlow = this.add
-      .text(CANVAS_WIDTH / 2, top + 108, this.formatTime(data?.round?.remainingSec ?? 300), {
+      .text(CANVAS_WIDTH / 2, top + 118, this.formatTime(data?.round?.remainingSec ?? 300), {
         fontFamily: FONT_ACCENT,
         fontSize: '72px',
         color: THEME_HEX.electricCyan,
@@ -166,7 +177,7 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(99)
       .setAlpha(0.28);
     this.timerText = this.add
-      .text(CANVAS_WIDTH / 2, top + 108, this.formatTime(data?.round?.remainingSec ?? 300), {
+      .text(CANVAS_WIDTH / 2, top + 118, this.formatTime(data?.round?.remainingSec ?? 300), {
         fontFamily: FONT_ACCENT,
         fontSize: '66px',
         color: THEME_HEX.electricCyan,
@@ -177,15 +188,20 @@ export class ArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     this.playersText = this.add
-      .text(CANVAS_WIDTH / 2, top + 168, `● VIVOS  ${data?.round?.playerCount ?? 0}`, {
+      .text(CANVAS_WIDTH / 2, top + 178, `PLAYERS NA ARENA: ${data?.round?.playerCount ?? 0}`, {
         fontFamily: FONT_ACCENT,
-        fontSize: '28px',
-        color: THEME_HEX.muted,
+        fontSize: '26px',
+        color: THEME_HEX.electricCyan,
         stroke: '#000000',
         strokeThickness: 4,
       })
       .setOrigin(0.5)
       .setDepth(100);
+
+    // Bottom CTA strip — waiting/countdown only (hidden while running)
+    this.bottomCta = createBottomCtaStrip(this, CANVAS_HEIGHT - SAFE.bottom + 36, 105);
+    const initPhase = data?.round?.phase ?? 'waiting';
+    this.bottomCta.setVisible(initPhase === 'waiting' || initPhase === 'countdown');
 
     // Likes meter — pill
     this.likesText = this.add
@@ -371,6 +387,11 @@ export class ArenaScene extends Phaser.Scene {
     const now = Date.now();
     const t = this.time.now;
     if (this.cinematicHud) tickCinematicHud(this.cinematicHud, t);
+    if (this.bottomCta && this.bottomCta.root.visible) {
+      const pulse = 0.5 + Math.sin(t / 350) * 0.5;
+      this.bottomCta.root.setScale(1 + pulse * 0.02);
+      this.bottomCta.glow.setAlpha(0.35 + pulse * 0.4);
+    }
     if (this.ambientTwinkles && (this.particleBudget ?? 1) > 0.2) this.ambientTwinkles.tick(t);
     this.pickupsLayer?.tick(t);
     if (this.giftLegend) {
@@ -399,7 +420,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private onRound = (state: RoundState) => {
     this.applyTimerVisuals(state.remainingSec, state.phase);
-    this.playersText.setText(`● VIVOS  ${state.playerCount ?? 0}`);
+    this.playersText.setText(`PLAYERS NA ARENA: ${state.playerCount ?? 0}`);
     if (state.phase === 'results') {
       this.resultsHint.setText(`Próxima rodada em ${state.resultsRemainingSec ?? 0}s`);
     }
@@ -418,7 +439,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private onSnapshot = (snap: GameSnapshot) => {
     this.applyTimerVisuals(snap.remainingSec, snap.phase);
-    this.playersText.setText(`● VIVOS  ${snap.playerCount}`);
+    this.playersText.setText(`PLAYERS NA ARENA: ${snap.playerCount}`);
     this.syncBalls(snap.balls);
     this.pickupsLayer?.sync(snap.pickups);
     if (snap.global && this.likesText) {
@@ -522,6 +543,7 @@ export class ArenaScene extends Phaser.Scene {
     if (this.timerGlow) this.timerGlow.setText(label);
     this.lastPhase = phase;
     if (this.cinematicHud) setPhaseChrome(this.cinematicHud, phase, remaining, this);
+    this.syncBottomCta(phase);
     if (phase === 'results') {
       this.timerText.setColor(THEME_HEX.gold).setFontSize('68px');
       this.timerText.setText('RESULTADOS');
@@ -668,18 +690,53 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private spawnHitSparks(x: number, y: number, color: number, n = 8): void {
-    n = Math.max(1, Math.floor(n * (this.particleBudget ?? 1)));
+    const scale = fxScaleFromBudget(this.particleBudget ?? 1);
+    n = Math.max(1, Math.floor(n * scale.sparks));
+    // Brighter ember/gold impacto burst (style-guide) — core flash + sparks
+    const flash = this.add.circle(x, y, 10 * scale.sparkSize, THEME.light, 0.7).setDepth(51);
+    this.tweens.add({
+      targets: flash,
+      scale: 2.4,
+      alpha: 0,
+      duration: 180,
+      onComplete: () => flash.destroy(),
+    });
     for (let i = 0; i < n; i++) {
       const angle = (Math.PI * 2 * i) / n + Math.random() * 0.3;
-      const dist = 20 + Math.random() * 40;
-      const dot = this.add.circle(x, y, 4 + Math.random() * 4, color, 1).setDepth(50);
+      const dist = 24 + Math.random() * 52;
+      const c =
+        i % 3 === 0 ? THEME.gold : i % 3 === 1 ? THEME.emberOrange : color;
+      const dot = this.add
+        .circle(x, y, (3.5 + Math.random() * 5) * scale.sparkSize, c, 1)
+        .setDepth(50);
       this.tweens.add({
         targets: dot,
         x: x + Math.cos(angle) * dist,
         y: y + Math.sin(angle) * dist,
         alpha: 0,
-        duration: 280 + Math.random() * 200,
+        scale: 0.3,
+        duration: 300 + Math.random() * 220,
         onComplete: () => dot.destroy(),
+      });
+    }
+    // Short impact lines
+    if (scale.sparks > 0.4) {
+      const lines = this.add.graphics().setDepth(50);
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI * 2 * i) / 6 + Math.random() * 0.2;
+        lines.lineStyle(2, THEME.gold, 0.85);
+        lines.lineBetween(
+          x + Math.cos(a) * 8,
+          y + Math.sin(a) * 8,
+          x + Math.cos(a) * 28,
+          y + Math.sin(a) * 28
+        );
+      }
+      this.tweens.add({
+        targets: lines,
+        alpha: 0,
+        duration: 200,
+        onComplete: () => lines.destroy(),
       });
     }
   }
@@ -823,21 +880,41 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private updateBallView(view: BallView, b: BallState): void {
-    // Cheap motion smear for high-speed balls (1 ghost circle, short fade)
+    // Speed trails (rastro) — stronger when particleBudget / quality tier high
     const dx = b.x - view.prevX;
     const dy = b.y - view.prevY;
     const dist2 = dx * dx + dy * dy;
-    if (dist2 > 22 * 22 && (this.particleBudget ?? 1) > 0.35) {
-      const ghost = this.add
-        .circle(view.prevX, view.prevY, b.radius * 0.85, b.color, 0.28)
-        .setDepth(9);
-      this.tweens.add({
-        targets: ghost,
-        alpha: 0,
-        scale: 0.7,
-        duration: 140,
-        onComplete: () => ghost.destroy(),
-      });
+    const trailScale = fxScaleFromBudget(this.particleBudget ?? 1);
+    if (dist2 > 18 * 18 && trailScale.trails > 0.15) {
+      const ghosts = 1 + trailScale.trailGhosts;
+      for (let g = 0; g < ghosts; g++) {
+        const t = (g + 1) / (ghosts + 1);
+        const gx = view.prevX + dx * (1 - t);
+        const gy = view.prevY + dy * (1 - t);
+        const ghost = this.add
+          .circle(gx, gy, b.radius * (0.9 - g * 0.12), b.color, trailScale.trailAlpha * (1 - g * 0.25))
+          .setDepth(9);
+        // Ember streak accent on very fast balls
+        if (dist2 > 40 * 40 && g === 0) {
+          const streak = this.add
+            .circle(gx, gy, b.radius * 0.35, THEME.emberOrange, trailScale.trailAlpha * 0.7)
+            .setDepth(9);
+          this.tweens.add({
+            targets: streak,
+            alpha: 0,
+            scale: 0.4,
+            duration: 120,
+            onComplete: () => streak.destroy(),
+          });
+        }
+        this.tweens.add({
+          targets: ghost,
+          alpha: 0,
+          scale: 0.55,
+          duration: 130 + g * 40,
+          onComplete: () => ghost.destroy(),
+        });
+      }
     }
     view.container.setPosition(b.x, b.y);
     view.circle.setRadius(b.radius);
@@ -1123,10 +1200,12 @@ export class ArenaScene extends Phaser.Scene {
       this.fpsFrames = 0;
       this.fpsAcc = 0;
       if (this.fpsText) this.fpsText.setText(`${this.fps} fps`);
-      // Adaptive quality: reduce particles/trails when FPS drops (physics stays server-side)
+      // Adaptive quality tiers: high|medium|low from FPS → particleBudget → FX scales
+      // (see fx/QualityTier.ts). Physics stays server-side.
       if (this.fps < 28) this.particleBudget = 0.25;
       else if (this.fps < 40) this.particleBudget = 0.5;
       else this.particleBudget = 1;
+      this.qualityTier = qualityFromBudget(this.particleBudget);
       audio.setQuality(this.particleBudget);
     }
   }
@@ -1134,6 +1213,13 @@ export class ArenaScene extends Phaser.Scene {
 
   private truncate(s: string, n: number): string {
     return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  }
+
+  private syncBottomCta(phase: string): void {
+    if (!this.bottomCta) return;
+    const show = phase === 'waiting' || phase === 'countdown';
+    this.bottomCta.setVisible(show);
+    if (show) this.bottomCta.root.setAlpha(0.95);
   }
 
   private formatTime(sec: number): string {

@@ -43,6 +43,7 @@ interface Top5Row {
   root: Phaser.GameObjects.Container;
   strip: Phaser.GameObjects.Graphics;
   flash: Phaser.GameObjects.Graphics;
+  medalGfx: Phaser.GameObjects.Graphics;
   medal: Phaser.GameObjects.Text;
   name: Phaser.GameObjects.Text;
   kills: Phaser.GameObjects.Text;
@@ -122,11 +123,19 @@ function createRow(scene: Phaser.Scene, rank: number): Top5Row {
   const root = scene.add.container(PAD, 0).setVisible(false);
   const strip = scene.add.graphics();
   const flash = scene.add.graphics().setAlpha(0);
+  const medalGfx = scene.add.graphics();
+  drawMedalDisc(medalGfx, 18, 0, rank);
   const medal = scene.add
-    .text(6, 0, MEDALS[rank], { fontSize: rank === 0 ? '22px' : '18px' })
-    .setOrigin(0, 0.5);
+    .text(18, 0, rank < 3 ? String(rank + 1) : MEDALS[rank], {
+      fontFamily: FONT_ACCENT,
+      fontSize: rank === 0 ? '16px' : '14px',
+      color: rank < 3 ? THEME_HEX.arenaDark : RANK_COLORS[rank],
+      stroke: rank < 3 ? '#00000000' : '#000000',
+      strokeThickness: rank < 3 ? 0 : 2,
+    })
+    .setOrigin(0.5);
   const name = scene.add
-    .text(36, 0, '', {
+    .text(40, 0, '', {
       fontFamily: FONT_BLACK,
       fontSize: rank === 0 ? '18px' : '16px',
       color: RANK_COLORS[rank],
@@ -152,8 +161,53 @@ function createRow(scene: Phaser.Scene, rank: number): Top5Row {
     })
     .setOrigin(1, 0.5);
 
-  root.add([strip, flash, medal, name, kills, hpPip, status]);
-  return { root, strip, flash, medal, name, kills, hpPip, status, userId: null, rank };
+  root.add([strip, flash, medalGfx, medal, name, kills, hpPip, status]);
+  return { root, strip, flash, medalGfx, medal, name, kills, hpPip, status, userId: null, rank };
+}
+
+/** Ornate medal discs for 1/2/3 (gold/silver/bronze) + simple laurel arcs. */
+function drawMedalDisc(g: Phaser.GameObjects.Graphics, x: number, y: number, rank: number): void {
+  g.clear();
+  const colors = [THEME.gold, 0xc0c7d4, 0xcd7f32, THEME.electricCyan, THEME.steel];
+  const c = colors[rank] ?? THEME.steel;
+  const r = rank === 0 ? 15 : rank < 3 ? 13 : 11;
+
+  // Soft glow
+  g.fillStyle(c, rank === 0 ? 0.35 : 0.2);
+  g.fillCircle(x, y, r + 5);
+
+  // Disc
+  g.fillStyle(c, 0.95);
+  g.fillCircle(x, y, r);
+  g.fillStyle(THEME.light, 0.25);
+  g.fillCircle(x - r * 0.25, y - r * 0.3, r * 0.45);
+  g.lineStyle(1.5, THEME.arenaDark, 0.45);
+  g.strokeCircle(x, y, r);
+  g.lineStyle(1, THEME.light, 0.35);
+  g.strokeCircle(x, y, r - 3);
+
+  // Laurel arcs for top 3
+  if (rank < 3) {
+    g.lineStyle(2, c, 0.75);
+    g.beginPath();
+    g.arc(x, y, r + 6, Math.PI * 0.55, Math.PI * 1.45, false);
+    g.strokePath();
+    g.beginPath();
+    g.arc(x, y, r + 6, -Math.PI * 0.45, Math.PI * 0.45, false);
+    g.strokePath();
+    // Tiny leaf ticks
+    g.lineStyle(1.5, c, 0.7);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const a = side < 0
+          ? Math.PI * 0.7 + i * 0.28
+          : -Math.PI * 0.3 + i * 0.28;
+        const lx = x + Math.cos(a) * (r + 6);
+        const ly = y + Math.sin(a) * (r + 6);
+        g.lineBetween(lx, ly, lx + side * 4, ly - 3);
+      }
+    }
+  }
 }
 
 function computeHeight(count: number): number {
@@ -222,8 +276,10 @@ function drawRowStrip(
   strip.fillStyle(THEME.card, alive ? alphaFill : 0.12);
   strip.fillRoundedRect(0, -rowH / 2, rowW, rowH, rank === 0 ? 12 : 10);
   if (rank === 0) {
-    strip.fillStyle(THEME.gold, 0.1);
+    strip.fillStyle(THEME.gold, 0.16);
     strip.fillRoundedRect(1, -rowH / 2 + 1, rowW - 2, rowH - 2, 11);
+    strip.fillStyle(THEME.emberOrange, 0.08);
+    strip.fillRoundedRect(2, -rowH / 2 + 2, rowW - 4, rowH - 4, 10);
   }
   strip.lineStyle(rank === 0 ? 2.2 : 1.4, border, alive ? (rank === 0 ? 0.95 : 0.65) : 0.3);
   strip.strokeRoundedRect(0, -rowH / 2, rowW, rowH, rank === 0 ? 12 : 10);
@@ -298,7 +354,10 @@ export function updatePremiumTop5(
     const alive = !!stats.alive;
     drawRowStrip(row.strip, row.flash, i, rowW, rowH - 4, alive);
 
-    row.medal.setText(MEDALS[i]).setY(0);
+    drawMedalDisc(row.medalGfx, 18, 0, i);
+    row.medal.setText(i < 3 ? String(i + 1) : MEDALS[i]).setY(0);
+    if (i < 3) row.medal.setColor(THEME_HEX.arenaDark);
+    else row.medal.setColor(RANK_COLORS[i]);
     row.name
       .setText(truncateName(stats.username || stats.nickname || '?'))
       .setColor(alive ? RANK_COLORS[i] : THEME_HEX.muted)

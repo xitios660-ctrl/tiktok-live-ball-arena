@@ -1,13 +1,20 @@
 /**
  * Cinematic title / phase chrome for the OBS overlay.
- * Futuristic neon energy on Ball Arena cinematic palette.
+ * Reuses BallArenaLogo (crown + stars + rings) — not plain text only.
  */
 import Phaser from 'phaser';
 import { CANVAS_WIDTH } from '@arena/shared';
 import { THEME, THEME_HEX, FONT_BLACK, FONT_ACCENT } from '../theme';
+import {
+  createBallArenaLogo,
+  tickBallArenaLogo,
+  type BallArenaLogoHandles,
+} from './BallArenaLogo';
 
 export interface CinematicHudHandles {
   root: Phaser.GameObjects.Container;
+  logo: BallArenaLogoHandles;
+  /** @deprecated kept for ArenaScene titleText alias — points at logo.ballMain */
   titleMain: Phaser.GameObjects.Text;
   titleGlow: Phaser.GameObjects.Text;
   titleGlow2: Phaser.GameObjects.Text;
@@ -17,11 +24,12 @@ export interface CinematicHudHandles {
   starsLeft: Phaser.GameObjects.Text;
   starsRight: Phaser.GameObjects.Text;
   scanline: Phaser.GameObjects.Rectangle;
+  livePill: Phaser.GameObjects.Container | null;
   born: number;
   lastPhaseLabel: string;
 }
 
-/** Build weighty “BALL ARENA” header with neon glow + scanline. */
+/** Build weighty Ball Arena header with logo assembly + phase chrome. */
 export function createCinematicTitle(
   scene: Phaser.Scene,
   x: number,
@@ -30,78 +38,42 @@ export function createCinematicTitle(
 ): CinematicHudHandles {
   const root = scene.add.container(x, y).setDepth(depth);
 
-  const titleGlow2 = scene.add
-    .text(0, 0, 'BALL ARENA', {
-      fontFamily: FONT_BLACK,
-      fontSize: '50px',
-      color: THEME_HEX.electricCyan,
-      stroke: THEME_HEX.electricCyan,
-      strokeThickness: 14,
-    })
-    .setOrigin(0.5)
-    .setAlpha(0.18);
+  const logo = createBallArenaLogo(scene, 0, 0, {
+    compact: true,
+    scale: 0.48,
+    depth: 0,
+    showRings: true,
+    showFlare: true,
+  });
+  // Detach logo root into our container (re-parent)
+  root.add(logo.root);
+  logo.root.setPosition(0, 0);
 
-  const titleGlow = scene.add
-    .text(0, 0, 'BALL ARENA', {
-      fontFamily: FONT_BLACK,
-      fontSize: '46px',
-      color: THEME_HEX.gold,
-      stroke: THEME_HEX.arenaRed,
-      strokeThickness: 12,
-    })
-    .setOrigin(0.5)
-    .setAlpha(0.4);
-
-  const titleMain = scene.add
-    .text(0, 0, 'BALL ARENA', {
-      fontFamily: FONT_BLACK,
-      fontSize: '44px',
-      color: THEME_HEX.light,
-      stroke: THEME_HEX.arenaDark,
-      strokeThickness: 8,
-    })
-    .setOrigin(0.5);
-
-  try {
-    (titleMain as unknown as { setLetterSpacing: (n: number) => void }).setLetterSpacing(4);
-  } catch {
-    /* Phaser version without letter-spacing */
-  }
+  // Keep legacy glow text refs pointing at logo layers for tick/phase color hooks
+  const titleGlow2 = logo.arenaGlow;
+  const titleGlow = logo.ballGlow;
+  const titleMain = logo.ballMain;
 
   const starsLeft = scene.add
-    .text(-218, 0, '★', {
-      fontFamily: FONT_BLACK,
-      fontSize: '22px',
-      color: THEME_HEX.gold,
-    })
-    .setOrigin(0.5)
-    .setAlpha(0.9);
-
+    .text(-0, 0, '', { fontSize: '1px' })
+    .setVisible(false);
   const starsRight = scene.add
-    .text(218, 0, '★', {
-      fontFamily: FONT_BLACK,
-      fontSize: '22px',
-      color: THEME_HEX.gold,
-    })
-    .setOrigin(0.5)
-    .setAlpha(0.9);
+    .text(0, 0, '', { fontSize: '1px' })
+    .setVisible(false);
 
   const accentLine = scene.add.graphics();
-  drawAccentLine(accentLine, 0, 28, 290, 0.5);
+  drawAccentLine(accentLine, 0, 48, 220, 0.5);
 
   const neonFrame = scene.add.graphics();
-  // soft under-title neon bar area
-  neonFrame.fillStyle(THEME.gold, 0.08);
-  neonFrame.fillRoundedRect(-160, 18, 320, 14, 6);
+  neonFrame.fillStyle(THEME.gold, 0.06);
+  neonFrame.fillRoundedRect(-120, 40, 240, 10, 5);
 
-  const scanline = scene.add
-    .rectangle(0, -8, 420, 3, THEME.light, 0.12)
-    .setOrigin(0.5);
+  const scanline = scene.add.rectangle(0, -8, 280, 2, THEME.light, 0.1).setOrigin(0.5);
 
   const phaseLabel = scene.add
-    .text(0, 50, 'RODADA', {
+    .text(0, 68, 'RODADA', {
       fontFamily: FONT_ACCENT,
-      fontSize: '24px',
+      fontSize: '22px',
       color: THEME_HEX.muted,
       stroke: '#000000',
       strokeThickness: 3,
@@ -114,20 +86,11 @@ export function createCinematicTitle(
     /* ignore */
   }
 
-  root.add([
-    titleGlow2,
-    titleGlow,
-    titleMain,
-    starsLeft,
-    starsRight,
-    neonFrame,
-    accentLine,
-    scanline,
-    phaseLabel,
-  ]);
+  root.add([neonFrame, accentLine, scanline, phaseLabel, starsLeft, starsRight]);
 
   return {
     root,
+    logo,
     titleMain,
     titleGlow,
     titleGlow2,
@@ -137,8 +100,73 @@ export function createCinematicTitle(
     starsLeft,
     starsRight,
     scanline,
+    livePill: null,
     born: scene.time.now,
     lastPhaseLabel: 'RODADA',
+  };
+}
+
+/** Red AO VIVO pill — top chrome for live overlay. */
+export function createAoVivoPill(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  depth = 110
+): Phaser.GameObjects.Container {
+  const root = scene.add.container(x, y).setDepth(depth);
+  const g = scene.add.graphics();
+  g.fillStyle(THEME.arenaRed, 0.95);
+  g.fillRoundedRect(-52, -14, 104, 28, 14);
+  g.lineStyle(1.5, THEME.light, 0.35);
+  g.strokeRoundedRect(-52, -14, 104, 28, 14);
+  g.fillStyle(THEME.light, 1);
+  g.fillCircle(-34, 0, 5);
+  const label = scene.add
+    .text(6, 0, 'AO VIVO', {
+      fontFamily: FONT_ACCENT,
+      fontSize: '18px',
+      color: THEME_HEX.light,
+      stroke: '#000000',
+      strokeThickness: 2,
+    })
+    .setOrigin(0.5);
+  root.add([g, label]);
+  return root;
+}
+
+/** Bottom CTA strip — shown during waiting/countdown; hide when running. */
+export function createBottomCtaStrip(
+  scene: Phaser.Scene,
+  y: number,
+  depth = 105
+): { root: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics; setVisible: (v: boolean) => void } {
+  const root = scene.add.container(CANVAS_WIDTH / 2, y).setDepth(depth);
+  const glow = scene.add.graphics();
+  glow.fillStyle(THEME.arenaRed, 0.25);
+  glow.fillRoundedRect(-310, -28, 620, 56, 20);
+  const bg = scene.add.graphics();
+  bg.fillStyle(THEME.arenaDark, 0.78);
+  bg.fillRoundedRect(-300, -22, 600, 44, 16);
+  bg.lineStyle(2.5, THEME.arenaRed, 0.9);
+  bg.strokeRoundedRect(-300, -22, 600, 44, 16);
+  bg.lineStyle(1, THEME.emberOrange, 0.5);
+  bg.strokeRoundedRect(-294, -16, 588, 32, 12);
+  const label = scene.add
+    .text(0, 0, 'COMENTE NA LIVE PARA ENTRAR NA ARENA', {
+      fontFamily: FONT_ACCENT,
+      fontSize: '24px',
+      color: THEME_HEX.light,
+      stroke: '#000000',
+      strokeThickness: 3,
+    })
+    .setOrigin(0.5);
+  root.add([glow, bg, label]);
+  return {
+    root,
+    glow,
+    setVisible(v: boolean) {
+      root.setVisible(v);
+    },
   };
 }
 
@@ -168,15 +196,14 @@ function drawAccentLine(
 export function tickCinematicHud(hud: CinematicHudHandles, time: number): void {
   const t = (time - hud.born) / 1000;
   const pulse = 0.5 + Math.sin(t * 2.5) * 0.5;
-  drawAccentLine(hud.accentLine, 0, 28, 290, pulse);
-  hud.titleGlow.setAlpha(0.28 + pulse * 0.22);
-  hud.titleGlow2.setAlpha(0.1 + pulse * 0.12);
-  hud.starsLeft.setAlpha(0.7 + pulse * 0.25);
-  hud.starsRight.setAlpha(0.7 + pulse * 0.25);
-  // scanline drift
+  drawAccentLine(hud.accentLine, 0, 48, 220, pulse);
+  tickBallArenaLogo(hud.logo, time, { compact: true, showRings: true, showFlare: true });
   const sy = -18 + ((t * 28) % 40);
   hud.scanline.setY(sy);
-  hud.scanline.setAlpha(0.08 + pulse * 0.1);
+  hud.scanline.setAlpha(0.06 + pulse * 0.08);
+  if (hud.livePill) {
+    hud.livePill.setAlpha(0.75 + pulse * 0.25);
+  }
 }
 
 export type PhaseChrome =
@@ -234,8 +261,8 @@ export function setPhaseChrome(
       ease: 'Back.Out',
     });
     scene.tweens.add({
-      targets: [hud.titleMain, hud.titleGlow],
-      scale: 1.06,
+      targets: hud.root,
+      scale: 1.04,
       duration: 180,
       yoyo: true,
       ease: 'Sine.Out',
@@ -244,16 +271,10 @@ export function setPhaseChrome(
 
   if (remainingSec != null && remainingSec <= 10 && phase === 'running') {
     hud.titleMain.setColor(THEME_HEX.coral);
-    hud.starsLeft.setColor(THEME_HEX.coral);
-    hud.starsRight.setColor(THEME_HEX.coral);
   } else if (phase === 'results' || phase === 'ended') {
     hud.titleMain.setColor(THEME_HEX.gold);
-    hud.starsLeft.setColor(THEME_HEX.gold);
-    hud.starsRight.setColor(THEME_HEX.gold);
   } else {
     hud.titleMain.setColor(THEME_HEX.light);
-    hud.starsLeft.setColor(THEME_HEX.gold);
-    hud.starsRight.setColor(THEME_HEX.gold);
   }
 }
 
