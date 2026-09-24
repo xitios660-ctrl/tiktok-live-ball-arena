@@ -83,7 +83,7 @@ function drawGlassCard(
   pulse: number
 ): void {
   g.clear();
-  g.fillStyle(THEME.ink, 0.72);
+  g.fillStyle(THEME.ink, 0.40);
   g.fillRoundedRect(0, 0, w, h, 14);
   g.lineStyle(2, THEME.cream, 0.22);
   g.strokeRoundedRect(0, 0, w, h, 14);

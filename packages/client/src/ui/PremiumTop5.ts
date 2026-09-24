@@ -173,12 +173,12 @@ function drawCard(
 ): void {
   bg.clear();
   // Deep glass base
-  bg.fillStyle(THEME.ink, 0.82);
+  bg.fillStyle(THEME.ink, 0.42);
   bg.fillRoundedRect(0, 0, w, h, RADIUS);
   // Soft inner gradient bands (layered rects)
-  bg.fillStyle(THEME.card, 0.35);
+  bg.fillStyle(THEME.card, 0.18);
   bg.fillRoundedRect(2, 2, w - 4, Math.min(h - 4, 56), RADIUS - 2);
-  bg.fillStyle(0x000000, 0.25);
+  bg.fillStyle(0x000000, 0.10);
   bg.fillRoundedRect(3, HEADER_H + 4, w - 6, Math.max(0, h - HEADER_H - 8), 10);
   // Outer cream edge
   bg.lineStyle(1.5, THEME.cream, 0.22);
@@ -216,7 +216,7 @@ function drawRowStrip(
 ): void {
   strip.clear();
   const border = RANK_BORDER[rank];
-  const alphaFill = rank === 0 ? 0.38 : 0.22;
+  const alphaFill = rank === 0 ? 0.22 : 0.12;
   strip.fillStyle(THEME.card, alive ? alphaFill : 0.12);
   strip.fillRoundedRect(0, -rowH / 2, rowW, rowH, rank === 0 ? 12 : 10);
   if (rank === 0) {
