@@ -1,3 +1,31 @@
+# Etapa atual: **Cinematic frame-driven rebuild final**
+
+Data: 2026-09-25 (America/Sao_Paulo)
+
+### Implementado nesta etapa
+- Home refeita no padrão do vídeo de referência: animação controlada por frames/sprite, não por vídeo esticado.
+- Desktop e celular em pé usam sprites diferentes.
+- Desktop: 36 frames HQ (6x6), cena 16:9.
+- Mobile: 36 frames HQ (6x6) em composição 9:16 com fundo cinematográfico desfocado e cena integral centralizada.
+- Mouse e toque arrastam a animação para frente/para trás; idle suave quando ninguém interage.
+- JOGAR virou botão HTML real com estados normal/hover/pressionado, glow, sweep e feedback tátil visual.
+- Clique em JOGAR dispara sequência cinematográfica separada de 48 frames (8x6) e revela a arena real já carregada.
+- Mobile tem transição própria 9:16, sem crop gigante do boss.
+- Conectar TikTok Live, Ranking e Como Jogar são botões reais, sem hotspots invisíveis.
+- Um único tema musical é usado em home -> transição -> gameplay após o primeiro gesto permitido pelo navegador.
+- Assets HQ publicados via CDN e configurados no Render por variáveis VITE.
+- Figma atualizado com seção FINAL contendo desktop, mobile 9:16, estados de JOGAR, transições e entrada no gameplay.
+
+### Commits principais
+- b9fc8fdd61395f321230b2e369c0dd09acd59688 — Rebuild cinematic intro with responsive frame-driven UI
+- 0ccc7a738f9c008a09c2b7e575d3a9285387b7d0 — Use one soundtrack across cinematic intro and gameplay
+
+### Testes
+- Build/deploy do Render concluído com status LIVE.
+- Site protegido por SITE_ACCESS_PASSWORD impede QA visual automatizado sem sessão autorizada.
+- Figma final foi renderizado e revisado em desktop/mobile.
+
+---
 # Etapa atual: **Cinematic V4 — frame scrub + responsive portrait**
 
 Data: 2026-09-25 (America/Sao_Paulo)
