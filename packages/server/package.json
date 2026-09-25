@@ -19,7 +19,8 @@
     "@types/express": "^5.0.0",
     "@types/cors": "^2.8.17",
     "@types/node": "^22.10.5",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "tiktok-live-connector-v1": "npm:tiktok-live-connector@1.2.3"
   },
   "devDependencies": {
     "tsx": "^4.19.2"
