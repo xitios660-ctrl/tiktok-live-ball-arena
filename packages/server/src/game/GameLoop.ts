@@ -30,12 +30,14 @@ import {
   type WinnerInfo,
   type HistoricalStats,
   type PickupAbilityKey,
+  type ShopDropState,
 } from '@arena/shared';
 import { randomUUID } from 'crypto';
 import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
 import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
 import { GlobalArenaEvents } from './GlobalArenaEvents';
 import { PickupSystem, pickupAbilityFromGiftId } from './PickupSystem';
+import type { EconomyStore, InventoryItem } from '../economy/EconomyStore';
 import { AutoBotSpawner } from './AutoBotSpawner';
 import {
   ChatGPTBossController,
@@ -106,6 +108,10 @@ export class GameLoop {
   private readonly pickups = new PickupSystem();
   private readonly autoBots: AutoBotSpawner;
   private readonly boss: ChatGPTBossController;
+  private readonly economy?: EconomyStore;
+  private equipped = new Map<string, InventoryItem>();
+  private shopDrops = new Map<string, ShopDropState>();
+  private itemCooldowns = new Map<string, number>();
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
   /**
@@ -117,7 +123,8 @@ export class GameLoop {
     { count: number; lastLikeAt: number }
   >();
 
-  constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
+  constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC, economy?: EconomyStore) {
+    this.economy = economy;
     this.state = {
       phase: 'waiting',
       roundId: randomUUID(),
@@ -170,6 +177,9 @@ export class GameLoop {
       isBoss: b.userId === CHATGPT_BOSS_USER_ID,
       bossRewardKills:
         b.userId === CHATGPT_BOSS_USER_ID ? CHATGPT_BOSS_REWARD_KILLS : undefined,
+      equippedItem: this.equipped.get(b.userId)
+        ? (() => { const i = this.equipped.get(b.userId)!; return { slug: i.slug, icon: (i as any).icon || '🎯', name: i.name, boundUntil: i.boundUntil }; })()
+        : undefined,
     }));
     return {
       tick: this.tick,
@@ -180,6 +190,7 @@ export class GameLoop {
       playerCount: this.physics.count,
       balls,
       pickups: this.pickups.toPublicStates(),
+      shopDrops: [...this.shopDrops.values()],
       stats,
       top5,
       kingUserId,
@@ -293,6 +304,9 @@ export class GameLoop {
     this.personalLikeCombos.clear();
     this.recentCombat = [];
     this.lastSpawnedUserId = null;
+    this.equipped.clear();
+    this.shopDrops.clear();
+    this.itemCooldowns.clear();
     this.globalEvents.resetRound();
     this.pickups.onRoundStart();
     this.tick = 0;
@@ -339,6 +353,9 @@ export class GameLoop {
     this.hitPowerCooldown.clear();
     this.personalLikeCombos.clear();
     this.pickups.clear();
+    this.equipped.clear();
+    this.shopDrops.clear();
+    this.itemCooldowns.clear();
     this.recentCombat = [];
     this.boss.resetRound();
     this.tick = 0;
@@ -367,7 +384,11 @@ export class GameLoop {
     if (event.user.userId === 'system') return;
 
     if (event.type === 'comment') {
-      this.handleComment(event.user);
+      if (/^\s*!?(usar|use|equipar)\s+/i.test(event.comment)) {
+        void this.useStoreItem(event.user, event.comment);
+      } else {
+        this.handleComment(event.user);
+      }
     } else if (event.type === 'join') {
       this.handleJoin(event.user);
     } else if (event.type === 'gift') {
@@ -377,6 +398,31 @@ export class GameLoop {
     } else if (event.type === 'share') {
       this.handleShare(event.user);
     }
+  }
+
+  private async useStoreItem(user: ArenaUser, comment: string): Promise<void> {
+    if (!this.economy) return;
+    const requested = comment.replace(/^\s*!?(usar|use|equipar)\s+/i, '').trim().toLowerCase();
+    const inventory = await this.economy.inventory(user.username);
+    const item = inventory.find(i => i.status === 'bound' && (i.slug === requested || i.name.toLowerCase() === requested || i.slug.includes(requested)));
+    if (!item) { this.pushCombat({ type:'announce', kind:'pickup', message:`@${user.username} não tem esse item equipado.`, userId:user.userId, username:user.username, timestamp:Date.now() }); return; }
+    const cooldown = item.slug === 'marksman-rifle' ? 2500 : item.slug === 'dash-charge' ? 8000 : 0;
+    const cooldownKey = `${user.userId}:${item.id}`;
+    const remaining = (this.itemCooldowns.get(cooldownKey) || 0) - Date.now();
+    if (remaining > 0) { this.pushCombat({ type:'announce', kind:'pickup', message:`⏳ @${user.username}, aguarde ${Math.ceil(remaining / 1000)}s para usar novamente.`, userId:user.userId, username:user.username, timestamp:Date.now() }); return; }
+    this.itemCooldowns.set(cooldownKey, Date.now() + cooldown);
+    this.equipped.set(user.userId, item);
+    if (item.slug === 'marksman-rifle') {
+      const damage = this.physics.applyRangedDamage(user.userId, 5, 720);
+      if (damage) this.processDamages([damage]);
+      this.pushCombat({ type:'announce', kind:'pickup', message:`🎯 @${user.username} disparou Rifle de Precisão (5 dano)!`, userId:user.userId, username:user.username, value:5, timestamp:Date.now() });
+    } else if (item.slug === 'dash-charge') {
+      this.physics.setTimedBuff(user.userId, 'dash', Date.now()+2500);
+      this.pushCombat({ type:'announce', kind:'pickup', message:`🚀 @${user.username} usou Carga Foguete!`, userId:user.userId, username:user.username, timestamp:Date.now() });
+    } else {
+      this.pushCombat({ type:'announce', kind:'pickup', message:`🛡️ @${user.username} equipou ${item.name}!`, userId:user.userId, username:user.username, timestamp:Date.now() });
+    }
+    this.emitSnapshot();
   }
 
   handleLikes(userOrCount: ArenaUser | number, maybeCount?: number): void {
@@ -667,6 +713,7 @@ export class GameLoop {
     this.ensurePlayerRecord(user.userId, user.username, user.nickname);
     this.lastSpawnedUserId = user.userId;
     const rec = this.players.get(user.userId)!;
+    void this.economy?.ensurePlayer(user.username, user.userId);
     rec.alive = true;
     rec.deadAt = null;
     this.physics.setKills(user.userId, rec.kills);
@@ -843,6 +890,7 @@ export class GameLoop {
     if (damages.length) this.processDamages(damages);
 
     const pickupResult = this.pickups.tick(this.physics);
+    void this.processShopDrops();
     for (const a of pickupResult.announces) this.pushCombat(a);
     for (const f of pickupResult.fx) this.pushCombat(f);
 
@@ -864,6 +912,19 @@ export class GameLoop {
     }
     this.tick += 1;
     this.emitSnapshot();
+  }
+  private async processShopDrops(): Promise<void> {
+    if (!this.economy || !this.shopDrops.size) return;
+    for (const drop of [...this.shopDrops.values()]) {
+      const collector = this.physics.getAll().find(b => Math.hypot(b.x-drop.x,b.y-drop.y) <= b.radius + 32);
+      if (!collector) continue;
+      this.shopDrops.delete(drop.id);
+      await this.economy.markPickedUp(drop.id, collector.username);
+      const inv = (await this.economy.inventory(collector.username)).find(i => i.id === drop.id);
+      if (inv) this.equipped.set(collector.userId, inv);
+      this.pushCombat({ type:'announce', kind:'pickup', message:`${drop.icon} @${collector.username} pegou ${drop.name}!`, userId:collector.userId, username:collector.username, timestamp:Date.now() });
+      this.emitSnapshot();
+    }
   }
 
   private syncSpeedStats(): void {
@@ -1017,6 +1078,14 @@ export class GameLoop {
     const lastHitterName = body?.lastHitterName ?? d.attackerName;
 
     this.physics.removeBall(d.victimId);
+    const carried = this.equipped.get(d.victimId);
+    if (carried && body && Date.now() >= carried.boundUntil) {
+      const drop: ShopDropState = { id: carried.id, slug: carried.slug, name: carried.name, icon: (carried as any).icon || '🎯', x, y };
+      this.shopDrops.set(drop.id, drop);
+      void this.economy?.markDropped(drop.id, x, y);
+      this.equipped.delete(d.victimId);
+      this.pushCombat({ type:'announce', kind:'pickup', message:`📦 ${drop.icon} ${d.victimName} derrubou ${drop.name}!`, userId:d.victimId, username:d.victimName, timestamp:Date.now() });
+    }
     if (victimIsBoss) this.boss.markDefeated();
 
     const victim = this.ensurePlayerRecord(d.victimId, d.victimName);
@@ -1038,6 +1107,7 @@ export class GameLoop {
       const atk = this.ensurePlayerRecord(attackerId, attackerName || '???');
       const killReward = victimIsBoss ? CHATGPT_BOSS_REWARD_KILLS : 1;
       atk.kills += killReward;
+      void this.economy?.recordKill(atk.username, atk.userId, `kill:${this.state.roundId}:${Date.now()}:${attackerId}:${d.victimId}`, killReward);
       attackerName = atk.nickname || atk.username;
       // Kill → strength (round-permanent); live ball picks it up immediately
       this.physics.setKills(attackerId, atk.kills);

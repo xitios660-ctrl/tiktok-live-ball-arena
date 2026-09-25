@@ -12,7 +12,11 @@ export type GlossSkin =
   | 'capy'
   | 'mirror'
   | 'rocket'
-  | 'magnet';
+  | 'magnet'
+  | 'ember'
+  | 'cyan'
+  | 'violet'
+  | 'gold';
 
 const TEX_SIZE = 128;
 
@@ -26,7 +30,8 @@ export function skinFromBall(b: BallState): GlossSkin {
   if (buffs.includes('reflect_shield')) return 'mirror';
   if (buffs.includes('dash_burst')) return 'rocket';
   if (buffs.includes('magnet_pulse')) return 'magnet';
-  return 'plain';
+  const seed = [...b.userId].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 7) % 4;
+  return (['ember', 'cyan', 'violet', 'gold'] as const)[seed];
 }
 
 function textureKey(color: number, skin: GlossSkin): string {
@@ -284,6 +289,19 @@ function paintSkinAccent(
       ctx.beginPath();
       ctx.arc(cx, cy + r * 0.10, r * 0.24, 0.15, Math.PI - 0.15);
       ctx.stroke();
+      break;
+    }
+    case 'ember':
+    case 'cyan':
+    case 'violet':
+    case 'gold': {
+      const accent = skin === 'ember' ? 'rgba(255,78,69,.88)' : skin === 'cyan' ? 'rgba(34,211,238,.9)' : skin === 'violet' ? 'rgba(192,132,252,.9)' : 'rgba(255,209,102,.95)';
+      ctx.strokeStyle = accent; ctx.lineWidth = Math.max(3, r * .08);
+      ctx.beginPath(); ctx.arc(cx, cy, r * .72, -.35, Math.PI * 1.4); ctx.stroke();
+      ctx.fillStyle = 'rgba(11,11,15,.76)';
+      ctx.beginPath(); ctx.arc(cx-r*.24, cy-r*.08, r*.1, 0, Math.PI*2); ctx.arc(cx+r*.24, cy-r*.08, r*.1, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(242,235,215,.9)';
+      ctx.beginPath(); ctx.arc(cx-r*.2, cy-r*.11, r*.035, 0, Math.PI*2); ctx.arc(cx+r*.2, cy-r*.11, r*.035, 0, Math.PI*2); ctx.fill();
       break;
     }
     default:

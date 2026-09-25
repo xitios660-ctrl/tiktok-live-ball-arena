@@ -642,6 +642,19 @@ export class PhysicsWorld {
     const result = this.dealDamage(victim, Math.round(damage), attacker, now);
     return result;
   }
+  applyRangedDamage(attackerId: string, damage: number, range: number): DamageApplication | null {
+    const attacker = this.balls.get(attackerId);
+    if (!attacker || isProtected(attacker)) return null;
+    let target: BallBody | null = null;
+    let best = range;
+    for (const b of this.balls.values()) {
+      if (b.userId === attackerId || isProtected(b)) continue;
+      const d = Math.hypot(b.x - attacker.x, b.y - attacker.y);
+      if (d <= best) { best = d; target = b; }
+    }
+    if (!target) return null;
+    return this.dealDamage(target, Math.round(damage), attacker, Date.now());
+  }
 
   spawnOrNudge(user: ArenaUser, radius = DEFAULT_BALL_RADIUS, withProtection = false): BallBody {
     const existing = this.balls.get(user.userId);

@@ -15,10 +15,13 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "socket.io": "^4.8.1",
+    "pg": "^8.13.1",
     "tiktok-live-connector": "^2.5.0",
     "@types/express": "^5.0.0",
     "@types/cors": "^2.8.17",
     "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/pg": "^8.11.10",
     "typescript": "^5.7.3",
     "tiktok-live-connector-v1": "npm:tiktok-live-connector@1.2.3",
     "piratetok-live-js": "0.1.5"

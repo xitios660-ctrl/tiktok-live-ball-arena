@@ -165,6 +165,7 @@ export class ArenaScene extends Phaser.Scene {
   private ballsLayer!: Phaser.GameObjects.Container;
   private killFeedLayer!: Phaser.GameObjects.Container;
   private views = new Map<string, BallView>();
+  private shopDropViews = new Map<string, Phaser.GameObjects.Container>();
   /** After first syncBalls, new balls get spawn portal VFX (avoids hydrate spam). */
   private ballsHydrated = false;
   private pendingAvatars = new Set<string>();
@@ -460,6 +461,8 @@ export class ArenaScene extends Phaser.Scene {
       this.game.events.off(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
       this.game.events.off(SOCKET_EVENTS.COMBAT_EVENT, this.onCombat, this);
       this.views.clear();
+      for (const v of this.shopDropViews.values()) v.destroy(true);
+      this.shopDropViews.clear();
       this.pickupsLayer?.clear();
       this.ambientTwinkles?.destroy();
       this.ambientTwinkles = null;
@@ -553,6 +556,7 @@ export class ArenaScene extends Phaser.Scene {
     void audio.startBgm(false);
     this.syncBalls(snap.balls);
     this.pickupsLayer?.sync(snap.pickups);
+    this.syncShopDrops(snap.shopDrops || []);
     if (this.likesText) {
       this.likesText.setText('❤️ LIKES = EVOLUÇÃO PESSOAL');
     }
@@ -564,6 +568,23 @@ export class ArenaScene extends Phaser.Scene {
       this.hideWinner();
     }
   };
+
+  private syncShopDrops(drops: NonNullable<GameSnapshot['shopDrops']>): void {
+    const keep = new Set(drops.map(d => d.id));
+    for (const [id, view] of this.shopDropViews) { if (!keep.has(id)) { view.destroy(true); this.shopDropViews.delete(id); } }
+    for (const d of drops) {
+      let view = this.shopDropViews.get(d.id);
+      if (!view) {
+        view = this.add.container(d.x, d.y).setDepth(14);
+        const glow = this.add.circle(0, 0, 40, THEME.gold, .16);
+        const ring = this.add.circle(0, 0, 27, THEME.arenaRed, .25).setStrokeStyle(3, THEME.gold, .9);
+        const icon = this.add.text(0, -2, d.icon || '🎯', { fontFamily: FONT, fontSize: '25px' }).setOrigin(.5);
+        const label = this.add.text(0, 32, 'DROP', { fontFamily: FONT_BLACK, fontSize: '10px', color: THEME_HEX.gold, stroke: THEME_HEX.arenaDark, strokeThickness: 3 }).setOrigin(.5);
+        view.add([glow, ring, icon, label]); this.shopDropViews.set(d.id, view);
+      }
+      view.setPosition(d.x, d.y); view.setScale(1 + Math.sin(this.time.now / 220) * .08);
+    }
+  }
 
   private onCombat = (event: CombatEvent) => {
     if (event.type === 'ability_fx') {

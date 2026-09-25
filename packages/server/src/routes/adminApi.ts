@@ -4,12 +4,14 @@ import type { DemoEventSimulator } from '../demo/DemoEventSimulator';
 import { DEMO_GIFT_PRESETS, DEMO_PICKUP_PRESETS } from '../demo/DemoEventSimulator';
 import { PICKUP_META, isBotUser } from '@arena/shared';
 import { pickupAbilityFromGiftId } from '../game/PickupSystem';
+import type { EconomyStore } from '../economy/EconomyStore';
 
 export function adminApiRouter(deps: {
   game: GameLoop;
   getDemo: () => DemoEventSimulator | null;
   mode: string;
   connector: import('../tiktok/ITikTokConnector').ITikTokConnector;
+  economy: EconomyStore;
 }): Router {
   const router = Router();
 
@@ -546,6 +548,24 @@ export function adminApiRouter(deps: {
     };
     deps.game.handleLiveEvent(event);
     res.json({ ok: true, event, stats: deps.game.getStats() });
+  });
+
+  router.get('/admin/economy/summary', async (_req, res) => {
+    res.json({ ok: true, persistent: deps.economy.persistent, ...(await deps.economy.adminSummary()), catalog: await deps.economy.getCatalog() });
+  });
+  router.get('/admin/economy/player', async (req, res) => {
+    const username = String(req.query.username || '').trim();
+    if (!username) { res.status(400).json({ ok: false, error: 'username obrigatório' }); return; }
+    res.json({ ok: true, player: await deps.economy.getPlayer(username), inventory: await deps.economy.inventory(username), ledger: await deps.economy.ledger(username, 100) });
+  });
+  router.post('/admin/economy/adjust', async (req, res) => {
+    const username = String(req.body?.username || '').trim();
+    const reason = String(req.body?.reason || '').trim();
+    const amount = Number(req.body?.amount);
+    const operationKey = String(req.body?.operationKey || '').trim();
+    if (!username || !reason || !Number.isInteger(amount) || !operationKey) { res.status(400).json({ ok:false,error:'username, amount inteiro, motivo e operationKey são obrigatórios' }); return; }
+    const result = await deps.economy.adminAdjust(username, amount, reason, operationKey);
+    res.status(result.ok ? 200 : 400).json(result);
   });
 
   return router;

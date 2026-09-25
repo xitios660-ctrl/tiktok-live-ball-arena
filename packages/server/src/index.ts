@@ -16,6 +16,8 @@ import { DemoEventSimulator } from './demo/DemoEventSimulator';
 import { GameLoop } from './game/GameLoop';
 import { healthRouter } from './routes/health';
 import { adminApiRouter } from './routes/adminApi';
+import { shopApiRouter } from './routes/shopApi';
+import { EconomyStore } from './economy/EconomyStore';
 import {
   accessGateMiddleware,
   createAccessRouter,
@@ -45,8 +47,10 @@ async function main() {
 
   const server = http.createServer(app);
   const io = new SocketIOServer(server, { cors: { origin: '*' } });
+  const economy = new EconomyStore();
+  await economy.init();
 
-  const game = new GameLoop(MODE, ROUND_SEC);
+  const game = new GameLoop(MODE, ROUND_SEC, economy);
   // Initialize the round BEFORE connecting to TikTok. The connector can emit
   // recent real comments/gifts during connect(); resetting afterwards would
   // erase characters that just spawned from those events.
@@ -85,7 +89,8 @@ async function main() {
   game.onCombat((ev) => io.emit(SOCKET_EVENTS.COMBAT_EVENT, ev));
 
   app.use(healthRouter({ game, connector, mode: MODE }));
-  app.use(adminApiRouter({ game, getDemo, mode: MODE, connector }));
+  app.use(shopApiRouter(economy));
+  app.use(adminApiRouter({ game, getDemo, mode: MODE, connector, economy }));
 
   const publicDir = path.join(__dirname, '../public');
   // Gate brand assets (/assets/ball-arena/*) — exempt from password middleware
@@ -94,6 +99,9 @@ async function main() {
   }
   app.get('/admin', (_req, res) => {
     res.sendFile(path.join(publicDir, 'admin.html'));
+  });
+  app.get('/shop', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'shop.html'));
   });
 
   const clientDist = path.resolve(__dirname, '../../client/dist');

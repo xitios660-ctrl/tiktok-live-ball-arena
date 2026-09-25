@@ -175,6 +175,7 @@ export interface BallState {
   isBoss?: boolean;
   /** Kill-points awarded to the player who defeats this boss. */
   bossRewardKills?: number;
+  equippedItem?: { slug: string; icon: string; name: string; boundUntil: number };
 }
 
 export interface PlayerStats {
@@ -257,6 +258,14 @@ export interface PickupState {
   y: number;
   radius: number;
 }
+export interface ShopDropState {
+  id: string;
+  slug: string;
+  name: string;
+  icon: string;
+  x: number;
+  y: number;
+}
 
 export interface GameSnapshot {
   tick: number;
@@ -268,6 +277,8 @@ export interface GameSnapshot {
   balls: BallState[];
   /** Arena floor power-ups (non-gift abilities) */
   pickups: PickupState[];
+  /** Store items dropped after their fixed three-minute binding expires. */
+  shopDrops?: ShopDropState[];
   /** Full sorted ranking */
   stats: PlayerStats[];
   /** TOP 5 for overlay */

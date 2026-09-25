@@ -109,3 +109,11 @@ Admin: escolha o **alvo** e clique o gift. Detalhes em `gifts/gift-config.json`.
 ## Honestidade TikTok
 
 Eventos do modo DEMO são **falsos / simulados**. Não há conexão TikTok até o adapter PRODUCTION ser ligado. Veja `docs/TIKTOK_INTEGRATION.md`.
+
+## Loja de kills
+- Loja pública: `/shop` (sem senha), com @ normalizado, saldo, catálogo, compra idempotente e ledger resumido.
+- O mesmo @ é a identidade canônica do saldo; o userId TikTok é mantido apenas para auditoria.
+- Catálogo inicial: Rifle de Precisão (120 kills, 5 dano, alcance 720), Guarda de Ferro (80) e Carga Foguete (60).
+- Compre, entre na arena e comente `!usar marksman-rifle` (ou `!usar rifle`). O item fica vinculado por 3 minutos fixos; após expirar, ao morrer, cai e pode ser recolhido por outra bola.
+- Produção exige `DATABASE_URL` Postgres. Sem ela, o servidor usa fallback local apenas para desenvolvimento e registra aviso; no Render free esse arquivo é efêmero.
+- Admin protegido: `/admin/economy/summary`, `/admin/economy/player` e `/admin/economy/adjust` (motivo e operationKey obrigatórios).
