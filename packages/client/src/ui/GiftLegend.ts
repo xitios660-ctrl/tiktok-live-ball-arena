@@ -12,26 +12,33 @@ interface PowerIcon {
 }
 
 const POWER_ICONS: PowerIcon[] = [
-  { emoji: '🔥', ring: THEME.arenaRed, label: 'Fogo' },
-  { emoji: '🛡️', ring: THEME.electricCyan, label: 'Escudo' },
+  { emoji: '🌹', ring: THEME.sage, label: 'Rosa' },
+  { emoji: '🦖', ring: THEME.emberOrange, label: 'Dino' },
+  { emoji: '🍩', ring: THEME.gold, label: 'Rosquinha' },
+  { emoji: '🦫', ring: THEME.emberOrange, label: 'Capivara' },
+  { emoji: '🌌', ring: 0xa78bfa, label: 'Galáxia' },
   { emoji: '⚡', ring: THEME.gold, label: 'Raio' },
   { emoji: '🧲', ring: THEME.electricCyan, label: 'Ímã' },
   { emoji: '❄️', ring: 0x7dd3fc, label: 'Gelo' },
   { emoji: '🚀', ring: THEME.emberOrange, label: 'Dash' },
   { emoji: '🪞', ring: 0xe0e7ff, label: 'Espelho' },
   { emoji: '💚', ring: THEME.sage, label: 'Cura' },
-  { emoji: '🌌', ring: 0xa78bfa, label: 'Galáxia' },
 ];
 
 /** Portuguese gabarito — gameplay meanings from GiftAbilities / PhysicsWorld */
 export const GIFT_GABARITO_LINES: readonly string[] = [
   '🌹 Rosa — cura leve',
   '🦖 Dino — força e velocidade',
-  '🍩 Rosquinha — escudo',
-  '🦫 Capivara — gigante até ×3',
-  '🌌 Galáxia — poder até o fim da rodada',
+  '🍩 Rosquinha — cura + escudo, empilha ×3',
+  '🦫 Capivara — gigante, empilha ×3',
+  '🌌 Galáxia — God Mode até o fim da rodada',
+  '⚡ Raio — dano + lentidão no alvo próximo',
+  '🧲 Ímã — puxa bolas próximas',
+  '❄️ Gelo — desacelera inimigos próximos',
+  '🚀 Foguete — dash e velocidade temporária',
+  '🪞 Espelho — devolve parte do dano',
   '💚 Cura — recupera vida',
-  '💬 Comente para entrar ou renascer',
+  '💬 Comente — entre ou renasça',
 ];
 
 export interface GiftLegendHandles {
@@ -75,15 +82,17 @@ export function createGiftLegend(
 
   // Circular icon discs row
   const iconY = padY + 40;
-  const iconR = compact ? 17 : 20;
-  const gap = compact ? 36 : 40;
+  const iconR = compact ? 15 : 18;
+  const gap = compact ? 34 : 38;
+  const iconCols = 4;
+  const iconRows = Math.ceil(POWER_ICONS.length / iconCols);
   const startX = padX + iconR + 2;
   const iconLabels: Phaser.GameObjects.Text[] = [];
 
   for (let i = 0; i < POWER_ICONS.length; i++) {
     const ic = POWER_ICONS[i];
-    const ix = startX + (i % 4) * gap;
-    const iy = iconY + Math.floor(i / 4) * (gap + 6);
+    const ix = startX + (i % iconCols) * gap;
+    const iy = iconY + Math.floor(i / iconCols) * (gap + 6);
     drawPowerDisc(iconsGfx, ix, iy, iconR, ic.ring);
     const t = scene.add
       .text(ix, iy, ic.emoji, { fontSize: compact ? '15px' : '18px' })
@@ -91,9 +100,7 @@ export function createGiftLegend(
     iconLabels.push(t);
   }
 
-  const bodyY = padY + 48;
-  iconsGfx.setVisible(false);
-  iconLabels.forEach((label) => label.setVisible(false));
+  const bodyY = iconY + (iconRows - 1) * (gap + 6) + iconR + 16;
   const body = scene.add.text(padX, bodyY, GIFT_GABARITO_LINES.join('\n'), {
     fontFamily: FONT,
     fontSize,

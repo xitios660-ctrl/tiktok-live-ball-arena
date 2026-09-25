@@ -204,3 +204,12 @@ Pickups no chão (raio/ima/gelo/foguete/espelho) + overlay neon.
 - Verification: shared/server/client compile; production selftests including connector duplicate→death→new repeated comment; local disposable HTTP→GameLoop→Socket.IO smoke passes entry/death/respawn, 50/100/150/1000 tiers. Actual 30-second bot cadence checked in disposable server.
 - Live limitation: public health reports repeated primary receiver reconnections; live viewer comment/like delivery still requires post-deploy observation. Do not equate local simulated events with a real TikTok live test.
 - Previous deployed commit: 96fc6fa. Next: publish tested change and verify live overlay and receiver status.
+
+
+## 2026-09-25 — Like combo reset + complete guides + premium mobile TOP 5
+- Personal like rewards now run in repeatable streaks: 10 seconds without a like starts a fresh combo.
+- New combo can earn 50/100/150/200/500/1000 rewards again; round kills/deaths/strength remain intact.
+- Main gift/power gabarito now shows every implemented gift and floor power instead of hiding the icon grid.
+- Phone landscape now reuses the same PremiumTop5 component as the main overlay.
+- Phone guide lists Rosa, Dino, Rosquinha, Capivara, Galáxia, Raio, Ímã, Gelo, Foguete, Espelho, Cura and comment/respawn.
+- Server selftest updated to verify idle like-combo reset.

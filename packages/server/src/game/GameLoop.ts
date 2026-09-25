@@ -10,6 +10,7 @@ import {
   combatStrengthMult,
   displayStrengthScore,
   LIKE_PERSONAL_MILESTONES,
+  LIKE_COMBO_RESET_MS,
   TITAN_DURATION_MS,
   HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
@@ -108,7 +109,8 @@ export class GameLoop {
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
   /**
-   * Per-viewer round likes. Network pauses and deaths do not erase progress.
+   * Per-viewer like streaks. A short inactivity window starts a fresh combo,
+   * so the same viewer can earn the 50/100/150... rewards again in one round.
    */
   private personalLikeCombos = new Map<
     string,
@@ -396,9 +398,15 @@ export class GameLoop {
     const now = Date.now();
     const previous = this.personalLikeCombos.get(user.userId);
     const comboReset =
-      !previous;
+      !previous || now - previous.lastLikeAt >= LIKE_COMBO_RESET_MS;
     const before = comboReset ? 0 : previous.count;
     const total = before + n;
+
+    if (comboReset && previous) {
+      console.log(
+        `[LIKE COMBO RESET] @${user.username} idle=${now - previous.lastLikeAt}ms → new combo`
+      );
+    }
 
     this.personalLikeCombos.set(user.userId, {
       count: total,

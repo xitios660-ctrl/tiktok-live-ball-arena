@@ -555,8 +555,10 @@ export const LIKE_REWARD_DEFAULT: 'heal_rain' | 'speed_storm' = 'heal_rain';
 export const LIKE_PERSONAL_STEP = 100;
 export const LIKE_PERSONAL_HEAL = 20;
 export const LIKE_PERSONAL_STRENGTH = 1;
+/** A new personal like combo starts after this much inactivity. */
+export const LIKE_COMBO_RESET_MS = 10_000;
 
-/** Personal rewards accumulate for the entire round, including after respawn. */
+/** Personal rewards repeat on each combo; a combo resets after inactivity. */
 const SPECIAL_LIKE_MILESTONES = [
   { likes: 50, heal: 10, strength: 0, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
   { likes: 100, heal: 20, strength: 1, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },

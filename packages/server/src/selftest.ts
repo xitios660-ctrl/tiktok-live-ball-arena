@@ -1,7 +1,7 @@
 process.env.AUTO_BOT_ENABLED = 'false';
 process.env.CHATGPT_BOSS_ENABLED = 'false';
 
-import { type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
+import { LIKE_COMBO_RESET_MS, type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
 import { EventDedupe } from './tiktok/eventDedupe';
 import { GameLoop } from './game/GameLoop';
 import {
@@ -581,11 +581,13 @@ try {
     personalLikeCombos: Map<string, { count: number; lastLikeAt: number }>;
   };
   const combo = internals.personalLikeCombos.get(user.userId)!;
-  combo.lastLikeAt = Date.now() - 60_000;
-  likeGame.handleLikes(user, 1);
-  assert(combo.count === 1000, 'previous counter unexpectedly mutated');
-  assert(internals.personalLikeCombos.get(user.userId)?.count === 1001,
-    'network pause erased round likes');
+  combo.lastLikeAt = Date.now() - LIKE_COMBO_RESET_MS - 1;
+  likeGame.handleLikes(user, 50);
+  assert(combo.count === 1000, 'previous combo object unexpectedly mutated');
+  assert(internals.personalLikeCombos.get(user.userId)?.count === 50,
+    'idle pause did not start a fresh like combo');
+  assert((getBall(likeGame, user.userId).hitPower ?? 0) === 28,
+    'fresh 50-like combo should heal only, not add strength');
   const other = { userId: 'other-viewer', username: 'other_viewer' };
   likeGame.handleLiveEvent(commentEvent(other));
   likeGame.adminDamage(other.userId, 50, 'admin');
@@ -739,6 +741,6 @@ try {
 
 console.log(
   '[SELFTEST] PASS PirateTok direct CHAT/LIKE/GIFT + legacy normalization + real gift-name mapping; ' +
-    'comment spawn+respawn; round LIKE milestones every 50 through 1000; ' +
+    'comment spawn+respawn; repeatable LIKE combos every 50 through 1000 with idle reset; ' +
     'Rosa/Dino/Donut/Capybara/Galaxy + Lightning/Magnet/Freeze/Dash/Reflect/Heal powers'
 );

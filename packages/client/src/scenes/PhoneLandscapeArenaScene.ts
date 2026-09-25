@@ -15,7 +15,12 @@ import {
 import { audio } from '../audio/AudioManager';
 import { getOverlayOptions } from '../overlayConfig';
 import { LANDSCAPE_HEIGHT, makeLandscapeMapper } from '../phoneLandscape';
-import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT, RANK_HEX } from '../theme';
+import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT } from '../theme';
+import {
+  createPremiumTop5,
+  updatePremiumTop5,
+  type PremiumTop5Handles,
+} from '../ui/PremiumTop5';
 
 interface LandscapeBallView {
   root: Phaser.GameObjects.Container;
@@ -47,22 +52,18 @@ interface LandscapePickupView {
 
 const PANEL_W = 286;
 const PANEL_TOP = 106;
-const PANEL_ROW_H = 52;
-const TOP_PANEL_H = 326;
-const GIFT_PANEL_H = 258;
+const GIFT_PANEL_H = 392;
 
 export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private bg!: Phaser.GameObjects.Graphics;
   private field!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Graphics;
-  private topPanel!: Phaser.GameObjects.Graphics;
   private giftPanel!: Phaser.GameObjects.Graphics;
   private title!: Phaser.GameObjects.Text;
   private timer!: Phaser.GameObjects.Text;
   private players!: Phaser.GameObjects.Text;
   private likes!: Phaser.GameObjects.Text;
-  private topTitle!: Phaser.GameObjects.Text;
-  private topRows: Phaser.GameObjects.Text[] = [];
+  private premiumTop5!: PremiumTop5Handles;
   private giftTitle!: Phaser.GameObjects.Text;
   private giftRows: Phaser.GameObjects.Text[] = [];
   private feed!: Phaser.GameObjects.Text;
@@ -97,7 +98,6 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.bg = this.add.graphics().setDepth(0);
     this.field = this.add.graphics().setDepth(1);
     this.hud = this.add.graphics().setDepth(80);
-    this.topPanel = this.add.graphics().setDepth(80);
     this.giftPanel = this.add.graphics().setDepth(80);
 
     this.title = this.add
@@ -143,29 +143,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       })
       .setDepth(100);
 
-    this.topTitle = this.add
-      .text(0, 0, '👑  TOP 5', {
-        fontFamily: FONT_ACCENT,
-        fontSize: '26px',
-        color: THEME_HEX.gold,
-        stroke: '#000000',
-        strokeThickness: 4,
-      })
-      .setDepth(100);
-
-    for (let i = 0; i < 5; i++) {
-      this.topRows.push(
-        this.add
-          .text(0, 0, '—', {
-            fontFamily: FONT,
-            fontSize: '19px',
-            color: i === 0 ? RANK_HEX.gold : THEME_HEX.light,
-            stroke: '#000000',
-            strokeThickness: 3,
-          })
-          .setDepth(100)
-      );
-    }
+    // Reuse the same premium leaderboard component from the main overlay.
+    this.premiumTop5 = createPremiumTop5(this, 0, 0, 100);
 
     this.giftTitle = this.add
       .text(0, 0, '🎁 GUIA DE PRESENTES', {
@@ -178,11 +157,17 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     const giftLines = [
-      '🌹 Rosa · recupera vida',
-      '🦖 Dino · força e velocidade',
-      '🍩 Rosquinha · escudo',
-      '🦫 Capivara · gigante até ×3',
-      '🌌 Galáxia · poder na rodada',
+      '🌹 Rosa · cura',
+      '🦖 Dino · força + velocidade',
+      '🍩 Rosquinha · cura + escudo ×3',
+      '🦫 Capivara · gigante ×3',
+      '🌌 Galáxia · God Mode na rodada',
+      '⚡ Raio · dano + lentidão',
+      '🧲 Ímã · puxa bolas próximas',
+      '❄️ Gelo · desacelera inimigos',
+      '🚀 Foguete · dash + velocidade',
+      '🪞 Espelho · devolve dano',
+      '💚 Cura · recupera vida',
       '💬 Comente · entre ou renasça',
     ];
     for (const line of giftLines) {
@@ -190,7 +175,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         this.add
           .text(0, 0, line, {
             fontFamily: FONT,
-            fontSize: '16px',
+            fontSize: '15px',
             color: THEME_HEX.light,
             stroke: '#000000',
             strokeThickness: 3,
@@ -241,7 +226,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .text(
         0,
         0,
-        '💬 COMENTE PARA ENTRAR OU RENASCER  •  ❤️ LIKES INDIVIDUAIS NA RODADA\n50: +10 vida  •  100: +20 vida / +1 força  •  150: +10 vida  •  200: +40 vida / +2 força\n500: vida cheia / +10 força / 🦫  •  1000: vida cheia / +15 força / 🦫×3 até o fim\nMetas intermediárias de 50: +10 vida',
+        '💬 COMENTE PARA ENTRAR OU RENASCER  •  ❤️ COMBO REINICIA APÓS 10s SEM LIKE\n50: +10 vida  •  100: +20 vida / +1 força  •  150: +10 vida  •  200: +40 vida / +2 força\n500: vida cheia / +10 força / 🦫  •  1000: vida cheia / +15 força / 🦫×3 até o fim',
         {
           fontFamily: FONT_ACCENT,
           fontSize: '16px',
@@ -357,8 +342,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.timer.setText(this.formatTime(snap.remainingSec));
     this.players.setText('PLAYERS: ' + snap.playerCount);
 
-    // Likes are personal rewards now, so this pill shows the rule instead of a global meter.
-    this.likes.setText('❤️ LIKES ACUMULAM NA RODADA');
+    // Personal streaks can repeat after a short pause.
+    this.likes.setText('❤️ COMBO DE LIKES · RESET 10s');
 
     this.syncBalls(snap.balls);
     this.syncPickups(snap.pickups || []);
@@ -434,14 +419,12 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     const left = 18;
     const right = w - PANEL_W - 18;
 
-    this.topTitle.setPosition(left + 16, PANEL_TOP + 14);
-    for (let i = 0; i < this.topRows.length; i++) {
-      this.topRows[i].setPosition(left + 16, PANEL_TOP + 52 + i * PANEL_ROW_H);
-    }
+    const topScale = Math.min(0.84, PANEL_W / this.premiumTop5.width);
+    this.premiumTop5.root.setPosition(left, PANEL_TOP).setScale(topScale);
 
     this.giftTitle.setPosition(right + 16, PANEL_TOP + 14);
     for (let i = 0; i < this.giftRows.length; i++) {
-      this.giftRows[i].setPosition(right + 16, PANEL_TOP + 52 + i * 31);
+      this.giftRows[i].setPosition(right + 16, PANEL_TOP + 52 + i * 27);
     }
 
     this.feed.setPosition(left + 12, h - 152);
@@ -520,9 +503,6 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     const left = 18;
     const right = w - PANEL_W - 18;
 
-    this.topPanel.clear();
-    this.drawPanel(this.topPanel, left, PANEL_TOP, PANEL_W, TOP_PANEL_H);
-
     this.giftPanel.clear();
     this.drawPanel(this.giftPanel, right, PANEL_TOP, PANEL_W, GIFT_PANEL_H);
 
@@ -534,10 +514,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
   private cornerPanelTargets(): Phaser.GameObjects.GameObject[] {
     return [
-      this.topPanel,
+      this.premiumTop5.root,
       this.giftPanel,
-      this.topTitle,
-      ...this.topRows,
       this.giftTitle,
       ...this.giftRows,
     ];
@@ -915,15 +893,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
   }
 
   private renderTop5(): void {
-    const medals = ['🥇', '🥈', '🥉', '4', '5'];
-    for (let i = 0; i < this.topRows.length; i++) {
-      const row = this.lastTop5[i];
-      this.topRows[i].setText(
-        row
-          ? medals[i] + '  ' + this.truncate(row.nickname || row.username, 15) + '   ☠' + row.kills + '\n     ' + (row.alive ? Math.ceil(row.hp) + ' / ' + row.maxHp + ' vida' : 'Eliminado • comente para voltar')
-          : '—'
-      );
-    }
+    updatePremiumTop5(this, this.premiumTop5, this.lastTop5);
   }
 
   private showWinner(winner: WinnerInfo | null, seconds: number, top5: PlayerStats[]): void {
