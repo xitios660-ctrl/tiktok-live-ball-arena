@@ -227,7 +227,7 @@ function drawCard(
 ): void {
   bg.clear();
   // Deep glass base
-  bg.fillStyle(THEME.ink, 0.42);
+  bg.fillStyle(THEME.ink, 0.92);
   bg.fillRoundedRect(0, 0, w, h, RADIUS);
   // Soft inner gradient bands (layered rects)
   bg.fillStyle(THEME.card, 0.18);
@@ -359,7 +359,7 @@ export function updatePremiumTop5(
     if (i < 3) row.medal.setColor(THEME_HEX.arenaDark);
     else row.medal.setColor(RANK_COLORS[i]);
     row.name
-      .setText(truncateName(stats.username || stats.nickname || '?'))
+      .setText(truncateName(stats.nickname || stats.username || '?'))
       .setColor(alive ? RANK_COLORS[i] : THEME_HEX.muted)
       .setAlpha(alive ? 1 : 0.55);
     row.kills
@@ -371,9 +371,9 @@ export function updatePremiumTop5(
     drawHpPip(row.hpPip, rowW - 88, 10, ratio, alive);
 
     row.status
-      .setText(alive ? '' : '✕')
-      .setColor(THEME_HEX.coral)
-      .setAlpha(alive ? 0 : 0.85);
+      .setText(alive ? Math.ceil(stats.hp) + ' HP' : 'FORA')
+      .setColor(alive ? THEME_HEX.sage : THEME_HEX.coral)
+      .setAlpha(1);
 
     // Entrance / rank-change flash
     const prevIdx = prevIds.indexOf(stats.userId);

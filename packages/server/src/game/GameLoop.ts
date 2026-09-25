@@ -10,7 +10,6 @@ import {
   combatStrengthMult,
   displayStrengthScore,
   LIKE_PERSONAL_MILESTONES,
-  LIKE_COMBO_RESET_MS,
   TITAN_DURATION_MS,
   HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
@@ -109,8 +108,7 @@ export class GameLoop {
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
   /**
-   * Per-viewer continuous LIKE combo. A pause longer than LIKE_COMBO_RESET_MS
-   * starts a brand-new combo from zero, allowing the same rewards again.
+   * Per-viewer round likes. Network pauses and deaths do not erase progress.
    */
   private personalLikeCombos = new Map<
     string,
@@ -384,7 +382,7 @@ export class GameLoop {
 
     const user = typeof userOrCount === 'number' ? null : userOrCount;
     const count = typeof userOrCount === 'number' ? userOrCount : maybeCount ?? 1;
-    const n = Math.max(0, Math.floor(count));
+    const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
     if (n <= 0 || !user || user.userId === CHATGPT_BOSS_USER_ID) return;
 
     // Rewards belong only to the player's active character.
@@ -398,7 +396,7 @@ export class GameLoop {
     const now = Date.now();
     const previous = this.personalLikeCombos.get(user.userId);
     const comboReset =
-      !previous || now - previous.lastLikeAt > LIKE_COMBO_RESET_MS;
+      !previous;
     const before = comboReset ? 0 : previous.count;
     const total = before + n;
 
@@ -406,12 +404,6 @@ export class GameLoop {
       count: total,
       lastLikeAt: now,
     });
-
-    if (comboReset && previous?.count) {
-      console.log(
-        `[LIKE COMBO RESET] @${user.username} previous=${previous.count} gap=${now - previous.lastLikeAt}ms → 0`
-      );
-    }
 
     const crossed = LIKE_PERSONAL_MILESTONES.filter(
       (milestone) => before < milestone.likes && total >= milestone.likes
@@ -451,7 +443,10 @@ export class GameLoop {
         ball.healFlashTicks = 6;
         healed = Math.max(0, ball.hp - previousHp);
       } else if (milestone.heal > 0) {
-        healed = this.physics.heal(user.userId, milestone.heal);
+        const previousHp = ball.hp;
+        ball.hp = Math.min(ball.maxHp, ball.hp + milestone.heal);
+        healed = ball.hp - previousHp;
+        if (healed > 0) ball.healFlashTicks = 6;
       }
 
       if (milestone.strength > 0) {

@@ -13,7 +13,8 @@ export class EventDedupe {
   check(fingerprint: string): boolean {
     const now = Date.now();
     this.gc(now);
-    if (this.seen.has(fingerprint)) return false;
+    const previous = this.seen.get(fingerprint);
+    if (previous !== undefined && now - previous < this.ttlMs) return false;
     this.seen.set(fingerprint, now);
     return true;
   }

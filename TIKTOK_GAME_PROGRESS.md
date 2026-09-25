@@ -192,3 +192,15 @@ TIKTOK_MODE=demo npm run build && npm start
 ## Anterior (Arena floor pickups + futuristic overlay)
 
 Pickups no chão (raio/ima/gelo/foguete/espelho) + overlay neon.
+
+## 2026-09-25 — Comments, round likes and readable mobile guide
+- Fixed EventDedupe TTL lookup: repeated messages no longer stay blocked until opportunistic garbage collection.
+- Preserve TikTok comment message IDs across both receivers; new messages with the same text can respawn a dead viewer immediately.
+- Normalize nested PirateTok chat/like users; never attribute room-global like deltas to a viewer.
+- Likes accumulate per viewer for the round, with intermediate 50-like healing tiers (including 150), and existing 100/200/500/1000 strength/Capybara rewards. Like healing is capped at max HP.
+- Automatic bots default to 2 every 30s; configured batch has minimum 2, existing population safety cap retained.
+- Larger multiline mobile/portrait footer, clearer gift guide, leaderboard HP/eliminated state.
+- Repaired lockfile missing production TikTok connector dependencies.
+- Verification: shared/server/client compile; production selftests including connector duplicate→death→new repeated comment; local disposable HTTP→GameLoop→Socket.IO smoke passes entry/death/respawn, 50/100/150/1000 tiers. Actual 30-second bot cadence checked in disposable server.
+- Live limitation: public health reports repeated primary receiver reconnections; live viewer comment/like delivery still requires post-deploy observation. Do not equate local simulated events with a real TikTok live test.
+- Previous deployed commit: 96fc6fa. Next: publish tested change and verify live overlay and receiver status.

@@ -229,6 +229,7 @@ export class HybridTikTokConnector implements ITikTokConnector {
   private commentFingerprint(
     event: Extract<ArenaLiveEvent, { type: 'comment' }>
   ): string {
+    if (event.messageId) return 'comment:id:' + event.messageId;
     return [
       'comment',
       event.user.userId,

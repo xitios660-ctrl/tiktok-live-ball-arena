@@ -180,6 +180,7 @@ export function mapPirateUser(raw: unknown): ArenaUser {
   const id =
     scalarId(user.id) ||
     scalarId(user.userId) ||
+    scalarId(user.user_id) ||
     String(user.uniqueId || user.nickname || 'viewer');
   const username = String(user.uniqueId || user.username || user.nickname || id);
   const nickname = String(user.nickname || username);
@@ -204,13 +205,15 @@ function commonMessageId(data: Obj): string {
 export function mapPirateChatEvent(raw: unknown): ArenaLiveEvent | null {
   const data = asObj(raw);
   if (!data) return null;
-  const user = mapPirateUser(data.user);
-  const comment = String(data.content || data.comment || '').trim();
+  const payload = asObj(data.data) || data;
+  const user = mapPirateUser(payload.user ?? payload.userInfo ?? payload);
+  const comment = String(payload.content || payload.comment || payload.text || '').trim();
   if (!comment) return null;
   return {
     type: 'comment',
     user,
     comment,
+    messageId: commonMessageId(data) || commonMessageId(payload) || undefined,
     timestamp: Date.now(),
   };
 }
@@ -218,8 +221,9 @@ export function mapPirateChatEvent(raw: unknown): ArenaLiveEvent | null {
 export function mapPirateLikeEvent(raw: unknown): ArenaLiveEvent | null {
   const data = asObj(raw);
   if (!data) return null;
-  const user = mapPirateUser(data.user);
-  const count = Math.max(1, Number(data.count ?? data.likeCount ?? 1) || 1);
+  const payload = asObj(data.data) || data;
+  const user = mapPirateUser(payload.user ?? payload.userInfo ?? payload);
+  const count = Math.max(1, Number(payload.count ?? payload.likeCount ?? payload.like_count ?? 1) || 1);
   const total = Number(data.total ?? data.totalLikeCount ?? 0) || undefined;
   return {
     type: 'like',

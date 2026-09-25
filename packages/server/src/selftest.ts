@@ -1,7 +1,8 @@
 process.env.AUTO_BOT_ENABLED = 'false';
 process.env.CHATGPT_BOSS_ENABLED = 'false';
 
-import { LIKE_COMBO_RESET_MS, type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
+import { type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
+import { EventDedupe } from './tiktok/eventDedupe';
 import { GameLoop } from './game/GameLoop';
 import {
   parseTikTokChatPayload,
@@ -49,6 +50,39 @@ function giftEvent(
     coinValue,
     timestamp: Date.now(),
   };
+}
+
+// Repeated text with distinct TikTok message IDs must respawn immediately.
+{
+  const game = new GameLoop('production');
+  const hybrid = new HybridTikTokConnector();
+  const route = hybrid as unknown as {handlePrimaryEvent: (e: ArenaLiveEvent) => void};
+  hybrid.on('event', event => game.handleLiveEvent(event));
+  try {
+    const raw = {common:{msgId:'comment-a'}, user:{id:'repeat-user',uniqueId:'repeat_user'},content:'jogar'};
+    route.handlePrimaryEvent(mapPirateChatEvent(raw)!);
+    game.adminKill('repeat-user','admin');
+    route.handlePrimaryEvent(mapPirateChatEvent({...raw,common:{msgId:'comment-b'}})!);
+    assert(game.getSnapshot().balls.filter(b=>b.userId==='repeat-user').length===1,
+      'new message with repeated text did not respawn through the connector');
+    assert(game.getStats()[0].deaths===1, 'connector respawn lost deaths');
+    route.handlePrimaryEvent(mapPirateChatEvent({...raw,common:{msgId:'comment-b'}})!);
+    assert(game.getSnapshot().balls.length===1, 'duplicate message created extra character');
+  } finally { game.destroy(); }
+}
+
+// Dedupe must expire even when the map has fewer than 200 entries.
+{
+  const realNow = Date.now;
+  let now = 10000;
+  Date.now = () => now;
+  try {
+    const dedupe = new EventDedupe(2000);
+    assert(dedupe.check('same comment'), 'first comment rejected');
+    assert(!dedupe.check('same comment'), 'duplicate accepted');
+    now += 2001;
+    assert(dedupe.check('same comment'), 'repeated comment never expired');
+  } finally { Date.now = realNow; }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -326,7 +360,7 @@ normalizedLike = normalized.at(-1);
 assert(normalizedLike?.type === 'like', 'second production LIKE missing');
 if (normalizedLike?.type === 'like') {
   assert(
-    normalizedLike.likeCount === 12,
+    normalizedLike.likeCount === 1,
     'same-user rapid LIKE burst did not recover room-total delta'
   );
 }
@@ -510,7 +544,7 @@ try {
 
   likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === 90, '200 likes must add 40 HP');
+  assert(b.hp === 100, '150 likes heal 10 and 200 likes heal 40, capped at max HP');
   assert((b.hitPower ?? 0) === 3, '200 likes must add +2 additional power');
 
   likeGame.handleLikes(user, 300);
@@ -543,32 +577,23 @@ try {
     '1000-like Capybara x3 is not lasting toward the end of the round'
   );
 
-  // Simulate the viewer stopping likes for longer than the combo window.
-  // The next burst must start at zero and the SAME milestones must pay again.
   const internals = likeGame as unknown as {
     personalLikeCombos: Map<string, { count: number; lastLikeAt: number }>;
   };
-  const combo = internals.personalLikeCombos.get(user.userId);
-  assert(combo, 'like combo state missing');
-  combo.lastLikeAt = Date.now() - LIKE_COMBO_RESET_MS - 50;
+  const combo = internals.personalLikeCombos.get(user.userId)!;
+  combo.lastLikeAt = Date.now() - 60_000;
+  likeGame.handleLikes(user, 1);
+  assert(combo.count === 1000, 'previous counter unexpectedly mutated');
+  assert(internals.personalLikeCombos.get(user.userId)?.count === 1001,
+    'network pause erased round likes');
+  const other = { userId: 'other-viewer', username: 'other_viewer' };
+  likeGame.handleLiveEvent(commentEvent(other));
+  likeGame.adminDamage(other.userId, 50, 'admin');
+  likeGame.handleLikes(user, 1);
+  assert(getBall(likeGame, other.userId).hp === 50, 'likes healed another viewer');
+  likeGame.forceNextRound();
+  assert(internals.personalLikeCombos.size === 0, 'new round did not reset likes');
 
-  likeGame.adminDamage(user.userId, 40, 'admin');
-  const hpBeforeSecondCombo = getBall(likeGame, user.userId).hp;
-  const powerBeforeSecondCombo = getBall(likeGame, user.userId).hitPower ?? 0;
-
-  likeGame.handleLikes(user, 50);
-  b = getBall(likeGame, user.userId);
-  assert(
-    b.hp === Math.min(b.maxHp, hpBeforeSecondCombo + 10),
-    'new 50-like combo did not grant +10 HP again'
-  );
-
-  likeGame.handleLikes(user, 50);
-  b = getBall(likeGame, user.userId);
-  assert(
-    (b.hitPower ?? 0) === powerBeforeSecondCombo + 1,
-    'new 100-like combo did not grant +1 power again'
-  );
 } finally {
   likeGame.destroy();
 }
@@ -714,6 +739,6 @@ try {
 
 console.log(
   '[SELFTEST] PASS PirateTok direct CHAT/LIKE/GIFT + legacy normalization + real gift-name mapping; ' +
-    'comment spawn+respawn; repeatable LIKE combos 50/100/200/500/1000; ' +
+    'comment spawn+respawn; round LIKE milestones every 50 through 1000; ' +
     'Rosa/Dino/Donut/Capybara/Galaxy + Lightning/Magnet/Freeze/Dash/Reflect/Heal powers'
 );

@@ -4,7 +4,7 @@
  */
 import Phaser from 'phaser';
 import { CANVAS_WIDTH, DEFAULT_ROUND_DURATION_SEC } from '@arena/shared';
-import { THEME, THEME_HEX, FONT_BLACK, FONT_ACCENT } from '../theme';
+import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT } from '../theme';
 import {
   createBallArenaLogo,
   tickBallArenaLogo,
@@ -142,24 +142,22 @@ export function createBottomCtaStrip(
 ): { root: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics; setVisible: (v: boolean) => void } {
   const root = scene.add.container(CANVAS_WIDTH / 2, y).setDepth(depth);
   const glow = scene.add.graphics();
-  glow.fillStyle(THEME.arenaRed, 0.25);
-  glow.fillRoundedRect(-310, -28, 620, 56, 20);
+  glow.fillStyle(THEME.arenaRed, 0.12);
+  glow.fillRoundedRect(-505, -96, 1010, 136, 18);
   const bg = scene.add.graphics();
-  bg.fillStyle(THEME.arenaDark, 0.78);
-  bg.fillRoundedRect(-300, -22, 600, 44, 16);
-  bg.lineStyle(2.5, THEME.arenaRed, 0.9);
-  bg.strokeRoundedRect(-300, -22, 600, 44, 16);
-  bg.lineStyle(1, THEME.emberOrange, 0.5);
-  bg.strokeRoundedRect(-294, -16, 588, 32, 12);
-  const label = scene.add
-    .text(0, 0, '💬 COMENTE • ❤️ 50:+10HP • 100:+20HP/+1⚔ • 200:+40HP/+2⚔ • 500:FULL/+10⚔/🦫 • 1000:FULL/+15⚔/🦫×3', {
-      fontFamily: FONT_ACCENT,
-      fontSize: '20px',
-      color: THEME_HEX.light,
-      stroke: '#000000',
-      strokeThickness: 3,
-    })
-    .setOrigin(0.5);
+  bg.fillStyle(THEME.arenaDark, 0.96);
+  bg.fillRoundedRect(-495, -90, 990, 124, 16);
+  bg.lineStyle(2, THEME.gold, 0.65);
+  bg.strokeRoundedRect(-495, -90, 990, 124, 16);
+  const label = scene.add.text(0, -28, [
+    '💬 COMENTE PARA ENTRAR OU RENASCER',
+    '❤️ 50: +10 vida • 100: +20 vida / +1 força • 150: +10 vida • 200: +40 vida / +2 força',
+    '500: vida cheia / +10 força / 🦫 • 1000: vida cheia / +15 força / 🦫×3 até o fim',
+    'Metas intermediárias de 50: +10 vida • Likes individuais acumulam na rodada',
+  ].join('\n'), {
+    fontFamily: FONT, fontSize: '23px', color: THEME_HEX.light,
+    align: 'center', lineSpacing: 5, wordWrap: { width: 950 },
+  }).setOrigin(0.5);
   root.add([glow, bg, label]);
   return {
     root,

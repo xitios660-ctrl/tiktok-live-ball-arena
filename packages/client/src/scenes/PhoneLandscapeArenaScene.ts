@@ -47,8 +47,8 @@ interface LandscapePickupView {
 
 const PANEL_W = 286;
 const PANEL_TOP = 106;
-const PANEL_ROW_H = 34;
-const TOP_PANEL_H = 246;
+const PANEL_ROW_H = 52;
+const TOP_PANEL_H = 326;
 const GIFT_PANEL_H = 258;
 
 export class PhoneLandscapeArenaScene extends Phaser.Scene {
@@ -158,7 +158,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         this.add
           .text(0, 0, '—', {
             fontFamily: FONT,
-            fontSize: '16px',
+            fontSize: '19px',
             color: i === 0 ? RANK_HEX.gold : THEME_HEX.light,
             stroke: '#000000',
             strokeThickness: 3,
@@ -168,7 +168,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     }
 
     this.giftTitle = this.add
-      .text(0, 0, '★ POWER-UPS', {
+      .text(0, 0, '🎁 GUIA DE PRESENTES', {
         fontFamily: FONT_ACCENT,
         fontSize: '26px',
         color: THEME_HEX.gold,
@@ -178,12 +178,12 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setDepth(100);
 
     const giftLines = [
-      '🌹 Rosa · cura',
-      '🦖 Dino · força',
-      '🍩 Donut · escudo',
-      '🦫 Capy · gigante',
-      '🌌 Galáxia · cósmico',
-      '💬 Comente · entrar',
+      '🌹 Rosa · recupera vida',
+      '🦖 Dino · força e velocidade',
+      '🍩 Rosquinha · escudo',
+      '🦫 Capivara · gigante até ×3',
+      '🌌 Galáxia · poder na rodada',
+      '💬 Comente · entre ou renasça',
     ];
     for (const line of giftLines) {
       this.giftRows.push(
@@ -241,7 +241,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .text(
         0,
         0,
-        '💬 COMENTE PARA ENTRAR  •  ❤️ COMBO: 50 +10HP  •  100 +20HP/+1⚔  •  200 +40HP/+2⚔  •  500 FULL/+10⚔/🦫  •  1000 FULL/+15⚔/🦫×3  •  PAUSOU = COMBO ZERA',
+        '💬 COMENTE PARA ENTRAR OU RENASCER  •  ❤️ LIKES INDIVIDUAIS NA RODADA\n50: +10 vida  •  100: +20 vida / +1 força  •  150: +10 vida  •  200: +40 vida / +2 força\n500: vida cheia / +10 força / 🦫  •  1000: vida cheia / +15 força / 🦫×3 até o fim\nMetas intermediárias de 50: +10 vida',
         {
           fontFamily: FONT_ACCENT,
           fontSize: '16px',
@@ -358,7 +358,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.players.setText('PLAYERS: ' + snap.playerCount);
 
     // Likes are personal rewards now, so this pill shows the rule instead of a global meter.
-    this.likes.setText('❤️ COMBO DE LIKES • PAUSOU 3s = ZERA');
+    this.likes.setText('❤️ LIKES ACUMULAM NA RODADA');
 
     this.syncBalls(snap.balls);
     this.syncPickups(snap.pickups || []);
@@ -447,7 +447,9 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.feed.setPosition(left + 12, h - 152);
     this.toast.setPosition(cx, 225);
     this.countdown.setPosition(cx, h / 2);
-    this.footer.setPosition(cx, h - 30);
+    this.footer.setPosition(cx, h - 62);
+    this.footer.setFontSize(24).setAlign('center').setWordWrapWidth(w - 80);
+    this.footer.setScale(Math.min(1, (w - 40) / this.footer.width));
     this.winnerPanel.setPosition(cx, h / 2);
 
     for (const [id, view] of this.ballViews) {
@@ -918,7 +920,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       const row = this.lastTop5[i];
       this.topRows[i].setText(
         row
-          ? medals[i] + '  ' + this.truncate(row.nickname || row.username, 15) + '   ☠' + row.kills
+          ? medals[i] + '  ' + this.truncate(row.nickname || row.username, 15) + '   ☠' + row.kills + '\n     ' + (row.alive ? Math.ceil(row.hp) + ' / ' + row.maxHp + ' vida' : 'Eliminado • comente para voltar')
           : '—'
       );
     }

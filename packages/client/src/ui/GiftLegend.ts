@@ -26,12 +26,12 @@ const POWER_ICONS: PowerIcon[] = [
 /** Portuguese gabarito — gameplay meanings from GiftAbilities / PhysicsWorld */
 export const GIFT_GABARITO_LINES: readonly string[] = [
   '🌹 Rosa — cura leve',
-  '🦖 Dino — força/speed',
-  '🍩 Donut — escudo',
-  '🦫 Capy — gigante',
-  '🌌 Galáxia — deus cósmico / Duelo Cósmico (2ª)',
+  '🦖 Dino — força e velocidade',
+  '🍩 Rosquinha — escudo',
+  '🦫 Capivara — gigante até ×3',
+  '🌌 Galáxia — poder até o fim da rodada',
   '💚 Cura — recupera vida',
-  '💬 Comente p/ entrar',
+  '💬 Comente para entrar ou renascer',
 ];
 
 export interface GiftLegendHandles {
@@ -65,7 +65,7 @@ export function createGiftLegend(
   const neon = scene.add.graphics();
   const iconsGfx = scene.add.graphics();
 
-  const title = scene.add.text(padX, padY, '★ POWER-UPS', {
+  const title = scene.add.text(padX, padY, '🎁 PRESENTES', {
     fontFamily: FONT_ACCENT,
     fontSize: compact ? '22px' : '26px',
     color: THEME_HEX.gold,
@@ -91,7 +91,9 @@ export function createGiftLegend(
     iconLabels.push(t);
   }
 
-  const bodyY = iconY + Math.ceil(POWER_ICONS.length / 4) * (gap + 6) + 10;
+  const bodyY = padY + 48;
+  iconsGfx.setVisible(false);
+  iconLabels.forEach((label) => label.setVisible(false));
   const body = scene.add.text(padX, bodyY, GIFT_GABARITO_LINES.join('\n'), {
     fontFamily: FONT,
     fontSize,

@@ -932,7 +932,7 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     if (!this.dedupe.check('chat:' + fp)) return;
 
     this.push(
-      { type: 'comment', user, comment, timestamp: Date.now() },
+      { type: 'comment', user, comment, messageId: msgId || undefined, timestamp: Date.now() },
       '[COMMENT]',
       `@${user.username} id=${user.userId}: ${comment.slice(0, 80)}`
     );
@@ -1090,17 +1090,8 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       totalDelta = Math.floor(totalLikeCount - this.lastTotalLikeCount);
     }
 
-    // TikTok can throttle a rapid heart burst into sparse +1 per-user events
-    // while the room total still moves by the real number of taps. Only use
-    // that delta when consecutive events belong to the SAME user within a
-    // short burst window, reducing accidental cross-user attribution.
-    const sameUserBurst =
-      this.lastLikeUserId === user.userId &&
-      now - this.lastLikeAt <= 4_000;
-
-    const creditedLikeCount = sameUserBurst
-      ? Math.max(rawLikeCount, Math.min(totalDelta, 100))
-      : rawLikeCount;
+    // Room totals include other viewers: credit only this sender’s explicit count.
+    const creditedLikeCount = rawLikeCount;
 
     if (totalLikeCount != null) this.lastTotalLikeCount = totalLikeCount;
     this.lastLikeUserId = user.userId;
