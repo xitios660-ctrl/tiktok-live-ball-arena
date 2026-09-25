@@ -208,7 +208,7 @@ if (pirateGiftFinal?.type === 'gift') {
     'hybrid duplicate COMMENT was counted twice'
   );
 
-  await hybrid.disconnect();
+  void hybrid.disconnect();
 }
 
 /* -------------------------------------------------------------------------- */
