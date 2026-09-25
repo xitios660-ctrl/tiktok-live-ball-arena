@@ -1,4 +1,5 @@
 export interface CinematicIntroOptions {
+  /** Called from a real user gesture so iOS can unlock AudioContext/fullscreen. */
   onPlayGesture?: () => void | Promise<void>;
 }
 
@@ -7,42 +8,30 @@ interface IntroOverlayOptions {
   phoneLite: boolean;
 }
 
-type SpriteSpec = {
-  url: string;
-  frames: number;
-  cols: number;
-  rows: number;
-};
+const HOME_SPRITE = (
+  import.meta.env.VITE_CINEMATIC_HOME_SPRITE ||
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/87e60a59-161b-41fc-b833-90c7cdd6d96c.webp'
+).trim();
 
-const HOME_DESKTOP: SpriteSpec = {
-  url: (
-    import.meta.env.VITE_CINEMATIC_HOME_DESKTOP_SPRITE ||
-    'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/7bed6250-8f35-41c5-820e-2becc2dd02ee.webp'
-  ).trim(),
-  frames: 36,
-  cols: 6,
-  rows: 6,
-};
+const TRANSITION_SPRITE = (
+  import.meta.env.VITE_CINEMATIC_TRANSITION_SPRITE ||
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/06794415-77b0-41a1-be41-2b34502438eb.webp'
+).trim();
 
-const HOME_MOBILE: SpriteSpec = {
-  url: (
-    import.meta.env.VITE_CINEMATIC_HOME_MOBILE_SPRITE ||
-    'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/d5b8f7ff-aa18-4c85-8910-8adc6531b7e6.webp'
-  ).trim(),
-  frames: 36,
-  cols: 6,
-  rows: 6,
-};
+const TRANSITION_AUDIO = (
+  import.meta.env.VITE_CINEMATIC_TRANSITION_AUDIO ||
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/8ca55b3c-a2ff-45a9-9fee-4dedd7e6f09f.mp3'
+).trim();
 
-const TRANSITION: SpriteSpec = {
-  url: (
-    import.meta.env.VITE_CINEMATIC_TRANSITION_SPRITE ||
-    'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/dad81e56-85c0-467f-b505-657816482657.webp'
-  ).trim(),
-  frames: 24,
-  cols: 6,
-  rows: 4,
-};
+const LOGO = '/assets/ball-arena/logos/ball-arena-logo.svg';
+const FRAME_COUNT = 24;
+const FRAME_COLS = 6;
+const FRAME_ROWS = 4;
+const IDLE_FRAME = Math.floor((FRAME_COUNT - 1) / 2);
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
 
 function makeButton(label: string, className: string): HTMLButtonElement {
   const button = document.createElement('button');
@@ -52,20 +41,14 @@ function makeButton(label: string, className: string): HTMLButtonElement {
   return button;
 }
 
-function setSprite(el: HTMLElement, spec: SpriteSpec): void {
-  el.style.backgroundImage = 'url("' + spec.url + '")';
-  el.style.backgroundSize = spec.cols * 100 + '% ' + spec.rows * 100 + '%';
-}
-
-function setSpriteFrame(el: HTMLElement, rawIndex: number, spec: SpriteSpec): number {
-  const index = Math.max(0, Math.min(spec.frames - 1, Math.round(rawIndex)));
-  const col = index % spec.cols;
-  const row = Math.floor(index / spec.cols);
-  const x = spec.cols <= 1 ? 0 : (col / (spec.cols - 1)) * 100;
-  const y = spec.rows <= 1 ? 0 : (row / (spec.rows - 1)) * 100;
+function setSpriteFrame(el: HTMLElement, rawIndex: number): void {
+  const index = clamp(Math.round(rawIndex), 0, FRAME_COUNT - 1);
+  const col = index % FRAME_COLS;
+  const row = Math.floor(index / FRAME_COLS);
+  const x = FRAME_COLS <= 1 ? 0 : (col / (FRAME_COLS - 1)) * 100;
+  const y = FRAME_ROWS <= 1 ? 0 : (row / (FRAME_ROWS - 1)) * 100;
   el.style.backgroundPosition = x.toFixed(3) + '% ' + y.toFixed(3) + '%';
   el.dataset.frame = String(index);
-  return index;
 }
 
 function preload(url: string): void {
@@ -74,12 +57,8 @@ function preload(url: string): void {
     image.decoding = 'async';
     image.src = url;
   } catch {
-    // Best effort only.
+    // Decorative preload only.
   }
-}
-
-function isPortrait(): boolean {
-  return window.matchMedia?.('(orientation: portrait)').matches ?? innerHeight > innerWidth;
 }
 
 function makeModal(): {
@@ -130,9 +109,8 @@ export async function runCinematicIntro(
   if (typeof document === 'undefined' || !document.body) return;
   if (document.getElementById('cinematic-home')) return;
 
-  preload(HOME_DESKTOP.url);
-  preload(HOME_MOBILE.url);
-  preload(TRANSITION.url);
+  preload(HOME_SPRITE);
+  preload(TRANSITION_SPRITE);
 
   return new Promise<void>((resolve) => {
     const root = document.createElement('section');
@@ -142,212 +120,253 @@ export async function runCinematicIntro(
     const ambient = document.createElement('div');
     ambient.className = 'cinematic-ambient';
 
-    const filmGrain = document.createElement('div');
-    filmGrain.className = 'cinematic-film-grain';
-
-    const reticle = document.createElement('div');
-    reticle.className = 'cinematic-reticle';
-    reticle.innerHTML = '<span></span>';
-
-    const shell = document.createElement('div');
-    shell.className = 'cinematic-shell';
-
-    const topbar = document.createElement('div');
-    topbar.className = 'cinematic-topbar';
-    topbar.innerHTML =
-      '<strong>BOLLA ARENA</strong>' +
-      '<span class="cinematic-live-pill">● LIVE INTERATIVO</span>' +
-      '<span class="cinematic-top-note">TIKTOK LIVE GAME</span>';
-
-    const stageWrap = document.createElement('div');
-    stageWrap.className = 'cinematic-stage-wrap';
+    const blurredFrame = document.createElement('div');
+    blurredFrame.className = 'cinematic-frame cinematic-blurred-frame';
+    blurredFrame.style.backgroundImage = 'url("' + HOME_SPRITE + '")';
+    setSpriteFrame(blurredFrame, IDLE_FRAME);
 
     const stage = document.createElement('div');
     stage.className = 'cinematic-stage';
 
     const homeFrame = document.createElement('div');
     homeFrame.className = 'cinematic-frame cinematic-home-frame';
+    homeFrame.style.backgroundImage = 'url("' + HOME_SPRITE + '")';
+    setSpriteFrame(homeFrame, IDLE_FRAME);
 
-    const frameGlow = document.createElement('div');
-    frameGlow.className = 'cinematic-frame-glow';
+    const stageLight = document.createElement('div');
+    stageLight.className = 'cinematic-stage-light';
 
-    const stageVignette = document.createElement('div');
-    stageVignette.className = 'cinematic-stage-vignette';
+    stage.append(homeFrame, stageLight);
 
-    const stageHint = document.createElement('div');
-    stageHint.className = 'cinematic-stage-hint';
-    stageHint.innerHTML = '<i></i><span>ARRASTE / MOVA</span>';
+    const brand = document.createElement('div');
+    brand.className = 'cinematic-brand';
+    const logo = document.createElement('img');
+    logo.src = LOGO;
+    logo.alt = 'Bolla Arena';
+    brand.append(logo);
 
-    stage.append(homeFrame, frameGlow, stageVignette, stageHint);
-    stageWrap.append(stage);
-
-    const heroCopy = document.createElement('div');
-    heroCopy.className = 'cinematic-hero-copy';
-    heroCopy.innerHTML =
-      '<div class="cinematic-kicker">ARENA AO VIVO</div>' +
-      '<h1>SEU COMENTÁRIO<br><em>ENTRA NO JOGO.</em></h1>' +
-      '<p>Comente para ganhar uma bola. Likes recuperam vida. Presentes viram poder dentro da rodada.</p>';
-
-    const infoRail = document.createElement('div');
-    infoRail.className = 'cinematic-info-rail';
-    infoRail.innerHTML =
-      '<article><b>01</b><div><strong>BOSS</strong><span>O chefe domina o centro da arena.</span></div></article>' +
-      '<article><b>02</b><div><strong>POWER-UPS</strong><span>Presentes ativam habilidades e força.</span></div></article>' +
-      '<article><b>03</b><div><strong>RANKING</strong><span>Top 5 atualizado durante a batalha.</span></div></article>';
+    const live = document.createElement('div');
+    live.className = 'cinematic-live';
+    live.innerHTML = '<span class="cinematic-live-dot"></span><strong>AO VIVO</strong><span>TikTok Live</span>';
 
     const controls = document.createElement('div');
     controls.className = 'cinematic-controls';
 
     const play = makeButton('', 'cinematic-play');
     play.setAttribute('aria-label', 'Jogar');
-    play.innerHTML =
-      '<span class="cinematic-play-orb">▶</span>' +
-      '<span class="cinematic-play-copy"><b>JOGAR</b><small>ENTRAR NA ARENA</small></span>' +
-      '<span class="cinematic-play-arrow">→</span>';
+    const playIcon = document.createElement('span');
+    playIcon.className = 'cinematic-play-icon';
+    playIcon.textContent = '▶';
+    const playLabel = document.createElement('span');
+    playLabel.className = 'cinematic-play-label';
+    playLabel.textContent = 'JOGAR';
+    const playShine = document.createElement('span');
+    playShine.className = 'cinematic-play-shine';
+    play.append(playIcon, playLabel, playShine);
 
-    const nav = document.createElement('div');
-    nav.className = 'cinematic-nav';
+    const secondary = document.createElement('div');
+    secondary.className = 'cinematic-secondary-row';
 
-    const connect = makeButton('CONECTAR TIKTOK LIVE', 'cinematic-nav-button');
-    const rank = makeButton('RANKING', 'cinematic-nav-button');
-    const how = makeButton('COMO JOGAR', 'cinematic-nav-button');
-    nav.append(connect, rank, how);
-    controls.append(play, nav);
+    const connect = makeButton('', 'cinematic-secondary cinematic-connect');
+    connect.innerHTML = '<span class="cinematic-secondary-icon">♪</span><span>CONECTAR<br>TIKTOK LIVE</span><b>›</b>';
 
-    shell.append(topbar, stageWrap, heroCopy, infoRail, controls);
+    const rank = makeButton('', 'cinematic-secondary');
+    rank.innerHTML = '<span class="cinematic-secondary-icon">♛</span><span>RANKING</span><b>›</b>';
+
+    const how = makeButton('', 'cinematic-secondary');
+    how.innerHTML = '<span class="cinematic-secondary-icon">🎮</span><span>COMO JOGAR</span><b>›</b>';
+
+    secondary.append(connect, rank, how);
+
+    const hint = document.createElement('div');
+    hint.className = 'cinematic-hint';
+    hint.innerHTML = '<span>↔</span> ARRASTE O DEDO OU MOVA O MOUSE';
+
+    controls.append(play, secondary, hint);
+
+    const pointerGlow = document.createElement('div');
+    pointerGlow.className = 'cinematic-pointer-glow';
+
+    const particles = document.createElement('div');
+    particles.className = 'cinematic-particles';
+
+    const tapBurst = document.createElement('div');
+    tapBurst.className = 'cinematic-tap-burst';
+    tapBurst.setAttribute('aria-hidden', 'true');
 
     const transition = document.createElement('div');
     transition.className = 'cinematic-transition';
     transition.setAttribute('aria-hidden', 'true');
 
-    const transitionGlow = document.createElement('div');
-    transitionGlow.className = 'cinematic-transition-glow';
+    const transitionBlur = document.createElement('div');
+    transitionBlur.className = 'cinematic-frame cinematic-transition-blur';
+    transitionBlur.style.backgroundImage = 'url("' + TRANSITION_SPRITE + '")';
+    setSpriteFrame(transitionBlur, 0);
 
     const transitionStage = document.createElement('div');
     transitionStage.className = 'cinematic-transition-stage';
 
     const transitionFrame = document.createElement('div');
     transitionFrame.className = 'cinematic-frame cinematic-transition-frame';
-    setSprite(transitionFrame, TRANSITION);
-    setSpriteFrame(transitionFrame, 0, TRANSITION);
+    transitionFrame.style.backgroundImage = 'url("' + TRANSITION_SPRITE + '")';
+    setSpriteFrame(transitionFrame, 0);
 
     const transitionVignette = document.createElement('div');
     transitionVignette.className = 'cinematic-transition-vignette';
     transitionStage.append(transitionFrame, transitionVignette);
 
-    const transitionHud = document.createElement('div');
-    transitionHud.className = 'cinematic-transition-hud';
-    transitionHud.innerHTML =
-      '<span>ENTRANDO NA ARENA</span><div><i></i></div><b>00</b>';
+    const transitionFlash = document.createElement('div');
+    transitionFlash.className = 'cinematic-transition-flash';
 
-    transition.append(transitionGlow, transitionStage, transitionHud);
+    transition.append(transitionBlur, transitionStage, transitionFlash);
 
     const modal = makeModal();
 
     const style = document.createElement('style');
     style.textContent = [
-      '#cinematic-home{position:fixed;inset:0;z-index:99990;overflow:hidden;background:#030509;color:#f5f8ff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;isolation:isolate;touch-action:none;-webkit-tap-highlight-color:transparent;}',
+      '#cinematic-home{position:fixed;inset:0;z-index:99990;overflow:hidden;background:#03050a;color:#f7fbff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;isolation:isolate;touch-action:none;-webkit-tap-highlight-color:transparent;}',
       '#cinematic-home *{box-sizing:border-box;}',
-      '.cinematic-ambient{position:absolute;inset:-10%;background:radial-gradient(circle at 50% 42%,rgba(255,82,17,.22),transparent 28%),radial-gradient(circle at 16% 36%,rgba(20,136,255,.15),transparent 30%),radial-gradient(circle at 84% 36%,rgba(148,46,255,.14),transparent 30%),linear-gradient(180deg,#08111d 0%,#06070c 52%,#020305 100%);filter:saturate(1.08);}',
-      '.cinematic-ambient::before{content:"";position:absolute;inset:0;opacity:.46;background-image:radial-gradient(circle at 14% 22%,rgba(255,144,49,.95) 0 1px,transparent 2px),radial-gradient(circle at 72% 16%,rgba(48,190,255,.8) 0 1px,transparent 2px),radial-gradient(circle at 62% 68%,rgba(255,93,27,.75) 0 1px,transparent 2px);background-size:160px 160px,220px 220px,270px 270px;animation:cinematicDust 11s linear infinite;}',
-      '@keyframes cinematicDust{from{background-position:0 0,0 0,0 0}to{background-position:26px -180px,-38px -220px,31px -260px}}',
-      '.cinematic-film-grain{position:absolute;inset:0;pointer-events:none;z-index:30;opacity:.055;background-image:url("data:image/svg+xml,%3Csvg viewBox=%270 0 180 180%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%27.9%27 numOctaves=%273%27 stitchTiles=%27stitch%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27 opacity=%27.8%27/%3E%3C/svg%3E");mix-blend-mode:soft-light;}',
-      '.cinematic-shell{position:absolute;inset:0;z-index:3;}',
-      '.cinematic-topbar{position:absolute;left:4.5vw;right:4.5vw;top:max(24px,env(safe-area-inset-top));height:44px;display:flex;align-items:center;gap:18px;z-index:8;font-size:11px;letter-spacing:.12em;color:#dbe8f8;}',
-      '.cinematic-topbar strong{font-size:13px;color:#fff;letter-spacing:.14em;}',
-      '.cinematic-live-pill{padding:7px 11px;border-radius:999px;border:1px solid rgba(52,190,255,.34);background:rgba(3,10,18,.54);color:#bfeaff;backdrop-filter:blur(10px);}',
-      '.cinematic-live-pill::first-letter{color:#ff5d31;}',
-      '.cinematic-top-note{margin-left:auto;color:#8092aa;}',
-      '.cinematic-stage-wrap{position:absolute;left:50%;top:48%;width:min(91vw,1400px);transform:translate(-50%,-50%);z-index:3;}',
-      '.cinematic-stage{position:relative;width:100%;aspect-ratio:2.466/1;overflow:hidden;border-radius:30px;background:#07080d;border:1px solid rgba(255,255,255,.08);box-shadow:0 50px 120px rgba(0,0,0,.55),0 0 90px rgba(255,70,10,.10);transform:perspective(1300px) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)) translate3d(var(--stage-x,0px),var(--stage-y,0px),0);transition:transform 110ms cubic-bezier(.2,.8,.2,1),box-shadow 180ms ease;}',
-      '.cinematic-frame{position:absolute;inset:0;background-repeat:no-repeat;background-color:#08090d;will-change:background-position,filter,transform;}',
-      '.cinematic-home-frame{filter:contrast(1.055) saturate(1.08) brightness(.98);transform:scale(1.004);}',
-      '.cinematic-frame-glow{position:absolute;inset:0;background:radial-gradient(circle at var(--glow-x,50%) var(--glow-y,45%),rgba(255,179,72,.14),transparent 26%);mix-blend-mode:screen;pointer-events:none;}',
-      '.cinematic-stage-vignette{position:absolute;inset:0;background:linear-gradient(90deg,rgba(2,4,8,.58),transparent 19%,transparent 81%,rgba(2,4,8,.60)),linear-gradient(180deg,rgba(2,4,8,.05),transparent 53%,rgba(2,4,8,.52));pointer-events:none;}',
-      '.cinematic-stage-hint{position:absolute;right:22px;bottom:18px;display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:999px;background:rgba(5,8,13,.56);border:1px solid rgba(255,255,255,.09);color:#b9c5d7;font-size:9px;font-weight:800;letter-spacing:.12em;backdrop-filter:blur(8px);}',
-      '.cinematic-stage-hint i{width:10px;height:10px;border:1px solid rgba(90,203,255,.9);border-radius:50%;box-shadow:0 0 14px rgba(34,175,255,.55);}',
-      '.cinematic-hero-copy{position:absolute;z-index:7;left:5.2vw;top:22%;width:min(320px,24vw);text-shadow:0 3px 22px rgba(0,0,0,.72);}',
-      '.cinematic-kicker{font-size:10px;font-weight:900;letter-spacing:.2em;color:#ffc46a;margin-bottom:13px;}',
-      '.cinematic-hero-copy h1{margin:0;font-size:clamp(34px,4vw,66px);line-height:.91;letter-spacing:-.045em;font-weight:950;color:#f6f8fc;}',
-      '.cinematic-hero-copy h1 em{font-style:normal;color:#ff9b2c;text-shadow:0 0 28px rgba(255,108,22,.23);}',
-      '.cinematic-hero-copy p{margin:18px 0 0;max-width:285px;font-size:12px;line-height:1.6;color:#b4c0d0;font-weight:550;}',
-      '.cinematic-info-rail{position:absolute;z-index:7;right:5.2vw;top:22%;width:min(260px,20vw);display:grid;gap:10px;}',
-      '.cinematic-info-rail article{display:grid;grid-template-columns:36px 1fr;gap:10px;padding:13px 14px;border-radius:16px;background:linear-gradient(145deg,rgba(8,15,26,.72),rgba(5,8,14,.58));border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px);box-shadow:0 12px 32px rgba(0,0,0,.24);}',
-      '.cinematic-info-rail b{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:1px solid rgba(76,193,255,.34);color:#8edcff;font-size:9px;letter-spacing:.08em;}',
-      '.cinematic-info-rail strong{display:block;font-size:11px;letter-spacing:.08em;color:#fff;margin:1px 0 4px;}',
-      '.cinematic-info-rail span{display:block;font-size:9px;line-height:1.45;color:#8fa0b6;}',
-      '.cinematic-controls{position:absolute;z-index:9;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:14px;width:min(860px,90vw);justify-content:center;}',
-      '.cinematic-play,.cinematic-nav-button{appearance:none;-webkit-appearance:none;border:0;color:#fff;font:inherit;cursor:pointer;outline:none;user-select:none;-webkit-tap-highlight-color:transparent;}',
-      '.cinematic-play{position:relative;width:330px;min-height:76px;border-radius:20px;display:grid;grid-template-columns:52px 1fr 34px;align-items:center;gap:12px;padding:0 18px;background:linear-gradient(100deg,#ff9d1b 0%,#ce5b08 56%,#8f3106 100%);border:2px solid rgba(255,215,121,.92);box-shadow:0 12px 34px rgba(255,70,8,.34),0 0 0 1px rgba(255,151,29,.20),inset 0 1px rgba(255,255,255,.28);transition:transform 110ms ease,filter 110ms ease,box-shadow 110ms ease;}',
-      '.cinematic-play::after{content:"";position:absolute;inset:5px;border-radius:14px;border:1px solid rgba(255,238,192,.16);pointer-events:none;}',
-      '.cinematic-play:hover,.cinematic-play:focus-visible{filter:brightness(1.1);box-shadow:0 16px 44px rgba(255,74,8,.48),0 0 34px rgba(255,179,52,.20),inset 0 1px rgba(255,255,255,.34);transform:translateY(-2px);}',
-      '.cinematic-play:active,.cinematic-play.is-pressed{transform:translateY(3px) scale(.975);filter:brightness(1.12);box-shadow:0 6px 18px rgba(255,70,8,.32),inset 0 3px 11px rgba(72,20,0,.32);}',
-      '.cinematic-play-orb{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);font-size:18px;box-shadow:inset 0 0 18px rgba(255,255,255,.08);}',
-      '.cinematic-play-copy{text-align:left;display:flex;flex-direction:column;gap:2px;}',
-      '.cinematic-play-copy b{font-size:22px;letter-spacing:.05em;}',
-      '.cinematic-play-copy small{font-size:8px;letter-spacing:.14em;color:#ffe4b3;}',
-      '.cinematic-play-arrow{font-size:25px;font-weight:300;opacity:.82;}',
-      '.cinematic-nav{display:flex;gap:9px;}',
-      '.cinematic-nav-button{min-height:58px;padding:0 17px;border-radius:15px;background:linear-gradient(180deg,rgba(9,17,30,.92),rgba(5,9,16,.94));border:1px solid rgba(77,190,255,.38);color:#dfeeff;font-size:10px;font-weight:850;letter-spacing:.07em;box-shadow:0 10px 24px rgba(0,0,0,.24);transition:transform 105ms ease,border-color 105ms ease,background 105ms ease,box-shadow 105ms ease;}',
-      '.cinematic-nav-button:hover,.cinematic-nav-button:focus-visible{transform:translateY(-2px);border-color:rgba(101,209,255,.82);background:linear-gradient(180deg,rgba(12,31,51,.97),rgba(7,14,25,.97));box-shadow:0 10px 28px rgba(0,0,0,.30),0 0 25px rgba(34,165,255,.17);}',
-      '.cinematic-nav-button:active,.cinematic-nav-button.is-pressed{transform:translateY(2px) scale(.975);border-color:rgba(255,183,72,.74);}',
-      '.cinematic-reticle{position:absolute;z-index:22;left:var(--cursor-x,50%);top:var(--cursor-y,50%);width:46px;height:46px;border:1px solid rgba(207,234,255,.72);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;opacity:.78;transition:width 120ms ease,height 120ms ease,border-color 120ms ease,opacity 120ms ease;}',
-      '.cinematic-reticle::before,.cinematic-reticle::after{content:"";position:absolute;background:rgba(203,232,255,.48);}',
-      '.cinematic-reticle::before{left:50%;top:-7px;width:1px;height:60px;transform:translateX(-50%);}',
-      '.cinematic-reticle::after{top:50%;left:-7px;width:60px;height:1px;transform:translateY(-50%);}',
-      '.cinematic-reticle span{position:absolute;inset:15px;border-radius:50%;background:rgba(255,177,74,.18);box-shadow:0 0 20px rgba(255,123,33,.22);}',
-      '#cinematic-home.is-over-control .cinematic-reticle{width:58px;height:58px;border-color:#ffb45b;opacity:.95;}',
-      '.cinematic-transition{position:absolute;z-index:40;inset:0;display:grid;place-items:center;background:#020305;opacity:0;visibility:hidden;pointer-events:none;transition:opacity 160ms ease,visibility 0s linear 160ms;}',
-      '.cinematic-transition.show{opacity:1;visibility:visible;transition:opacity 100ms ease;}',
-      '.cinematic-transition-glow{position:absolute;inset:-15%;background:radial-gradient(circle at 50% 48%,rgba(255,81,13,.22),transparent 34%),radial-gradient(circle at 50% 48%,rgba(22,130,255,.08),transparent 55%);filter:blur(6px);}',
-      '.cinematic-transition-stage{position:relative;width:min(92vw,1320px);aspect-ratio:16/9;overflow:hidden;border-radius:26px;background:#05060a;box-shadow:0 42px 120px rgba(0,0,0,.72),0 0 80px rgba(255,83,12,.13);border:1px solid rgba(255,255,255,.07);}',
-      '.cinematic-transition-frame{filter:contrast(1.06) saturate(1.07);}',
-      '.cinematic-transition-vignette{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,transparent 40%,rgba(2,3,6,.26) 100%);pointer-events:none;}',
-      '.cinematic-transition-hud{position:absolute;left:50%;bottom:5vh;transform:translateX(-50%);display:grid;grid-template-columns:auto min(260px,42vw) 30px;gap:14px;align-items:center;color:#dfe9f7;font-size:9px;font-weight:850;letter-spacing:.14em;}',
-      '.cinematic-transition-hud div{height:3px;border-radius:99px;background:rgba(255,255,255,.10);overflow:hidden;}',
-      '.cinematic-transition-hud i{display:block;width:0%;height:100%;background:linear-gradient(90deg,#ff861a,#ffd36b,#38bfff);box-shadow:0 0 14px rgba(255,139,24,.62);}',
-      '.cinematic-transition-hud b{font-size:9px;color:#9bb3ce;font-weight:800;}',
-      '#cinematic-home.is-launching .cinematic-hero-copy,#cinematic-home.is-launching .cinematic-info-rail,#cinematic-home.is-launching .cinematic-controls,#cinematic-home.is-launching .cinematic-topbar{opacity:0;transform:translateY(12px);transition:opacity 170ms ease,transform 170ms ease;pointer-events:none;}',
-      '#cinematic-home.is-launching .cinematic-stage{transform:perspective(1300px) scale(1.035);box-shadow:0 70px 150px rgba(0,0,0,.72),0 0 110px rgba(255,75,10,.17);transition:transform 360ms cubic-bezier(.15,.8,.2,1),box-shadow 360ms ease;}',
-      '.cinematic-modal{position:absolute;z-index:60;inset:0;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(2,4,9,.76);backdrop-filter:blur(14px);}',
-      '.cinematic-modal.open{display:flex;}',
-      '.cinematic-modal-card{position:relative;width:min(540px,94vw);max-height:min(72vh,620px);overflow:auto;border-radius:22px;padding:28px;background:linear-gradient(160deg,rgba(20,28,43,.98),rgba(6,9,15,.99));border:1px solid rgba(255,174,57,.38);box-shadow:0 24px 80px rgba(0,0,0,.70),0 0 38px rgba(255,120,24,.12);}',
-      '.cinematic-modal-title{margin:0 42px 16px 0;font-size:22px;color:#ffc466;}',
-      '.cinematic-modal-body{font-size:13px;line-height:1.58;color:#e8eff8;}',
-      '.cinematic-modal-body p{margin:0 0 10px;}',
-      '.cinematic-modal-close{position:absolute;right:13px;top:12px;width:42px;height:42px;border:0;border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:27px;cursor:pointer;}',
-      '.cinematic-modal-action{display:inline-flex;margin-top:12px;min-height:44px;align-items:center;justify-content:center;padding:0 18px;border-radius:11px;text-decoration:none;background:linear-gradient(90deg,#ff8e1b,#b34b05);color:#fff;font-weight:850;}',
-      '@media(orientation:portrait){.cinematic-reticle{display:none}.cinematic-topbar{left:18px;right:18px;top:max(14px,env(safe-area-inset-top));height:34px}.cinematic-top-note{display:none}.cinematic-live-pill{margin-left:auto;font-size:8px;padding:6px 9px}.cinematic-stage-wrap{left:0;top:max(58px,calc(env(safe-area-inset-top) + 48px));width:100vw;transform:none}.cinematic-stage{width:100%;aspect-ratio:1.25/1;border-radius:0 0 28px 28px;border-left:0;border-right:0;box-shadow:0 30px 70px rgba(0,0,0,.42),0 0 54px rgba(255,72,10,.08)}.cinematic-stage-vignette{background:linear-gradient(180deg,rgba(2,4,8,.02),transparent 54%,rgba(3,5,9,.60) 100%)}.cinematic-stage-hint{right:14px;bottom:14px;font-size:8px}.cinematic-hero-copy{left:22px;right:22px;top:calc(max(58px,calc(env(safe-area-inset-top) + 48px)) + 80vw + 18px);width:auto;text-align:left}.cinematic-kicker{font-size:9px;margin-bottom:8px}.cinematic-hero-copy h1{font-size:30px;line-height:.95;letter-spacing:-.035em}.cinematic-hero-copy h1 br{display:none}.cinematic-hero-copy p{font-size:11px;line-height:1.5;margin-top:10px;max-width:none}.cinematic-info-rail{display:none}.cinematic-controls{left:22px;right:22px;bottom:max(22px,env(safe-area-inset-bottom));width:auto;transform:none;display:block}.cinematic-play{width:100%;min-height:70px}.cinematic-nav{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:11px}.cinematic-nav-button{min-height:52px;padding:0 10px}.cinematic-nav-button:first-child{grid-column:1/3}.cinematic-transition-stage{width:100vw;border-radius:0;box-shadow:0 26px 80px rgba(0,0,0,.62)}.cinematic-transition-hud{bottom:max(74px,calc(env(safe-area-inset-bottom) + 58px));grid-template-columns:auto min(150px,42vw) 26px;gap:10px}.cinematic-transition-hud span{font-size:8px}.cinematic-film-grain{opacity:.035}}',
-      '@media(orientation:portrait) and (max-height:760px){.cinematic-hero-copy p{display:none}.cinematic-hero-copy{top:calc(max(58px,calc(env(safe-area-inset-top) + 48px)) + 80vw + 10px)}.cinematic-hero-copy h1{font-size:27px}.cinematic-controls{bottom:max(12px,env(safe-area-inset-bottom))}.cinematic-play{min-height:62px}.cinematic-nav-button{min-height:46px}.cinematic-stage-hint{display:none}}',
-      '@media(max-width:900px) and (orientation:landscape){.cinematic-hero-copy{left:4vw;width:26vw}.cinematic-info-rail{right:4vw;width:23vw}.cinematic-controls{bottom:14px}.cinematic-play{width:280px;min-height:66px}.cinematic-nav-button{min-height:50px;padding:0 12px;font-size:9px}}',
-      '@media(prefers-reduced-motion:reduce){.cinematic-ambient::before{animation:none}.cinematic-reticle{display:none}.cinematic-play,.cinematic-nav-button,.cinematic-stage{transition:none}}'
+      '.cinematic-ambient{position:absolute;inset:0;background:radial-gradient(circle at 50% 36%,rgba(255,93,20,.20),transparent 32%),radial-gradient(circle at 12% 34%,rgba(23,132,255,.14),transparent 34%),radial-gradient(circle at 88% 38%,rgba(177,47,255,.12),transparent 34%),linear-gradient(180deg,#06101d 0%,#04060b 62%,#020307 100%);}',
+      '.cinematic-frame{background-repeat:no-repeat;background-size:600% 400%;background-color:#05070b;will-change:background-position,transform,filter;}',
+      '.cinematic-blurred-frame{position:absolute;inset:-9%;filter:blur(28px) saturate(1.28) brightness(.48);transform:scale(1.15);opacity:.88;background-size:600% 400%;}',
+      '.cinematic-stage{position:absolute;z-index:3;inset:0;overflow:hidden;background:#05070b;}',
+      '.cinematic-home-frame{position:absolute;inset:0;filter:contrast(1.055) saturate(1.08) brightness(.98);transform:scale(1.012);}',
+      '.cinematic-stage-light{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 49%,transparent 0 28%,rgba(0,0,0,.05) 56%,rgba(1,3,8,.54) 100%),linear-gradient(180deg,rgba(1,3,8,.06) 0 51%,rgba(1,3,8,.22) 70%,rgba(1,3,8,.72) 100%);}',
+      '.cinematic-particles{position:absolute;z-index:4;inset:0;pointer-events:none;opacity:.58;background-image:radial-gradient(circle at 8% 86%,rgba(255,116,33,.95) 0 2px,transparent 3px),radial-gradient(circle at 83% 15%,rgba(255,187,74,.85) 0 1px,transparent 2px),radial-gradient(circle at 22% 28%,rgba(56,183,255,.72) 0 1px,transparent 2px),radial-gradient(circle at 72% 76%,rgba(255,69,20,.75) 0 2px,transparent 3px);background-size:190px 190px,260px 260px,230px 230px,310px 310px;animation:cinematicEmbers 11s linear infinite;}',
+      '@keyframes cinematicEmbers{from{background-position:0 0,0 0,0 0,0 0}to{background-position:38px -210px,-28px -260px,20px -185px,-45px -240px}}',
+      '.cinematic-brand{position:absolute;z-index:7;left:50%;top:50%;transform:translate(-50%,-48%);width:clamp(310px,39vw,690px);pointer-events:none;filter:drop-shadow(0 24px 35px rgba(0,0,0,.65));}',
+      '.cinematic-brand img{display:block;width:100%;height:auto;filter:drop-shadow(0 0 22px rgba(32,160,255,.24)) drop-shadow(0 0 26px rgba(255,98,21,.20));}',
+      '.cinematic-live{position:absolute;z-index:8;left:max(24px,env(safe-area-inset-left));top:max(20px,env(safe-area-inset-top));display:flex;align-items:center;gap:9px;padding:9px 14px;border-radius:999px;background:rgba(4,10,20,.66);border:1px solid rgba(62,177,255,.34);box-shadow:0 12px 28px rgba(0,0,0,.30),inset 0 1px rgba(255,255,255,.05);backdrop-filter:blur(14px);font-size:11px;letter-spacing:.04em;}',
+      '.cinematic-live strong{font-size:12px}.cinematic-live span:last-child{color:#a7bad5;font-weight:650}.cinematic-live-dot{width:9px;height:9px;border-radius:50%;background:#ff244f;box-shadow:0 0 0 4px rgba(255,36,79,.16),0 0 13px rgba(255,36,79,.8);animation:livePulse 1.2s ease-in-out infinite;}',
+      '@keyframes livePulse{50%{transform:scale(.76);opacity:.72}}',
+      '.cinematic-controls{position:absolute;z-index:9;left:50%;bottom:max(28px,env(safe-area-inset-bottom));width:min(1040px,calc(100vw - 44px));transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:14px;transition:opacity .2s ease,transform .2s ease;}',
+      '.cinematic-play,.cinematic-secondary{appearance:none;-webkit-appearance:none;border:0;color:#fff;font:inherit;cursor:pointer;outline:none;user-select:none;-webkit-tap-highlight-color:transparent;}',
+      '.cinematic-play{position:relative;overflow:hidden;width:min(470px,48vw);min-height:86px;border-radius:19px;display:flex;align-items:center;justify-content:center;gap:20px;background:linear-gradient(180deg,#ffb026 0%,#c96008 54%,#8d3303 100%);border:2px solid rgba(255,225,126,.98);box-shadow:0 0 0 4px rgba(255,126,21,.12),0 12px 42px rgba(255,76,6,.44),inset 0 2px rgba(255,255,255,.28),inset 0 -8px 18px rgba(87,20,0,.34);transition:transform 115ms cubic-bezier(.2,.8,.2,1),filter 115ms ease,box-shadow 115ms ease;}',
+      '.cinematic-play::before{content:"";position:absolute;inset:6px;border-radius:13px;border:1px solid rgba(255,239,181,.34);pointer-events:none;}',
+      '.cinematic-play-shine{position:absolute;top:-40%;bottom:-40%;left:-34%;width:28%;transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.48),transparent);opacity:.0;pointer-events:none;}',
+      '@media(hover:hover) and (pointer:fine){.cinematic-play:hover{transform:translateY(-2px) scale(1.025);filter:brightness(1.09);box-shadow:0 0 0 4px rgba(255,152,35,.18),0 16px 58px rgba(255,78,7,.58),inset 0 2px rgba(255,255,255,.3)}.cinematic-play:hover .cinematic-play-shine{opacity:1;animation:buttonShine .7s ease forwards}.cinematic-secondary:hover{transform:translateY(-2px);border-color:rgba(97,209,255,.95);background:linear-gradient(180deg,rgba(13,31,54,.97),rgba(5,12,23,.99));box-shadow:0 12px 30px rgba(0,0,0,.30),0 0 26px rgba(38,168,255,.24)}}',
+      '@keyframes buttonShine{to{left:112%}}',
+      '.cinematic-play:active,.cinematic-play.is-pressed{transform:translateY(4px) scale(.958);filter:brightness(1.16);box-shadow:0 0 0 4px rgba(255,187,69,.12),0 5px 20px rgba(255,70,5,.36),inset 0 5px 15px rgba(89,23,0,.46);}',
+      '.cinematic-play-icon{font-size:34px;line-height:1;color:#fff8dd;filter:drop-shadow(0 3px 9px rgba(0,0,0,.34));}',
+      '.cinematic-play-label{font-size:32px;line-height:1;font-weight:950;letter-spacing:.035em;text-shadow:0 3px 10px rgba(68,16,0,.42);}',
+      '.cinematic-secondary-row{width:100%;display:flex;align-items:stretch;justify-content:center;gap:14px;}',
+      '.cinematic-secondary{min-width:0;width:250px;min-height:62px;padding:0 18px;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:12px;background:linear-gradient(180deg,rgba(8,22,40,.94),rgba(4,10,21,.98));border:1.5px solid rgba(38,171,255,.68);box-shadow:0 9px 24px rgba(0,0,0,.32),0 0 20px rgba(26,147,255,.13),inset 0 1px rgba(255,255,255,.06);font-size:12px;font-weight:850;letter-spacing:.035em;transition:transform 105ms ease,border-color 105ms ease,background 105ms ease,box-shadow 105ms ease;}',
+      '.cinematic-secondary b{margin-left:auto;color:#d9efff;font-size:23px;font-weight:500;opacity:.82}.cinematic-secondary-icon{font-size:22px;line-height:1;filter:drop-shadow(0 0 8px rgba(64,193,255,.35));}',
+      '.cinematic-secondary:active,.cinematic-secondary.is-pressed{transform:translateY(3px) scale(.97);border-color:rgba(255,180,64,.84);background:linear-gradient(180deg,rgba(32,27,22,.96),rgba(14,11,11,.98));}',
+      '.cinematic-hint{margin-top:1px;padding:7px 12px;border-radius:999px;background:rgba(2,6,12,.45);border:1px solid rgba(255,255,255,.10);color:rgba(225,235,250,.67);font-size:9px;font-weight:760;letter-spacing:.11em;backdrop-filter:blur(9px);pointer-events:none}.cinematic-hint span{color:#5bc9ff;font-size:13px;margin-right:5px;}',
+      '.cinematic-pointer-glow{position:absolute;z-index:5;width:36vmax;height:36vmax;left:var(--px,50%);top:var(--py,50%);transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(255,158,57,.13),rgba(49,172,255,.045) 37%,transparent 69%);filter:blur(7px);}',
+      '.cinematic-tap-burst{position:absolute;z-index:12;width:90px;height:90px;margin:-45px 0 0 -45px;left:0;top:0;border-radius:50%;pointer-events:none;opacity:0;transform:translate3d(var(--tap-x,-200px),var(--tap-y,-200px),0) scale(.2);background:radial-gradient(circle,rgba(255,247,205,.94) 0 5%,rgba(255,164,50,.58) 17%,rgba(55,188,255,.18) 40%,transparent 69%);}',
+      '.cinematic-tap-burst.fire{animation:tapBurst .46s cubic-bezier(.2,.8,.2,1) both}@keyframes tapBurst{0%{opacity:.92;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(.2)}62%{opacity:.48;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(1)}100%{opacity:0;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(1.55)}}',
+      '#cinematic-home.is-launching .cinematic-controls{opacity:0;transform:translateX(-50%) translateY(22px);pointer-events:none}#cinematic-home.is-launching .cinematic-brand{opacity:0;transform:translate(-50%,-48%) scale(1.08);transition:opacity .24s ease,transform .34s ease}#cinematic-home.is-launching .cinematic-live{opacity:0;transition:opacity .18s ease}',
+      '.cinematic-transition{position:absolute;z-index:30;inset:0;opacity:0;visibility:hidden;background:#020307;pointer-events:none;transition:opacity .14s ease,visibility 0s linear .14s;overflow:hidden}.cinematic-transition.show{opacity:1;visibility:visible;transition:opacity .11s ease}',
+      '.cinematic-transition-blur{position:absolute;inset:-9%;filter:blur(28px) saturate(1.3) brightness(.44);transform:scale(1.16);background-size:600% 400%;}',
+      '.cinematic-transition-stage{position:absolute;inset:0;overflow:hidden}.cinematic-transition-frame{position:absolute;inset:0;filter:contrast(1.06) saturate(1.08);transform:scale(1.012)}',
+      '.cinematic-transition-vignette{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,transparent 0 36%,rgba(0,0,0,.12) 65%,rgba(0,0,0,.52) 100%)}',
+      '.cinematic-transition-flash{position:absolute;inset:-10%;opacity:0;background:radial-gradient(circle at 50% 52%,rgba(255,246,202,.98),rgba(255,124,27,.58) 18%,transparent 48%);mix-blend-mode:screen;pointer-events:none}.cinematic-transition.impact .cinematic-transition-flash{animation:transitionFlash .38s ease-out both}@keyframes transitionFlash{0%{opacity:0;transform:scale(.55)}25%{opacity:.9}100%{opacity:0;transform:scale(1.18)}}',
+      '.cinematic-modal{position:absolute;z-index:50;inset:0;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(2,4,9,.74);backdrop-filter:blur(13px)}.cinematic-modal.open{display:flex}.cinematic-modal-card{position:relative;width:min(540px,94vw);max-height:min(72vh,620px);overflow:auto;border-radius:22px;padding:29px;background:linear-gradient(160deg,rgba(18,28,44,.98),rgba(5,9,16,.99));border:1px solid rgba(62,184,255,.28);box-shadow:0 28px 90px rgba(0,0,0,.68),0 0 40px rgba(255,112,25,.12)}.cinematic-modal-title{margin:0 42px 17px 0;font-size:23px;color:#ffc466}.cinematic-modal-body{font-size:13px;line-height:1.6;color:#e8eff8}.cinematic-modal-body p{margin:0 0 10px}.cinematic-modal-close{position:absolute;right:13px;top:12px;width:42px;height:42px;border:0;border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:27px;cursor:pointer}.cinematic-modal-action{display:inline-flex;margin-top:12px;min-height:44px;align-items:center;justify-content:center;padding:0 18px;border-radius:11px;text-decoration:none;background:linear-gradient(90deg,#ff941d,#a74304);color:#fff;font-weight:850}',
+      '@media(orientation:portrait){.cinematic-blurred-frame{inset:-18%;filter:blur(30px) saturate(1.25) brightness(.42);transform:scale(1.22)}.cinematic-stage{left:50%;right:auto;top:12.5%;bottom:auto;width:100vw;height:auto;aspect-ratio:16/9;transform:translateX(-50%);background:transparent;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 7%,#000 88%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 7%,#000 88%,transparent 100%)}.cinematic-home-frame{transform:scale(1.005)}.cinematic-stage-light{background:linear-gradient(180deg,rgba(2,4,8,.12),transparent 24%,transparent 72%,rgba(3,5,10,.68) 100%)}.cinematic-brand{top:36%;width:min(82vw,430px);transform:translate(-50%,-50%)}.cinematic-live{left:16px;top:max(15px,env(safe-area-inset-top));padding:8px 12px}.cinematic-live span:last-child{display:none}.cinematic-controls{left:20px;right:20px;bottom:max(24px,calc(env(safe-area-inset-bottom) + 8px));width:auto;transform:none;gap:12px}.cinematic-play{width:100%;min-height:76px}.cinematic-play-label{font-size:29px}.cinematic-secondary-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.cinematic-secondary{width:100%;min-height:58px;padding:0 13px;font-size:11px}.cinematic-connect{grid-column:1 / -1}.cinematic-hint{align-self:center;margin-top:3px;font-size:8px}.cinematic-pointer-glow{display:none}#cinematic-home.is-launching .cinematic-controls{transform:translateY(18px)}#cinematic-home.is-launching .cinematic-brand{transform:translate(-50%,-50%) scale(1.08)}.cinematic-transition-stage{left:50%;right:auto;top:50%;bottom:auto;width:100vw;height:auto;aspect-ratio:16/9;transform:translate(-50%,-50%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 7%,#000 92%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 7%,#000 92%,transparent 100%)}.cinematic-transition-blur{inset:-18%;filter:blur(32px) saturate(1.25) brightness(.44);transform:scale(1.24)}}',
+      '@media(orientation:portrait) and (max-height:720px){.cinematic-stage{top:8%}.cinematic-brand{top:31%;width:min(70vw,360px)}.cinematic-controls{gap:8px;bottom:max(12px,env(safe-area-inset-bottom))}.cinematic-play{min-height:62px}.cinematic-play-label{font-size:25px}.cinematic-secondary{min-height:48px}.cinematic-hint{display:none}}',
+      '@media(prefers-reduced-motion:reduce){.cinematic-particles,.cinematic-live-dot{animation:none}.cinematic-play,.cinematic-secondary{transition:none}.cinematic-pointer-glow{display:none}}'
     ].join('\n');
 
-    root.append(ambient, shell, transition, reticle, filmGrain, modal.root, style);
+    root.append(
+      ambient,
+      blurredFrame,
+      stage,
+      particles,
+      brand,
+      live,
+      controls,
+      pointerGlow,
+      tapBurst,
+      transition,
+      modal.root,
+      style
+    );
     document.body.appendChild(root);
+
+    const transitionAudio = new Audio(TRANSITION_AUDIO);
+    transitionAudio.preload = 'auto';
+    transitionAudio.volume = 0.92;
 
     let disposed = false;
     let launching = false;
     let dragging = false;
-    let frame = 0;
-    let idleDirection = 1;
-    let lastInteraction = performance.now();
+    let currentFrame = IDLE_FRAME;
+    let targetFrame = IDLE_FRAME;
+    let raf = 0;
+    let settleTimer = 0;
+    let transitionRaf = 0;
     let firstGestureDone = false;
-    let idleTimer = 0;
-    let transitionTimer = 0;
 
-    const activeHomeSpec = () => (isPortrait() ? HOME_MOBILE : HOME_DESKTOP);
-    const applyHomeSpec = () => {
-      const spec = activeHomeSpec();
-      setSprite(homeFrame, spec);
-      frame = Math.max(0, Math.min(spec.frames - 1, frame));
-      setSpriteFrame(homeFrame, frame, spec);
+    const renderFrame = () => {
+      currentFrame += (targetFrame - currentFrame) * 0.18;
+      if (Math.abs(targetFrame - currentFrame) < 0.02) currentFrame = targetFrame;
+      setSpriteFrame(homeFrame, currentFrame);
+      setSpriteFrame(blurredFrame, currentFrame);
+      if (!disposed && !launching) raf = window.requestAnimationFrame(renderFrame);
     };
-    applyHomeSpec();
 
-    const pulse = (button: HTMLButtonElement) => {
+    const setPointer = (clientX: number, clientY: number) => {
+      root.style.setProperty('--px', clientX + 'px');
+      root.style.setProperty('--py', clientY + 'px');
+    };
+
+    const scrubFromPointer = (ev: PointerEvent) => {
+      const rect = stage.getBoundingClientRect();
+      if (!rect.width) return;
+      const ratio = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
+      targetFrame = ratio * (FRAME_COUNT - 1);
+    };
+
+    const scheduleCenter = () => {
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        if (!dragging && !launching) targetFrame = IDLE_FRAME;
+      }, 380);
+    };
+
+    const onPointerDown = (ev: PointerEvent) => {
+      dragging = true;
+      setPointer(ev.clientX, ev.clientY);
+      scrubFromPointer(ev);
+      try {
+        stage.setPointerCapture(ev.pointerId);
+      } catch {
+        // WebViews may not implement capture.
+      }
+    };
+
+    const onPointerMove = (ev: PointerEvent) => {
+      setPointer(ev.clientX, ev.clientY);
+      const fine =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+      if (dragging || fine) scrubFromPointer(ev);
+    };
+
+    const onPointerUp = (ev: PointerEvent) => {
+      dragging = false;
+      try {
+        stage.releasePointerCapture(ev.pointerId);
+      } catch {
+        // ignored
+      }
+      scheduleCenter();
+    };
+
+    const fireBurst = (x: number, y: number) => {
+      tapBurst.classList.remove('fire');
+      root.style.setProperty('--tap-x', x + 'px');
+      root.style.setProperty('--tap-y', y + 'px');
+      void tapBurst.offsetWidth;
+      tapBurst.classList.add('fire');
+    };
+
+    const press = (button: HTMLButtonElement, ev?: PointerEvent) => {
       button.classList.add('is-pressed');
-      window.setTimeout(() => button.classList.remove('is-pressed'), 150);
+      if (ev) fireBurst(ev.clientX, ev.clientY);
+      window.setTimeout(() => button.classList.remove('is-pressed'), 160);
     };
 
     const firstGesture = async () => {
@@ -356,78 +375,8 @@ export async function runCinematicIntro(
       try {
         await options.onPlayGesture?.();
       } catch {
-        // Browser may reject fullscreen/audio; the UI still works.
+        // The rest of the intro remains functional even if iOS rejects one API.
       }
-    };
-
-    const updateCursor = (ev: PointerEvent) => {
-      root.style.setProperty('--cursor-x', ev.clientX + 'px');
-      root.style.setProperty('--cursor-y', ev.clientY + 'px');
-      const r = stage.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) {
-        const nx = Math.max(-1, Math.min(1, ((ev.clientX - r.left) / r.width) * 2 - 1));
-        const ny = Math.max(-1, Math.min(1, ((ev.clientY - r.top) / r.height) * 2 - 1));
-        root.style.setProperty('--tilt-y', (nx * 0.75).toFixed(2) + 'deg');
-        root.style.setProperty('--tilt-x', (-ny * 0.45).toFixed(2) + 'deg');
-        root.style.setProperty('--stage-x', (nx * -4).toFixed(2) + 'px');
-        root.style.setProperty('--stage-y', (ny * -3).toFixed(2) + 'px');
-        root.style.setProperty('--glow-x', (((nx + 1) / 2) * 100).toFixed(1) + '%');
-        root.style.setProperty('--glow-y', (((ny + 1) / 2) * 100).toFixed(1) + '%');
-      }
-    };
-
-    const scrub = (ev: PointerEvent) => {
-      const spec = activeHomeSpec();
-      const rect = stage.getBoundingClientRect();
-      if (!rect.width) return;
-      const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-      frame = Math.round(ratio * (spec.frames - 1));
-      setSpriteFrame(homeFrame, frame, spec);
-      lastInteraction = performance.now();
-    };
-
-    const onStageDown = (ev: PointerEvent) => {
-      dragging = true;
-      lastInteraction = performance.now();
-      try {
-        stage.setPointerCapture(ev.pointerId);
-      } catch {}
-      void firstGesture();
-      updateCursor(ev);
-      scrub(ev);
-    };
-
-    const onStageMove = (ev: PointerEvent) => {
-      updateCursor(ev);
-      const fine =
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(hover:hover) and (pointer:fine)').matches;
-      if (dragging || fine) scrub(ev);
-    };
-
-    const onStageUp = (ev: PointerEvent) => {
-      dragging = false;
-      lastInteraction = performance.now();
-      try {
-        stage.releasePointerCapture(ev.pointerId);
-      } catch {}
-    };
-
-    const startIdle = () => {
-      idleTimer = window.setInterval(() => {
-        if (disposed || launching || dragging) return;
-        if (performance.now() - lastInteraction < 2200) return;
-        const spec = activeHomeSpec();
-        frame += idleDirection;
-        if (frame >= spec.frames - 1) {
-          frame = spec.frames - 1;
-          idleDirection = -1;
-        } else if (frame <= 0) {
-          frame = 0;
-          idleDirection = 1;
-        }
-        setSpriteFrame(homeFrame, frame, spec);
-      }, 115);
     };
 
     const closeModal = () => {
@@ -461,40 +410,36 @@ export async function runCinematicIntro(
       modal.close.focus();
     };
 
-    const interactiveButtons = [play, connect, rank, how];
-    interactiveButtons.forEach((button) => {
-      button.addEventListener('pointerenter', () => root.classList.add('is-over-control'));
-      button.addEventListener('pointerleave', () => root.classList.remove('is-over-control'));
-      button.addEventListener('pointerdown', () => pulse(button));
-    });
-
+    connect.addEventListener('pointerdown', (ev) => press(connect, ev));
     connect.addEventListener('click', () => {
       void firstGesture();
       openModal(
         'CONECTAR TIKTOK LIVE',
         [
-          'A conexão da live continua usando o sistema existente do Bolla Arena.',
-          'Para testes, QR e controles administrativos, use o painel.'
+          'A conexão continua usando o sistema TikTok já integrado ao Bolla Arena.',
+          'Para testes e controles do modo DEMO, use o painel administrativo.'
         ],
         'ABRIR PAINEL',
         '/admin'
       );
     });
 
+    rank.addEventListener('pointerdown', (ev) => press(rank, ev));
     rank.addEventListener('click', () => {
       void firstGesture();
       openModal('RANKING', [
-        'O TOP 5 é atualizado durante a rodada conforme eliminações, vida e desempenho.',
-        'A classificação continua integrada ao HUD da arena.'
+        'O TOP 5 acompanha a rodada e atualiza eliminações, posição e desempenho dos jogadores.',
+        'Durante a partida ele continua integrado ao HUD da arena.'
       ]);
     });
 
+    how.addEventListener('pointerdown', (ev) => press(how, ev));
     how.addEventListener('click', () => {
       void firstGesture();
       openModal('COMO JOGAR', [
-        'Comente na live para entrar na arena. Sua foto aparece dentro da sua bola.',
-        'Likes recuperam vida e aumentam poder nas metas configuradas.',
-        'Presentes ativam habilidades especiais e vantagens durante a rodada.'
+        'Comente na live para entrar na arena com sua própria bola.',
+        'Likes recuperam vida e aumentam poder conforme as metas configuradas.',
+        'Presentes ativam habilidades e vantagens especiais da rodada.'
       ]);
     });
 
@@ -503,92 +448,105 @@ export async function runCinematicIntro(
       if (ev.target === modal.root) closeModal();
     });
 
-    const onResize = () => {
-      applyHomeSpec();
-    };
-
     const cleanup = () => {
       if (disposed) return;
       disposed = true;
-      window.clearInterval(idleTimer);
-      window.clearInterval(transitionTimer);
-      window.removeEventListener('resize', onResize);
-      root.removeEventListener('pointermove', updateCursor);
-      stage.removeEventListener('pointerdown', onStageDown);
-      stage.removeEventListener('pointermove', onStageMove);
-      stage.removeEventListener('pointerup', onStageUp);
-      stage.removeEventListener('pointercancel', onStageUp);
+      window.cancelAnimationFrame(raf);
+      window.cancelAnimationFrame(transitionRaf);
+      window.clearTimeout(settleTimer);
+      stage.removeEventListener('pointerdown', onPointerDown);
+      stage.removeEventListener('pointermove', onPointerMove);
+      stage.removeEventListener('pointerup', onPointerUp);
+      stage.removeEventListener('pointercancel', onPointerUp);
+      stage.removeEventListener('pointerleave', scheduleCenter);
+      root.removeEventListener('pointermove', onPointerMove);
+      try {
+        transitionAudio.pause();
+      } catch {
+        // ignored
+      }
     };
 
     const finish = () => {
       cleanup();
-      root.style.transition = 'opacity 240ms ease';
+      root.style.transition = 'opacity 220ms ease';
       root.style.opacity = '0';
       window.setTimeout(() => {
         root.remove();
         resolve();
-      }, 250);
+      }, 230);
     };
 
-    const launch = async () => {
+    const launch = async (ev?: PointerEvent) => {
       if (launching) return;
       launching = true;
       closeModal();
-      pulse(play);
+      press(play, ev);
       await firstGesture();
 
       root.classList.add('is-launching');
-      interactiveButtons.forEach((button) => {
-        button.disabled = true;
-      });
+      play.disabled = true;
+      connect.disabled = true;
+      rank.disabled = true;
+      how.disabled = true;
 
-      window.setTimeout(() => {
-        transition.classList.add('show');
-        transition.setAttribute('aria-hidden', 'false');
-      }, 170);
+      transition.classList.add('show');
+      transition.setAttribute('aria-hidden', 'false');
+      setSpriteFrame(transitionFrame, 0);
+      setSpriteFrame(transitionBlur, 0);
 
-      setSpriteFrame(transitionFrame, 0, TRANSITION);
-      const progressFill = transitionHud.querySelector('i') as HTMLElement | null;
-      const progressNum = transitionHud.querySelector('b') as HTMLElement | null;
-      if (progressFill) progressFill.style.width = '0%';
-      if (progressNum) progressNum.textContent = '00';
+      try {
+        transitionAudio.currentTime = 0;
+        await transitionAudio.play();
+      } catch {
+        // Visual transition still runs if browser rejects audio.
+      }
 
-      let transitionIndex = 0;
       const reduced =
         typeof window.matchMedia === 'function' &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const stepMs = reduced ? 42 : 112;
+      const duration = reduced ? 950 : 4000;
+      const started = performance.now();
+      let impacted = false;
 
-      window.setTimeout(() => {
-        transitionTimer = window.setInterval(() => {
-          transitionIndex += 1;
-          const idx = setSpriteFrame(transitionFrame, transitionIndex, TRANSITION);
-          const pct = Math.round((idx / (TRANSITION.frames - 1)) * 100);
-          if (progressFill) progressFill.style.width = pct + '%';
-          if (progressNum) progressNum.textContent = String(pct).padStart(2, '0');
+      const tick = (now: number) => {
+        const progress = clamp((now - started) / duration, 0, 1);
+        const frameIndex = progress * (FRAME_COUNT - 1);
+        setSpriteFrame(transitionFrame, frameIndex);
+        setSpriteFrame(transitionBlur, frameIndex);
 
-          if (idx >= TRANSITION.frames - 1) {
-            window.clearInterval(transitionTimer);
-            transitionTimer = 0;
-            window.setTimeout(finish, reduced ? 80 : 260);
-          }
-        }, stepMs);
-      }, 120);
+        if (!impacted && progress > 0.58) {
+          impacted = true;
+          transition.classList.add('impact');
+        }
+
+        if (progress >= 1) {
+          transitionAudio.pause();
+          window.setTimeout(finish, reduced ? 80 : 130);
+          return;
+        }
+        transitionRaf = window.requestAnimationFrame(tick);
+      };
+      transitionRaf = window.requestAnimationFrame(tick);
     };
 
-    play.addEventListener('click', () => void launch());
+    play.addEventListener('pointerdown', (ev) => press(play, ev));
+    play.addEventListener('click', (ev) => void launch(ev as PointerEvent));
 
-    root.addEventListener('pointerdown', () => void firstGesture(), {
-      passive: true,
-      once: true
-    });
-    root.addEventListener('pointermove', updateCursor, { passive: true });
-    stage.addEventListener('pointerdown', onStageDown);
-    stage.addEventListener('pointermove', onStageMove);
-    stage.addEventListener('pointerup', onStageUp);
-    stage.addEventListener('pointercancel', onStageUp);
-    window.addEventListener('resize', onResize, { passive: true });
+    root.addEventListener(
+      'pointerdown',
+      () => {
+        void firstGesture();
+      },
+      { passive: true, once: true }
+    );
+    root.addEventListener('pointermove', onPointerMove, { passive: true });
+    stage.addEventListener('pointerdown', onPointerDown);
+    stage.addEventListener('pointermove', onPointerMove);
+    stage.addEventListener('pointerup', onPointerUp);
+    stage.addEventListener('pointercancel', onPointerUp);
+    stage.addEventListener('pointerleave', scheduleCenter);
 
-    startIdle();
+    raf = window.requestAnimationFrame(renderFrame);
   });
 }
