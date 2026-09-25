@@ -41,8 +41,7 @@ export class WaitingScene extends Phaser.Scene {
     this.overlayTransparent = !!opts.transparent;
     const phoneLite = !!opts.phoneLite;
     if (phoneLite) audio.setPhoneLite(true);
-    // Waiting/home must stay free of arena background music.
-    audio.stopBgm(0);
+    // Keep the same medieval theme alive from intro through waiting/gameplay.
     const cx = CANVAS_WIDTH / 2;
     const cy = CANVAS_HEIGHT / 2;
 
@@ -71,9 +70,12 @@ export class WaitingScene extends Phaser.Scene {
     const twinkleCount = phoneLite ? 6 : this.overlayTransparent ? 8 : 18;
     this.twinkles = createAmbientTwinkles(this, twinkleCount, 2);
 
-    // Keep AudioContext ready, but never start the game soundtrack in waiting.
+    // A user gesture can start/resume the one continuous soundtrack.
     audio.ensure();
-    this.input.once('pointerdown', () => audio.prepare());
+    this.input.once('pointerdown', () => {
+      audio.prepare();
+      void audio.startBgm(true);
+    });
 
     // Thin cream frame
     this.add
