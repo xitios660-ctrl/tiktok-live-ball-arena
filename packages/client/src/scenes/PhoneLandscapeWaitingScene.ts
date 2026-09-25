@@ -21,8 +21,8 @@ export class PhoneLandscapeWaitingScene extends Phaser.Scene {
 
   create(data?: { round?: RoundState }): void {
     audio.setPhoneLite(true);
-    audio.stopBgm(0);
     audio.prepare();
+    this.input.once('pointerdown', () => void audio.startBgm(true));
     this.bg = this.add.graphics().setDepth(0);
     this.frame = this.add.graphics().setDepth(2);
 
