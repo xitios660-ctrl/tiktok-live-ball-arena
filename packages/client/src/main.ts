@@ -257,11 +257,14 @@ const fontsReady =
     ? document.fonts.ready.then(() => undefined).catch(() => undefined)
     : Promise.resolve();
 void fontsReady.then(async () => {
+  const wantsCinematicIntro = shouldShowCinematicIntro(opts);
+  // Never let arena BGM leak under the cinematic videos.
+  if (wantsCinematicIntro) audio.setBgmAllowed(false);
+
   // Boot the real game behind the cinematic layer so the socket and round
   // state are already warm when the player presses JOGAR.
   boot();
 
-  const wantsCinematicIntro = shouldShowCinematicIntro(opts);
   if (wantsCinematicIntro) {
     // The stock mobile audio gate exists in index.html and is visible by default.
     // Hide it while the cinematic home owns the screen; JOGAR itself is the
@@ -270,14 +273,17 @@ void fontsReady.then(async () => {
     await runCinematicIntro({
       onPlayGesture: async () => {
         tryEnterPhoneFullscreen();
+        // Unlock the AudioContext only. The BGM is intentionally held until
+        // the cinematic transition finishes and gameplay is revealed.
         try {
-          const ok = await audio.unlock();
-          if (ok) audioUnlockedThisSession = true;
+          audio.prepare();
+          audioUnlockedThisSession = true;
         } catch {
           // The normal audio gate remains available after the transition.
         }
       },
     });
+    audio.setBgmAllowed(true);
   }
 
   setupAudioUnlockGate();
