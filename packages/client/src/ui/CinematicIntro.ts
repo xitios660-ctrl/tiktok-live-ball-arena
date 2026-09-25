@@ -100,10 +100,11 @@ function placeVideoHotspot(
   const viewportRatio = vw / Math.max(1, vh);
   let displayW = vw;
   let displayH = vh;
+  // The cinematic is 16:9. Keep the whole frame visible (object-fit: contain).
   if (viewportRatio > mediaRatio) {
-    displayH = vw / mediaRatio;
-  } else {
     displayW = vh * mediaRatio;
+  } else {
+    displayH = vw / mediaRatio;
   }
   const left = (vw - displayW) / 2;
   const top = (vh - displayH) / 2;
@@ -184,15 +185,16 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
     style.textContent = [
       '#cinematic-home{position:fixed;inset:0;z-index:99990;overflow:hidden;background:#09090d;color:#fff;font-family:Inter,system-ui,sans-serif;touch-action:none;isolation:isolate;}',
       '#cinematic-home *{box-sizing:border-box;}',
-      '.cinematic-fallback,.cinematic-home-video,.cinematic-transition-video{position:absolute;inset:-4%;width:108%;height:108%;object-fit:cover;object-position:center;will-change:transform,opacity;transform:translate3d(var(--cin-x,0px),var(--cin-y,0px),0) scale(1.06) rotateX(var(--cin-rx,0deg)) rotateY(var(--cin-ry,0deg));transition:transform 160ms cubic-bezier(.2,.8,.2,1);}',
+      '.cinematic-fallback{position:absolute;inset:-4%;width:108%;height:108%;will-change:transform,opacity;transform:translate3d(var(--cin-bg-x,0px),var(--cin-bg-y,0px),0) scale(1.04);transition:transform 160ms cubic-bezier(.2,.8,.2,1);}',
+      '.cinematic-home-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;will-change:transform,opacity;transform:translate3d(var(--cin-x,0px),var(--cin-y,0px),0) scale(1.006) rotateX(var(--cin-rx,0deg)) rotateY(var(--cin-ry,0deg));transform-origin:center;transition:transform 160ms cubic-bezier(.2,.8,.2,1),opacity 180ms ease;filter:contrast(1.035) saturate(1.035);}',
       '.cinematic-fallback{overflow:hidden;background:radial-gradient(ellipse at 50% 82%,rgba(255,122,32,.30),transparent 31%),radial-gradient(ellipse at 15% 42%,rgba(25,128,255,.18),transparent 38%),radial-gradient(ellipse at 85% 42%,rgba(139,60,255,.16),transparent 38%),linear-gradient(180deg,#101725 0%,#160d13 50%,#07080d 100%);}',
       '.cinematic-fallback::before{content:"";position:absolute;left:-12%;right:-12%;bottom:-4%;height:44%;background:linear-gradient(90deg,transparent 0 8%,rgba(34,211,238,.10) 8% 8.2%,transparent 8.2% 18%,rgba(255,138,61,.12) 18% 18.2%,transparent 18.2% 82%,rgba(34,211,238,.10) 82% 82.2%,transparent 82.2% 92%,rgba(255,138,61,.12) 92% 92.2%,transparent 92.2%),repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 72px);transform:perspective(520px) rotateX(67deg);transform-origin:bottom;mask-image:linear-gradient(to top,#000 12%,transparent 92%);}',
       '.cinematic-fallback::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 18% 20%,rgba(255,126,30,.52) 0 2px,transparent 3px),radial-gradient(circle at 82% 18%,rgba(34,211,238,.42) 0 2px,transparent 3px),radial-gradient(circle at 61% 59%,rgba(255,209,102,.34) 0 1px,transparent 2px),linear-gradient(90deg,rgba(255,92,24,.12),transparent 23%,transparent 77%,rgba(41,151,255,.12));background-size:150px 150px,190px 190px,230px 230px,100% 100%;animation:cinematic-embers 9s linear infinite;opacity:.72;}',
       '@keyframes cinematic-embers{from{background-position:0 0,0 0,0 0,0 0}to{background-position:36px -180px,-30px -150px,20px -200px,0 0}}',
       '.cinematic-home-video{opacity:0;z-index:2;}',
       '#cinematic-home.has-home-video .cinematic-home-video{opacity:1;}',
-      '#cinematic-home.has-home-video .cinematic-fallback{opacity:0;}',
-      '.cinematic-transition-video{z-index:12;opacity:0;transform:none;width:100%;height:100%;inset:0;pointer-events:none;background:#050507;transition:opacity 140ms ease;}',
+      '#cinematic-home.has-home-video .cinematic-fallback{opacity:.82;}',
+      '.cinematic-transition-video{position:absolute;z-index:12;opacity:0;transform:none;width:100%;height:100%;inset:0;object-fit:contain;object-position:center;pointer-events:none;background:rgba(5,5,7,.76);filter:contrast(1.035) saturate(1.035);transition:opacity 140ms ease;}',
       '#cinematic-home.is-transitioning .cinematic-transition-video{opacity:1;}',
       '.cinematic-shade{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at 50% 42%,transparent 0 34%,rgba(2,3,8,.1) 60%,rgba(2,3,8,.58) 100%),linear-gradient(180deg,rgba(3,5,10,.06),rgba(3,5,10,.22));}',
       '.cinematic-pointer-glow{position:absolute;z-index:4;width:42vmax;height:42vmax;border-radius:999px;left:var(--glow-x,50%);top:var(--glow-y,50%);transform:translate(-50%,-50%);pointer-events:none;background:radial-gradient(circle,rgba(255,155,55,.16),rgba(60,170,255,.06) 38%,transparent 68%);mix-blend-mode:screen;filter:blur(8px);transition:left 120ms linear,top 120ms linear;}',
@@ -242,11 +244,31 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
 
     let disposed = false;
     let launching = false;
+    let homeAudioEnabled = false;
     let targetX = 0;
     let targetY = 0;
     let currentX = 0;
     let currentY = 0;
     let raf = 0;
+
+    const enableHomeAudio = () => {
+      if (disposed || launching || homeAudioEnabled) return;
+      homeAudioEnabled = true;
+      homeVideo.muted = false;
+      homeVideo.volume = 1;
+      try {
+        const p = homeVideo.play();
+        if (p && typeof p.catch === 'function') {
+          void p.catch(() => {
+            homeAudioEnabled = false;
+            homeVideo.muted = true;
+          });
+        }
+      } catch {
+        homeAudioEnabled = false;
+        homeVideo.muted = true;
+      }
+    };
 
     const allPlayButtons = [playFallback, playHit];
     const connectButtons = [connectFallback, connectHit];
@@ -264,10 +286,12 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       if (disposed) return;
       currentX += (targetX - currentX) * 0.09;
       currentY += (targetY - currentY) * 0.09;
-      root.style.setProperty('--cin-x', (-currentX * 15).toFixed(2) + 'px');
-      root.style.setProperty('--cin-y', (-currentY * 10).toFixed(2) + 'px');
-      root.style.setProperty('--cin-ry', (currentX * 1.65).toFixed(2) + 'deg');
-      root.style.setProperty('--cin-rx', (-currentY * 1.15).toFixed(2) + 'deg');
+      root.style.setProperty('--cin-x', (-currentX * 6).toFixed(2) + 'px');
+      root.style.setProperty('--cin-y', (-currentY * 4).toFixed(2) + 'px');
+      root.style.setProperty('--cin-bg-x', (-currentX * 12).toFixed(2) + 'px');
+      root.style.setProperty('--cin-bg-y', (-currentY * 8).toFixed(2) + 'px');
+      root.style.setProperty('--cin-ry', (currentX * 0.6).toFixed(2) + 'deg');
+      root.style.setProperty('--cin-rx', (-currentY * 0.4).toFixed(2) + 'deg');
       raf = window.requestAnimationFrame(tick);
     };
 
@@ -362,6 +386,7 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       disposed = true;
       window.cancelAnimationFrame(raf);
       window.removeEventListener('resize', layoutHotspots);
+      root.removeEventListener('pointerdown', enableHomeAudio);
       root.removeEventListener('pointermove', onPointer);
       root.removeEventListener('pointerleave', resetPointer);
       root.style.opacity = '0';
@@ -390,6 +415,8 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       const transitionReady = await canUseVideo(transitionVideo, 1100);
       if (transitionReady) {
         homeVideo.pause();
+        transitionVideo.muted = false;
+        transitionVideo.volume = 1;
         try {
           transitionVideo.currentTime = 0;
         } catch {
@@ -431,6 +458,7 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       });
     });
 
+    root.addEventListener('pointerdown', enableHomeAudio, { passive: true });
     root.addEventListener('pointermove', onPointer, { passive: true });
     root.addEventListener('pointerleave', resetPointer);
     window.addEventListener('resize', layoutHotspots);
