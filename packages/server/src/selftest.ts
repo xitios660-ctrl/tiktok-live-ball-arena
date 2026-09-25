@@ -8,6 +8,7 @@ import {
   TikTokLiveConnectorAdapter,
 } from './tiktok/TikTokLiveConnectorAdapter';
 import { mapTikTokGiftToArenaId } from './tiktok/mapTikTokGift';
+import { HybridTikTokConnector } from './tiktok/HybridTikTokConnector';
 import { applyPickupAbility } from './game/GiftAbilities';
 import { AutoBotSpawner } from './game/AutoBotSpawner';
 import {
@@ -146,6 +147,68 @@ if (pirateGiftFinal?.type === 'gift') {
   else process.env.AUTO_BOT_BATCH_SIZE = oldBatch;
   if (oldMax == null) delete process.env.AUTO_BOT_MAX_PLAYERS;
   else process.env.AUTO_BOT_MAX_PLAYERS = oldMax;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Hybrid TikTok redundancy: backup likes/comments without double counting     */
+/* -------------------------------------------------------------------------- */
+
+{
+  const hybrid = new HybridTikTokConnector();
+  const seen: ArenaLiveEvent[] = [];
+  hybrid.on('event', (event) => seen.push(event));
+
+  const internal = hybrid as unknown as {
+    handlePrimaryEvent: (event: ArenaLiveEvent) => void;
+    handleBackupEvent: (event: ArenaLiveEvent) => void;
+  };
+
+  const user: ArenaUser = {
+    userId: 'hybrid-viewer',
+    username: 'hybrid_viewer',
+    nickname: 'Hybrid Viewer',
+  };
+
+  const likeA: ArenaLiveEvent = {
+    type: 'like',
+    user,
+    likeCount: 10,
+    totalLikeCount: 500,
+    timestamp: Date.now(),
+  };
+
+  internal.handleBackupEvent(likeA);
+  internal.handlePrimaryEvent({ ...likeA, timestamp: Date.now() + 10 });
+  assert(
+    seen.filter((event) => event.type === 'like').length === 1,
+    'hybrid duplicate LIKE was counted twice'
+  );
+
+  internal.handleBackupEvent({
+    ...likeA,
+    likeCount: 5,
+    totalLikeCount: 505,
+    timestamp: Date.now() + 20,
+  });
+  assert(
+    seen.filter((event) => event.type === 'like').length === 2,
+    'hybrid backup did not forward a new LIKE batch'
+  );
+
+  const comment: ArenaLiveEvent = {
+    type: 'comment',
+    user,
+    comment: 'teste híbrido',
+    timestamp: Date.now(),
+  };
+  internal.handleBackupEvent(comment);
+  internal.handlePrimaryEvent({ ...comment, timestamp: Date.now() + 10 });
+  assert(
+    seen.filter((event) => event.type === 'comment').length === 1,
+    'hybrid duplicate COMMENT was counted twice'
+  );
+
+  await hybrid.disconnect();
 }
 
 /* -------------------------------------------------------------------------- */
