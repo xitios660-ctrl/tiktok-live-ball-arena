@@ -123,6 +123,65 @@ export function adminApiRouter(deps: {
     });
   });
 
+  /**
+   * Runtime TikTok switch. Accepts either @username or a full
+   * https://www.tiktok.com/@username/live URL. This lets production recover
+   * immediately when the broadcaster account changes without waiting for a deploy.
+   */
+  router.post('/admin/tiktok/connect', async (req, res) => {
+    const raw = String(req.body?.username || req.body?.url || '').trim();
+    const fromUrl = raw.match(/tiktok\.com\/@([^/?#]+)/i)?.[1];
+    const username = decodeURIComponent(fromUrl || raw)
+      .replace(/^@/, '')
+      .replace(/\?.*$/, '')
+      .replace(/\/$/, '')
+      .trim();
+
+    if (!username) {
+      res.status(400).json({
+        ok: false,
+        error: 'Informe o @username ou cole o link da LIVE do TikTok.',
+      });
+      return;
+    }
+
+    try {
+      await deps.connector.connect(username);
+      res.json({
+        ok: true,
+        username,
+        status: deps.connector.getStatus(),
+      });
+    } catch (err) {
+      res.status(502).json({
+        ok: false,
+        username,
+        error: err instanceof Error ? err.message : String(err),
+        status: deps.connector.getStatus(),
+      });
+    }
+  });
+
+  router.post('/admin/tiktok/reconnect', async (_req, res) => {
+    const username = deps.connector.getStatus().username;
+    if (!username) {
+      res.status(400).json({ ok: false, error: 'Nenhum @username configurado.' });
+      return;
+    }
+    try {
+      await deps.connector.connect(username);
+      res.json({ ok: true, username, status: deps.connector.getStatus() });
+    } catch (err) {
+      res.status(502).json({
+        ok: false,
+        username,
+        error: err instanceof Error ? err.message : String(err),
+        status: deps.connector.getStatus(),
+      });
+    }
+  });
+
+
   router.post('/admin/round/start', (_req, res) => {
     res.json({ ok: true, round: deps.game.startRound() });
   });
