@@ -29,12 +29,12 @@ const TRANSITION_MOBILE_SPRITE = (
 
 const HOME_DESKTOP_VIDEO = (
   import.meta.env.VITE_CINEMATIC_HOME_VIDEO_FLUID ||
-  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/4e5d0a28-3a18-44d9-a92f-fd25a5c2d6cd.mp4'
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/a0350a13-9ad2-44d0-9d06-d4e1ff1ccb64.mp4'
 ).trim();
 
 const HOME_MOBILE_VIDEO = (
   import.meta.env.VITE_CINEMATIC_HOME_MOBILE_VIDEO_FLUID ||
-  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/89276ff2-4840-4ead-8dc5-08b8d1f6aa26.mp4'
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/05cb448a-bd84-44fa-bb4e-98b0ebcbb7ad.mp4'
 ).trim();
 
 const HOME_FRAMES = 36;
