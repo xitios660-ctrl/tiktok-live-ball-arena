@@ -482,12 +482,10 @@ export class ArenaScene extends Phaser.Scene {
     this.pickupsLayer?.tick(t);
     if (this.giftLegend) {
       tickGiftLegend(this.giftLegend, t);
-      const bob = Math.sin(t / 900) * 3;
-      this.giftLegend.root.y = this.giftLegendBaseY + bob;
+      this.giftLegend.root.y = this.giftLegendBaseY;
     }
     if (this.premiumTop5) {
-      const bob = Math.sin(t / 1100 + 1.2) * 2.5;
-      this.premiumTop5.root.y = this.top5BaseY + bob;
+      this.premiumTop5.root.y = this.top5BaseY;
       tickPremiumTop5(this.premiumTop5, t);
     }
     this.killFeed = tickNeonKillFeed(this.killFeed, now);
