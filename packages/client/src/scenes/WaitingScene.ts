@@ -41,6 +41,9 @@ export class WaitingScene extends Phaser.Scene {
     this.overlayTransparent = !!opts.transparent;
     const phoneLite = !!opts.phoneLite;
     if (phoneLite) audio.setPhoneLite(true);
+    // Waiting/home must stay free of arena background music.
+    audio.stopBgm(0);
+    audio.stopAmbient(0);
     const cx = CANVAS_WIDTH / 2;
     const cy = CANVAS_HEIGHT / 2;
 
@@ -69,14 +72,9 @@ export class WaitingScene extends Phaser.Scene {
     const twinkleCount = phoneLite ? 6 : this.overlayTransparent ? 8 : 18;
     this.twinkles = createAmbientTwinkles(this, twinkleCount, 2);
 
-    // Soft drone under BGM (phone skips drone; unlock gate starts BGM)
-    const ambientIntensity = phoneLite ? 0.55 : 0.75;
+    // Keep the browser AudioContext ready, but do not start game music here.
     audio.ensure();
-    if (!phoneLite) audio.startAmbient(ambientIntensity);
-    this.input.once('pointerdown', () => {
-      void audio.unlock();
-      if (!phoneLite) audio.startAmbient(ambientIntensity);
-    });
+    this.input.once('pointerdown', () => audio.prepare());
 
     // Thin cream frame
     this.add
