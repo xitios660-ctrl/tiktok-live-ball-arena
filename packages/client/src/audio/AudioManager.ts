@@ -40,6 +40,8 @@ export class AudioManager {
 
   // --- BGM (HTMLAudioElement loop) ---
   private bgmWanted = false;
+  /** False while the cinematic home/transition owns the screen. */
+  private bgmAllowed = true;
   private bgmEl: HTMLAudioElement | null = null;
   private bgmPlaying = false;
   private bgmFadeTimer: number | null = null;
@@ -100,19 +102,40 @@ export class AudioManager {
     if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume();
   }
 
-  /**
-   * Call from first touch/click — required for mobile autoplay policy.
-   * Starts BGM + confirm blip. Resolves true if BGM started (or muted path ok).
-   */
-  async unlock(): Promise<boolean> {
+  /** Unlock/resume browser audio without starting game music. */
+  prepare(): void {
     this.ensure();
     this.resumeCtx();
+    this.bindBgmRetry();
+  }
+
+  /** Allow/suppress game BGM while preserving whether the arena wants it. */
+  setBgmAllowed(on: boolean): void {
+    this.bgmAllowed = !!on;
+    if (!this.bgmAllowed) {
+      if (this.bgmEl) {
+        this.bgmEl.pause();
+        this.bgmEl.volume = 0;
+      }
+      this.bgmPlaying = false;
+      return;
+    }
+    if (this.bgmWanted && !this.muted) void this.startBgm(true);
+  }
+
+  /**
+   * Call from first touch/click — required for mobile autoplay policy.
+   * Starts BGM + confirm blip. Resolves true if BGM started (or muted/suppressed path ok).
+   */
+  async unlock(): Promise<boolean> {
+    this.prepare();
     this.bgmWanted = true;
 
     // Soft drone under music (skip on phone to keep BGM clear)
-    if (!this.phoneLite) this.startAmbient();
+    if (!this.phoneLite && this.bgmAllowed) this.startAmbient();
 
     this.playConfirmBlip();
+    if (!this.bgmAllowed) return true;
     const ok = await this.startBgm(true);
     this.bindBgmRetry();
     return ok;
@@ -167,7 +190,7 @@ export class AudioManager {
   }
 
   private bgmTargetVolume(): number {
-    if (this.muted || !this.bgmWanted) return 0;
+    if (this.muted || !this.bgmWanted || !this.bgmAllowed) return 0;
     const phoneMul = this.phoneLite ? 0.85 : 1;
     return Math.max(0, Math.min(1, this.volumes.master * this.volumes.music * BGM_BASE * phoneMul));
   }
@@ -219,7 +242,7 @@ export class AudioManager {
    */
   async startBgm(fadeIn = true): Promise<boolean> {
     this.bgmWanted = true;
-    if (this.muted) return true;
+    if (this.muted || !this.bgmAllowed) return true;
     this.ensure();
     this.resumeCtx();
 
