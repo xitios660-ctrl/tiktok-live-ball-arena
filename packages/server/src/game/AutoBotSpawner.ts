@@ -35,11 +35,13 @@ export class AutoBotSpawner {
   private readonly enabled: boolean;
   private readonly intervalMs: number;
   private readonly maxPlayers: number;
+  private readonly batchSize: number;
 
   constructor(private readonly deps: AutoBotDeps) {
     this.enabled = envBool('AUTO_BOT_ENABLED', true);
-    this.intervalMs = envInt('AUTO_BOT_INTERVAL_MS', 60_000);
+    this.intervalMs = envInt('AUTO_BOT_INTERVAL_MS', 30_000);
     this.maxPlayers = envInt('AUTO_BOT_MAX_PLAYERS', 40);
+    this.batchSize = envInt('AUTO_BOT_BATCH_SIZE', 3);
   }
 
   start(): void {
@@ -49,7 +51,7 @@ export class AutoBotSpawner {
     }
     this.stop();
     console.log(
-      `[AutoBot] enabled — ~${Math.round(this.intervalMs / 1000)}s (jitter 50–70%), soft cap ${this.maxPlayers}`
+      `[AutoBot] enabled — ${this.batchSize} bots every ${Math.round(this.intervalMs / 1000)}s, soft cap ${this.maxPlayers}`
     );
     this.scheduleNext();
   }
@@ -62,28 +64,43 @@ export class AutoBotSpawner {
   }
 
   private scheduleNext(): void {
-    const lo = Math.floor(this.intervalMs * (50 / 60));
-    const hi = Math.floor(this.intervalMs * (70 / 60));
-    const delay = lo + Math.floor(Math.random() * (hi - lo + 1));
     this.timer = setTimeout(() => {
-      this.trySpawn();
+      this.trySpawnBatch();
       this.scheduleNext();
-    }, delay);
+    }, this.intervalMs);
   }
 
-  private trySpawn(): void {
-    if (!this.deps.canAcceptJoin()) return;
-    const count = this.deps.getPlayerCount();
-    if (count >= this.maxPlayers) return;
+  /**
+   * Test hook used by the production self-test so we can verify the exact
+   * batch size without waiting 30 seconds.
+   */
+  runNowForTest(): number {
+    return this.trySpawnBatch();
+  }
 
-    this.seq += 1;
-    const now = Date.now();
-    const username = `bot_auto_${this.seq}`;
-    const nickname = `Bot Auto ${this.seq}`;
-    const userId = `autobot-${now}-${this.seq}`;
+  private trySpawnBatch(): number {
+    if (!this.deps.canAcceptJoin()) return 0;
 
-    this.deps.injectJoin({ userId, username, nickname });
-    const after = this.deps.getPlayerCount();
-    console.log(`[AutoBot] spawned @${username} (players=${after})`);
+    let spawned = 0;
+    for (let i = 0; i < this.batchSize; i += 1) {
+      const count = this.deps.getPlayerCount();
+      if (count >= this.maxPlayers) break;
+
+      this.seq += 1;
+      const now = Date.now();
+      const username = `bot_auto_${this.seq}`;
+      const nickname = `Bot Auto ${this.seq}`;
+      const userId = `autobot-${now}-${this.seq}`;
+
+      this.deps.injectJoin({ userId, username, nickname });
+      spawned += 1;
+      const after = this.deps.getPlayerCount();
+      console.log(`[AutoBot] spawned @${username} (players=${after})`);
+    }
+
+    console.log(
+      `[AutoBot] batch complete: +${spawned}/${this.batchSize} bots`
+    );
+    return spawned;
   }
 }
