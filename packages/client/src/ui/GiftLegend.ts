@@ -167,11 +167,9 @@ function drawGlassCard(
   neon.strokeRoundedRect(3, 3, w - 6, h - 6, 11);
 }
 
-/** Soft neon pulse — call from scene.update */
-export function tickGiftLegend(handles: GiftLegendHandles, time: number): void {
-  const t = (time - handles.born) / 1000;
-  const pulse = 0.5 + Math.sin(t * 2.2) * 0.5;
-  drawGlassCard(handles.bg, handles.neon, handles.width, handles.height, pulse);
+/** Static power-up guide. Kept as a tick hook for scene compatibility. */
+export function tickGiftLegend(_handles: GiftLegendHandles, _time: number): void {
+  // Intentionally static: no pulsing/blinking during gameplay.
 }
 
 export function setGiftLegendCompact(handles: GiftLegendHandles, compact: boolean): void {
