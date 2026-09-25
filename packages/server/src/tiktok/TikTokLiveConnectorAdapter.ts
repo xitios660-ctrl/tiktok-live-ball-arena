@@ -14,6 +14,7 @@ type TikTokLib = typeof import('tiktok-live-connector');
 const HEARTBEAT_MS = 25_000;
 const MAX_BACKOFF_MS = 10_000;
 const STALE_MS = 90_000;
+const POLL_FALLBACK_MS = 2_000;
 
 function normalizeUsername(input: string): string {
   const raw = String(input || '').trim();
@@ -88,6 +89,37 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object'
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function rawMessageId(data: Record<string, unknown>): string | null {
+  const nested = asRecord(data.data);
+  const common =
+    asRecord(data.common) ||
+    asRecord(nested?.common) ||
+    asRecord(data.message)?.common as Record<string, unknown> | undefined;
+
+  const value =
+    data.msgId ??
+    data.messageId ??
+    nested?.msgId ??
+    nested?.messageId ??
+    common?.msgId ??
+    common?.messageId;
+
+  return value != null && String(value).trim() ? String(value) : null;
+}
+
+function rawCreatedAt(data: Record<string, unknown>): string {
+  const nested = asRecord(data.data);
+  const value =
+    data.createTime ??
+    data.create_time ??
+    data.timestamp ??
+    nested?.createTime ??
+    nested?.create_time ??
+    nested?.timestamp ??
+    '';
+  return String(value || '');
 }
 
 function candidateScore(
@@ -201,6 +233,11 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private pollFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollFallbackActive = false;
+  private pollFallbackBusy = false;
+  private pollCursor = '';
+  private pollFailures = 0;
   private intentionalStop = false;
   private lastError: string | null = null;
   private lastEventAt: number | null = null;
@@ -240,6 +277,7 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     this.generation += 1;
     this.clearReconnect();
     this.stopHeartbeat();
+    this.stopPollingFallback();
     await this.teardown();
     this.connectedFlag = false;
     this.liveFlag = false;
@@ -273,7 +311,9 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       lastError: this.lastError,
       lastEventAt: this.lastEventAt,
       lastConnectedAt: this.lastConnectedAt,
-      note: 'Unofficial Webcast WS (tiktok-live-connector). Needs host LIVE. Not an official TikTok API.',
+      note: this.pollFallbackActive
+        ? 'TikTok LIVE conectado por fallback HTTP incremental (WebSocket rejeitado pelo TikTok). Comentários, likes e presentes continuam sendo processados.'
+        : 'Unofficial Webcast WS (tiktok-live-connector). Needs host LIVE. Not an official TikTok API.',
     };
   }
 
@@ -296,6 +336,7 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     if (this.intentionalStop || !this.username) return;
     const gen = ++this.generation;
     this.setPhase(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
+    this.stopPollingFallback();
     await this.teardown();
 
     const lib = await this.loadLib();
@@ -363,6 +404,7 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       this.connectedFlag = false;
       this.liveFlag = false;
       this.stopHeartbeat();
+      this.stopPollingFallback();
       this.setPhase('waiting_live', 'stream ended');
       this.scheduleReconnect('stream_end');
     });
@@ -413,6 +455,22 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
         (err instanceof Error && err.name === 'UserOfflineError') ||
         /offline|not.*live|user_offline|currently.*not.*live|isn['’]?t online|is not online|not online|failed to retrieve room id|room id/i.test(msg);
 
+      const websocketSignatureRejected =
+        /illegal secret key|websocket.*handshake|error connecting to websocket/i.test(msg);
+
+      if (
+        !offline &&
+        websocketSignatureRejected &&
+        (roomIdHint || this.roomId) &&
+        this.connection === conn
+      ) {
+        console.warn(
+          `[TIKTOK] WebSocket rejected (${msg}). Enabling incremental HTTP fallback for @${this.username}.`
+        );
+        this.startPollingFallback(conn, roomIdHint || this.roomId!);
+        return;
+      }
+
       if (offline) {
         console.log(`[TIKTOK] AGUARDANDO LIVE — @${this.username} (${msg})`);
         this.setPhase('waiting_live', msg);
@@ -447,6 +505,169 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       roomId: this.roomId || undefined,
     });
     this.startHeartbeat();
+  }
+
+  /**
+   * Fallback for TikTok deployments that return a valid room + initial webcast
+   * batch but reject the WebSocket handshake ("illegal secret key"). We keep
+   * consuming the signed fetch endpoint incrementally with its cursor. This
+   * uses the exact same decoder/event handlers, so CHAT / LIKE / GIFT still
+   * enter the GameLoop even while the push socket is unavailable.
+   */
+  private startPollingFallback(
+    conn: InstanceType<TikTokLib['TikTokLiveConnection']>,
+    roomId: string
+  ): void {
+    this.stopPollingFallback();
+    this.pollFallbackActive = true;
+    this.pollFallbackBusy = false;
+    this.pollCursor = '';
+    this.pollFailures = 0;
+    this.roomId = roomId;
+    this.connectedFlag = true;
+    this.liveFlag = true;
+    this.reconnectAttempt = 0;
+    this.lastConnectedAt = Date.now();
+    this.lastError = 'WebSocket indisponível; fallback HTTP incremental ativo';
+    this.setPhase('connected');
+    console.log(
+      `[TIKTOK] LIVE DETECTADA / FALLBACK HTTP ATIVO @${this.username} room=${roomId}`
+    );
+    this.emitter.emit('connected', {
+      username: this.username!,
+      roomId,
+    });
+
+    const poll = async () => {
+      if (
+        this.intentionalStop ||
+        !this.pollFallbackActive ||
+        this.connection !== conn
+      ) return;
+
+      if (this.pollFallbackBusy) {
+        this.pollFallbackTimer = setTimeout(poll, POLL_FALLBACK_MS);
+        return;
+      }
+
+      this.pollFallbackBusy = true;
+      let nextDelay = POLL_FALLBACK_MS;
+
+      try {
+        const lib = await this.loadLib();
+        const routeConfig = (
+          lib as unknown as {
+            RouteConfig?: {
+              fetchSignedWebSocketFromProvider?: (args: {
+                webClient: unknown;
+                apiClient: unknown;
+                roomId: string;
+                cursor?: string;
+                authenticateWs: false;
+                useMobile: false;
+              }) => Promise<{
+                fetchResult: {
+                  cursor?: string;
+                  internalExt?: string;
+                };
+                fetchResultCookieHeader?: string;
+                fetchResultRoomId?: string;
+              }>;
+            };
+          }
+        ).RouteConfig;
+
+        const fetchIncremental = routeConfig?.fetchSignedWebSocketFromProvider;
+        if (typeof fetchIncremental !== 'function') {
+          throw new Error('RouteConfig.fetchSignedWebSocketFromProvider unavailable');
+        }
+
+        const result = await fetchIncremental({
+          webClient: conn.webClient,
+          apiClient: conn.apiClient,
+          roomId: this.roomId || roomId,
+          cursor: this.pollCursor || undefined,
+          authenticateWs: false,
+          useMobile: false,
+        });
+
+        if (result.fetchResultCookieHeader) {
+          await conn.webClient.cookieJar.processSetCookieHeader(
+            result.fetchResultCookieHeader
+          );
+        }
+
+        if (result.fetchResultRoomId) {
+          this.roomId = String(result.fetchResultRoomId);
+          conn.webClient.roomId = this.roomId;
+        }
+
+        const processor = (
+          conn as unknown as {
+            processProtoMessageFetchResult?: (value: unknown) => Promise<void>;
+          }
+        ).processProtoMessageFetchResult;
+
+        if (typeof processor !== 'function') {
+          throw new Error('processProtoMessageFetchResult unavailable');
+        }
+
+        await processor.call(conn, result.fetchResult);
+
+        if (result.fetchResult.cursor) {
+          this.pollCursor = result.fetchResult.cursor;
+        }
+
+        this.pollFailures = 0;
+        this.lastWsAt = Date.now();
+        this.lastError = null;
+        if (!this.connectedFlag || !this.liveFlag || this.phase !== 'connected') {
+          this.connectedFlag = true;
+          this.liveFlag = true;
+          this.setPhase('connected');
+        }
+      } catch (err) {
+        const msg = errMsg(err);
+        this.pollFailures += 1;
+        this.lastError = msg;
+
+        if (/429|too many|rate.?limit/i.test(msg)) {
+          nextDelay = 8_000;
+        } else if (/offline|not.*live|stream.*ended|room.*ended/i.test(msg)) {
+          console.log(
+            `[TIKTOK] fallback reports LIVE ended @${this.username}: ${msg}`
+          );
+          this.stopPollingFallback();
+          this.connectedFlag = false;
+          this.liveFlag = false;
+          this.setPhase('waiting_live', msg);
+          this.scheduleReconnect('fallback_live_ended');
+          return;
+        } else {
+          nextDelay = Math.min(10_000, POLL_FALLBACK_MS * Math.max(1, this.pollFailures));
+          console.warn(
+            `[TIKTOK] fallback poll #${this.pollFailures}: ${msg}; retry ${nextDelay}ms`
+          );
+        }
+      } finally {
+        this.pollFallbackBusy = false;
+      }
+
+      if (this.pollFallbackActive && !this.intentionalStop) {
+        this.pollFallbackTimer = setTimeout(poll, nextDelay);
+      }
+    };
+
+    this.pollFallbackTimer = setTimeout(poll, 250);
+  }
+
+  private stopPollingFallback(): void {
+    if (this.pollFallbackTimer) clearTimeout(this.pollFallbackTimer);
+    this.pollFallbackTimer = null;
+    this.pollFallbackActive = false;
+    this.pollFallbackBusy = false;
+    this.pollCursor = '';
+    this.pollFailures = 0;
   }
 
   private scheduleReconnect(reason: string): void {
@@ -514,7 +735,16 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   }
 
   private handleChat(raw: unknown): void {
+    const data = asRecord(raw) || {};
     const { user, comment } = parseTikTokChatPayload(raw, this.username);
+    const msgId = rawMessageId(data);
+    const created = rawCreatedAt(data);
+    const fp =
+      msgId ||
+      `chat:${user.userId}:${created || Math.floor(Date.now() / 5000)}:${comment}`;
+
+    if (!this.dedupe.check('chat:' + fp)) return;
+
     this.push(
       { type: 'comment', user, comment, timestamp: Date.now() },
       '[COMMENT]',
@@ -688,6 +918,14 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     if (totalLikeCount != null) this.lastTotalLikeCount = totalLikeCount;
     this.lastLikeUserId = user.userId;
     this.lastLikeAt = now;
+
+    const likeMsgId = rawMessageId(data);
+    const likeFp =
+      likeMsgId ||
+      (totalLikeCount != null
+        ? `like:${user.userId}:total:${totalLikeCount}`
+        : `like:${user.userId}:${rawCreatedAt(data) || Math.floor(now / 2000)}:${creditedLikeCount}`);
+    if (!this.dedupe.check('like:' + likeFp)) return;
 
     this.push(
       {
