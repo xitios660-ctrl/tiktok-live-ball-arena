@@ -45,11 +45,11 @@ interface LandscapePickupView {
   sourceRadius: number;
 }
 
-const PANEL_W = 320;
-const PANEL_TOP = 112;
-const PANEL_ROW_H = 42;
-const PANEL_CYCLE_MS = 10_000;
-const PANEL_VISIBLE_MS = 3_000;
+const PANEL_W = 286;
+const PANEL_TOP = 106;
+const PANEL_ROW_H = 34;
+const TOP_PANEL_H = 246;
+const GIFT_PANEL_H = 258;
 
 export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private bg!: Phaser.GameObjects.Graphics;
@@ -81,8 +81,6 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private lastPlayerCount = 0;
   private feedLines: string[] = [];
   private toastTween: Phaser.Tweens.Tween | null = null;
-  private panelTween: Phaser.Tweens.Tween | null = null;
-  private panelsVisible = true;
 
   constructor() {
     super('ArenaScene');
@@ -148,7 +146,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.topTitle = this.add
       .text(0, 0, '👑  TOP 5', {
         fontFamily: FONT_ACCENT,
-        fontSize: '30px',
+        fontSize: '26px',
         color: THEME_HEX.gold,
         stroke: '#000000',
         strokeThickness: 4,
@@ -160,7 +158,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         this.add
           .text(0, 0, '—', {
             fontFamily: FONT,
-            fontSize: '19px',
+            fontSize: '16px',
             color: i === 0 ? RANK_HEX.gold : THEME_HEX.light,
             stroke: '#000000',
             strokeThickness: 3,
@@ -172,7 +170,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.giftTitle = this.add
       .text(0, 0, '★ POWER-UPS', {
         fontFamily: FONT_ACCENT,
-        fontSize: '30px',
+        fontSize: '26px',
         color: THEME_HEX.gold,
         stroke: '#000000',
         strokeThickness: 4,
@@ -192,7 +190,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         this.add
           .text(0, 0, line, {
             fontFamily: FONT,
-            fontSize: '18px',
+            fontSize: '16px',
             color: THEME_HEX.light,
             stroke: '#000000',
             strokeThickness: 3,
@@ -240,13 +238,18 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setAlpha(0);
 
     this.footer = this.add
-      .text(0, 0, '💬 COMENTE • ❤️ 50:+10HP • 100:+20HP/+1⚔ • 200:+40HP/+2⚔ • 500:FULL/+10⚔/🦫 • 1000:FULL/+15⚔/🦫×3', {
-        fontFamily: FONT_ACCENT,
-        fontSize: '19px',
-        color: THEME_HEX.arenaDark,
-        backgroundColor: THEME_HEX.light,
-        padding: { x: 24, y: 10 },
-      })
+      .text(
+        0,
+        0,
+        '💬 COMENTE PARA ENTRAR  •  ❤️ COMBO: 50 +10HP  •  100 +20HP/+1⚔  •  200 +40HP/+2⚔  •  500 FULL/+10⚔/🦫  •  1000 FULL/+15⚔/🦫×3  •  PAUSOU = COMBO ZERA',
+        {
+          fontFamily: FONT_ACCENT,
+          fontSize: '16px',
+          color: THEME_HEX.light,
+          backgroundColor: '#0b0b0fe6',
+          padding: { x: 18, y: 8 },
+        }
+      )
       .setOrigin(0.5)
       .setDepth(110);
 
@@ -293,7 +296,6 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       this.game.events.off(SOCKET_EVENTS.GAME_SNAPSHOT, this.onSnapshot, this);
       this.game.events.off(SOCKET_EVENTS.COMBAT_EVENT, this.onCombat, this);
       this.toastTween?.stop();
-      this.panelTween?.stop();
       this.ballViews.clear();
       this.pickupViews.clear();
     });
@@ -309,11 +311,11 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     }
 
     this.layout();
-    this.setCornerPanelsVisible(true, false);
+    // TOP 5 and power-up gabarito stay fixed. No blink/fade cycle.
+    this.setCornerPanelsVisible(true);
   }
 
   update(time: number): void {
-    this.tickCornerPanels(time);
     for (const view of this.pickupViews.values()) {
       const bob = Math.sin(time / 280 + view.sourceX * 0.01) * 4;
       view.emoji.y = bob;
@@ -356,7 +358,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.players.setText('PLAYERS: ' + snap.playerCount);
 
     // Likes are personal rewards now, so this pill shows the rule instead of a global meter.
-    this.likes.setText('❤️ 100 LIKES = +20 HP +1 FORÇA');
+    this.likes.setText('❤️ COMBO DE LIKES • PAUSOU 3s = ZERA');
 
     this.syncBalls(snap.balls);
     this.syncPickups(snap.pickups || []);
@@ -425,27 +427,27 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     this.title.setPosition(cx, 45);
     this.timer.setPosition(cx, 108);
     this.players.setPosition(cx, 162);
-    this.likes.setPosition(24, 24);
+    this.likes.setPosition(18, 18);
 
     // Temporary information panels live at the actual outer screen corners,
     // not at the edges of the centered 16:9 gameplay area.
     const left = 18;
     const right = w - PANEL_W - 18;
 
-    this.topTitle.setPosition(left + 18, PANEL_TOP + 16);
+    this.topTitle.setPosition(left + 16, PANEL_TOP + 14);
     for (let i = 0; i < this.topRows.length; i++) {
-      this.topRows[i].setPosition(left + 18, PANEL_TOP + 58 + i * PANEL_ROW_H);
+      this.topRows[i].setPosition(left + 16, PANEL_TOP + 52 + i * PANEL_ROW_H);
     }
 
-    this.giftTitle.setPosition(right + 18, PANEL_TOP + 16);
+    this.giftTitle.setPosition(right + 16, PANEL_TOP + 14);
     for (let i = 0; i < this.giftRows.length; i++) {
-      this.giftRows[i].setPosition(right + 18, PANEL_TOP + 58 + i * 34);
+      this.giftRows[i].setPosition(right + 16, PANEL_TOP + 52 + i * 31);
     }
 
     this.feed.setPosition(left + 12, h - 152);
     this.toast.setPosition(cx, 225);
     this.countdown.setPosition(cx, h / 2);
-    this.footer.setPosition(cx, h - 42);
+    this.footer.setPosition(cx, h - 30);
     this.winnerPanel.setPosition(cx, h / 2);
 
     for (const [id, view] of this.ballViews) {
@@ -517,10 +519,10 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     const right = w - PANEL_W - 18;
 
     this.topPanel.clear();
-    this.drawPanel(this.topPanel, left, PANEL_TOP, PANEL_W, 292);
+    this.drawPanel(this.topPanel, left, PANEL_TOP, PANEL_W, TOP_PANEL_H);
 
     this.giftPanel.clear();
-    this.drawPanel(this.giftPanel, right, PANEL_TOP, PANEL_W, 304);
+    this.drawPanel(this.giftPanel, right, PANEL_TOP, PANEL_W, GIFT_PANEL_H);
 
     const hud = this.hud;
     hud.clear();
@@ -539,43 +541,11 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     ];
   }
 
-  private tickCornerPanels(time: number): void {
-    const phase = time % PANEL_CYCLE_MS;
-    const shouldShow = phase < PANEL_VISIBLE_MS;
-    if (shouldShow !== this.panelsVisible) {
-      this.setCornerPanelsVisible(shouldShow, true);
-    }
-  }
-
-  private setCornerPanelsVisible(visible: boolean, animate: boolean): void {
-    this.panelsVisible = visible;
-    const targets = this.cornerPanelTargets();
-    this.panelTween?.stop();
-
-    if (!animate) {
-      for (const target of targets) {
-        (target as unknown as { setAlpha: (value: number) => unknown }).setAlpha(visible ? 1 : 0);
-      }
-      return;
-    }
-
-    if (visible) {
-      for (const target of targets) {
-        (target as unknown as { setAlpha: (value: number) => unknown }).setAlpha(0);
-      }
-      this.panelTween = this.tweens.add({
-        targets,
-        alpha: 1,
-        duration: 280,
-        ease: 'Cubic.Out',
-      });
-    } else {
-      this.panelTween = this.tweens.add({
-        targets,
-        alpha: 0,
-        duration: 320,
-        ease: 'Cubic.In',
-      });
+  private setCornerPanelsVisible(visible: boolean): void {
+    for (const target of this.cornerPanelTargets()) {
+      (target as unknown as { setAlpha: (value: number) => unknown }).setAlpha(
+        visible ? 1 : 0
+      );
     }
   }
 
