@@ -177,6 +177,9 @@ export class AudioManager {
   // ---------------------------------------------------------------------------
 
   private pickBgmUrl(): string {
+    // A configured theme is authoritative and may be an MP4/M4A URL whose
+    // audio track is intentionally reused as the single soundtrack.
+    if (CUSTOM_BGM) return CUSTOM_BGM;
     try {
       const probe = document.createElement('audio');
       for (const url of BGM_CANDIDATES) {
