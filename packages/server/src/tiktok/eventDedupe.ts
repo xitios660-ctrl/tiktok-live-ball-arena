@@ -5,6 +5,10 @@ export class EventDedupe {
   private seen = new Map<string, number>();
   constructor(private readonly ttlMs = 60_000, private readonly maxSize = 5_000) {}
 
+  clear(): void {
+    this.seen.clear();
+  }
+
   /** @returns true if this fingerprint is NEW (should process) */
   check(fingerprint: string): boolean {
     const now = Date.now();
