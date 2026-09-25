@@ -571,7 +571,14 @@ export function createAccessRouter(): RequestHandler {
  */
 export function accessGateMiddleware(req: Request, res: Response, next: NextFunction): void {
   const pwd = getAccessPassword();
-  if (!pwd) return next();
+  const isAdmin = req.path === '/admin' || req.path.startsWith('/admin/');
+  if (!pwd) {
+    if (isAdmin) {
+      res.status(503).type('text/plain').send('Admin indisponível: configure SITE_ACCESS_PASSWORD no serviço.');
+      return;
+    }
+    return next();
+  }
   if (isExempt(req)) return next();
 
   if (tokenMatches(req, pwd)) {
