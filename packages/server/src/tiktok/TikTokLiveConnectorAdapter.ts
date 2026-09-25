@@ -412,11 +412,11 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       this.lastWsAt = Date.now();
     });
 
+    let roomIdHint: string | undefined;
     try {
       // Resolve the room explicitly first. Passing roomId into connect() skips
       // an additional username-resolution pass and has proven more reliable
       // when TikTok's HTML/live-status route temporarily says "offline".
-      let roomIdHint: string | undefined;
       try {
         const fetchRoomId = (
           conn as unknown as {
