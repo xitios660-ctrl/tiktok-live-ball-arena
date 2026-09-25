@@ -132,9 +132,7 @@ export class AudioManager {
   async unlock(): Promise<boolean> {
     this.prepare();
     this.bgmWanted = true;
-
-    // Soft drone under music (skip on phone to keep BGM clear)
-    if (!this.phoneLite && this.bgmAllowed) this.startAmbient();
+    // Intentionally no ambient drone: one soundtrack only.
 
     this.playConfirmBlip();
     if (!this.bgmAllowed) return true;
