@@ -396,13 +396,9 @@ export class ArenaScene extends Phaser.Scene {
     this.muteBtn.on('pointerdown', () => {
       const m = audio.toggleMute();
       this.muteBtn.setText(m ? '🔇' : '🔊');
-      // Unmute only resumes arena music while the round is actually running.
       if (!m) {
         audio.prepare();
-        if (this.lastPhase === 'running') {
-          void audio.startBgm(true);
-          
-        }
+        void audio.startBgm(true);
       } else {
         audio.ensure();
       }
@@ -437,12 +433,11 @@ export class ArenaScene extends Phaser.Scene {
         .setAlpha(0.6);
     }
 
-    // Arena soundtrack belongs only to an active round.
+    // One medieval theme continues through every arena phase.
     const initialAudioPhase = data?.round?.phase ?? 'running';
     this.lastPhase = initialAudioPhase;
     audio.prepare();
-    if (initialAudioPhase === 'running') void audio.startBgm(true);
-    else audio.stopBgm(0);
+    void audio.startBgm(true);
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.game.events.on(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
@@ -525,8 +520,7 @@ export class ArenaScene extends Phaser.Scene {
     this.applyTimerVisuals(state.remainingSec, state.phase, state.durationSec);
     this.playersText.setText(`PLAYERS NA ARENA: ${state.playerCount ?? 0}`);
     this.lastPhase = state.phase;
-    if (state.phase === 'running') void audio.startBgm(true);
-    else audio.stopBgm(0.35);
+    void audio.startBgm(false);
     if (state.phase === 'results') {
       this.resultsHint.setText(`Próxima rodada em ${state.resultsRemainingSec ?? 0}s`);
     }
@@ -547,8 +541,7 @@ export class ArenaScene extends Phaser.Scene {
     this.applyTimerVisuals(snap.remainingSec, snap.phase);
     this.playersText.setText(`PLAYERS NA ARENA: ${snap.playerCount}`);
     this.lastPhase = snap.phase;
-    if (snap.phase === 'running') void audio.startBgm(true);
-    else audio.stopBgm(0.35);
+    void audio.startBgm(false);
     this.syncBalls(snap.balls);
     this.pickupsLayer?.sync(snap.pickups);
     if (this.likesText) {
