@@ -316,7 +316,7 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       if (gen !== this.generation) return;
       const msg = errMsg(err);
       this.lastError = msg;
-      const soft = /room id|offline|not.*live/i.test(msg);
+      const soft = /room id|offline|not.*live|isn['’]?t online|is not online|not online/i.test(msg);
       if (soft) console.warn('[TIKTOK]', msg);
       else {
         console.error('[TIKTOK][ERROR]', msg);
@@ -358,7 +358,7 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       this.lastError = msg;
       const offline =
         (err instanceof Error && err.name === 'UserOfflineError') ||
-        /offline|not.*live|user_offline|currently.*not.*live|failed to retrieve room id|room id/i.test(msg);
+        /offline|not.*live|user_offline|currently.*not.*live|isn['’]?t online|is not online|not online|failed to retrieve room id|room id/i.test(msg);
 
       if (offline) {
         console.log(`[TIKTOK] AGUARDANDO LIVE — @${this.username} (${msg})`);
@@ -516,12 +516,18 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   }
 
   private handleLike(raw: unknown): void {
-    const data = raw as Record<string, unknown>;
-    const nestedUser = data.user as Record<string, unknown> | undefined;
+    const data = asRecord(raw) || {};
+    const nestedData = asRecord(data.data);
+    const nestedUser =
+      asRecord(data.user) ||
+      asRecord(nestedData?.user) ||
+      asRecord(data.userInfo) ||
+      asRecord(nestedData?.userInfo);
 
-    // Connector versions have used both nested data.user and top-level user
-    // fields. Accept both so COMMENT and LIKE resolve to the same player id.
-    const user = toUser(nestedUser || data);
+    // Connector versions have used nested data.user, nested data.data.user and
+    // top-level user fields. Accept all of them so COMMENT and LIKE resolve to
+    // the exact same player id in production.
+    const user = toUser(nestedUser || nestedData || data);
 
     const rawLikeCount = Math.max(
       1,
@@ -529,6 +535,9 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
         data.likeCount ??
           data.like_count ??
           data.count ??
+          nestedData?.likeCount ??
+          nestedData?.like_count ??
+          nestedData?.count ??
           1
       ) || 1
     );
@@ -536,7 +545,10 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     const totalRaw =
       data.totalLikeCount ??
       data.total_like_count ??
-      data.totalLikes;
+      data.totalLikes ??
+      nestedData?.totalLikeCount ??
+      nestedData?.total_like_count ??
+      nestedData?.totalLikes;
     const totalLikeCount =
       totalRaw != null && Number.isFinite(Number(totalRaw))
         ? Math.max(0, Number(totalRaw))
