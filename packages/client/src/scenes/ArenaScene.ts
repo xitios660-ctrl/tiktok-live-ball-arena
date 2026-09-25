@@ -190,6 +190,10 @@ export class ArenaScene extends Phaser.Scene {
     super('ArenaScene');
   }
 
+  preload(): void {
+    this.load.image('arena-cover-backdrop', '/assets/ball-arena/backgrounds/access-arena.jpg');
+  }
+
   create(data?: { round?: RoundState }): void {
     const opts = getOverlayOptions();
     this.phoneLite = !!opts.phoneLite;
@@ -204,6 +208,13 @@ export class ArenaScene extends Phaser.Scene {
 
     // Glossy arena floor (skip opaque fills in OBS transparent mode)
     this.overlayTransparent = !!opts.transparent;
+    if (!this.overlayTransparent && this.textures.exists('arena-cover-backdrop')) {
+      this.add
+        .image(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 'arena-cover-backdrop')
+        .setDisplaySize(CANVAS_WIDTH, CANVAS_HEIGHT)
+        .setAlpha(this.phoneLite ? 0.16 : 0.24)
+        .setDepth(-2);
+    }
     this.arenaFloor = this.add.graphics().setDepth(0);
     paintArenaFloor(this.arenaFloor, CANVAS_WIDTH, CANVAS_HEIGHT, this.overlayTransparent);
     // Animated neon energy rings above static floor (depth 1, same layer as twinkles)

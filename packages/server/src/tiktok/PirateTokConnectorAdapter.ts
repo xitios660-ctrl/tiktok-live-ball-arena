@@ -38,17 +38,20 @@ const MAX_RECENT_IDS = 8_000;
 const TIKTOK_OFFLINE_STATUS = 4;
 let pirateRuntimePatched = false;
 
-function piratePackageEntry(): string {
-  // piratetok-live-js is ESM-only and exposes an "import" export without a
-  // CommonJS condition, so require.resolve() throws under the server's CJS
-  // build even though the package is installed and dynamically importable.
+/** Resolve o pacote ESM sem depender do campo exports em require.resolve(). */
+function resolvePirateDist(): string {
   const candidates = [
-    path.resolve(process.cwd(), 'node_modules/piratetok-live-js/dist/index.js'),
-    path.resolve(__dirname, '../../../../node_modules/piratetok-live-js/dist/index.js'),
+    path.resolve(process.cwd(), 'node_modules/piratetok-live-js/dist'),
+    path.resolve(process.cwd(), 'packages/server/node_modules/piratetok-live-js/dist'),
   ];
-  const entry = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!entry) throw new Error('piratetok-live-js package files not found');
-  return entry;
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'index.js'))) return candidate;
+  }
+  try {
+    return path.dirname(require.resolve('piratetok-live-js'));
+  } catch {
+    throw new Error('piratetok-live-js dist not found');
+  }
 }
 
 function patchPirateTokLiveStatusCheck(): void {
@@ -56,8 +59,7 @@ function patchPirateTokLiveStatusCheck(): void {
   pirateRuntimePatched = true;
 
   try {
-    const entry = piratePackageEntry();
-    const apiPath = path.join(path.dirname(entry), 'http', 'api.js');
+    const apiPath = path.join(resolvePirateDist(), 'http', 'api.js');
     if (!fs.existsSync(apiPath)) {
       console.warn('[TIKTOK][PIRATE] runtime patch skipped: api.js not found');
       return;
@@ -465,8 +467,7 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
       }
     ) => Promise<void>;
   }> {
-    const entry = piratePackageEntry();
-    const dist = path.dirname(entry);
+    const dist = resolvePirateDist();
     const importFile = async (relative: string) =>
       dynamicImport(pathToFileURL(path.join(dist, relative)).href);
 

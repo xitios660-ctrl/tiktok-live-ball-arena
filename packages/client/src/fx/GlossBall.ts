@@ -267,7 +267,25 @@ function paintSkinAccent(
       ctx.fillRect(cx + r * 0.55 - 10, cy - r * 0.2, 10, r * 0.4);
       break;
     }
-    case 'plain':
+    case 'plain': {
+      // Bots and viewers without photo still read as characters, not blank tokens.
+      ctx.fillStyle = 'rgba(11,11,15,0.72)';
+      ctx.beginPath();
+      ctx.ellipse(cx - r * 0.25, cy - r * 0.08, r * 0.10, r * 0.14, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + r * 0.25, cy - r * 0.08, r * 0.10, r * 0.14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(242,235,215,0.88)';
+      ctx.beginPath();
+      ctx.arc(cx - r * 0.25, cy - r * 0.11, r * 0.035, 0, Math.PI * 2);
+      ctx.arc(cx + r * 0.25, cy - r * 0.11, r * 0.035, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(11,11,15,0.7)';
+      ctx.lineWidth = Math.max(2, r * 0.045);
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.10, r * 0.24, 0.15, Math.PI - 0.15);
+      ctx.stroke();
+      break;
+    }
     default:
       break;
   }
