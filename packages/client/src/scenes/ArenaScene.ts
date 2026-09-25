@@ -396,10 +396,13 @@ export class ArenaScene extends Phaser.Scene {
     this.muteBtn.on('pointerdown', () => {
       const m = audio.toggleMute();
       this.muteBtn.setText(m ? '🔇' : '🔊');
-      // Unmute path: unlock AudioContext + restart BGM (autoplay-safe)
+      // Unmute only resumes arena music while the round is actually running.
       if (!m) {
-        void audio.unlock();
-        if (!this.phoneLite) audio.startAmbient(0.95);
+        audio.prepare();
+        if (this.lastPhase === 'running') {
+          void audio.startBgm(true);
+          if (!this.phoneLite) audio.startAmbient(0.95);
+        }
       } else {
         audio.ensure();
       }
@@ -434,15 +437,18 @@ export class ArenaScene extends Phaser.Scene {
         .setAlpha(0.6);
     }
 
-    // BGM + soft ambient (AudioContext unlocks via banner / mute / tap)
-    // Phone lite: BGM primary (*0.85); soft drone skipped inside AudioManager
+    // Arena BGM belongs only to an active round, never the cinematic home/waiting/results.
     const ambientIntensity = this.phoneLite ? 0.75 : 0.95;
-    audio.ensure();
-    if (!this.phoneLite) audio.startAmbient(ambientIntensity);
-    this.input.once('pointerdown', () => {
-      void audio.unlock();
+    const initialAudioPhase = data?.round?.phase ?? 'running';
+    this.lastPhase = initialAudioPhase;
+    audio.prepare();
+    if (initialAudioPhase === 'running') {
+      void audio.startBgm(true);
       if (!this.phoneLite) audio.startAmbient(ambientIntensity);
-    });
+    } else {
+      audio.stopBgm(0);
+      audio.stopAmbient(0);
+    }
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.game.events.on(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
@@ -524,6 +530,13 @@ export class ArenaScene extends Phaser.Scene {
   private onRound = (state: RoundState) => {
     this.applyTimerVisuals(state.remainingSec, state.phase, state.durationSec);
     this.playersText.setText(`PLAYERS NA ARENA: ${state.playerCount ?? 0}`);
+    if (state.phase === 'running') {
+      void audio.startBgm(true);
+      if (!this.phoneLite) audio.startAmbient(0.95);
+    } else {
+      audio.stopBgm(0.25);
+      audio.stopAmbient(0.25);
+    }
     if (state.phase === 'results') {
       this.resultsHint.setText(`Próxima rodada em ${state.resultsRemainingSec ?? 0}s`);
     }
@@ -543,6 +556,12 @@ export class ArenaScene extends Phaser.Scene {
   private onSnapshot = (snap: GameSnapshot) => {
     this.applyTimerVisuals(snap.remainingSec, snap.phase);
     this.playersText.setText(`PLAYERS NA ARENA: ${snap.playerCount}`);
+    if (snap.phase === 'running') {
+      void audio.startBgm(true);
+    } else {
+      audio.stopBgm(0.25);
+      audio.stopAmbient(0.25);
+    }
     this.syncBalls(snap.balls);
     this.pickupsLayer?.sync(snap.pickups);
     if (this.likesText) {
