@@ -214,12 +214,69 @@ export function adminApiRouter(deps: {
   router.post('/admin/sim/like', (req, res) => {
     const likeCount = Math.max(1, Number(req.body?.likeCount) || 100);
     const demo = deps.getDemo();
-    if (demo) {
-      demo.injectLike(likeCount, req.body?.user);
-    } else {
-      deps.game.handleLikes(likeCount);
+
+    let user = req.body?.user as
+      | { userId?: string; username?: string; nickname?: string }
+      | undefined;
+    const targetId =
+      (req.body?.userId as string | undefined) ||
+      user?.userId ||
+      deps.game.resolveGiftTargetUserId(null);
+
+    if (targetId) {
+      const ball = deps.game.getSnapshot().balls.find((b) => b.userId === targetId);
+      const stats = deps.game.getStats().find((st) => st.userId === targetId);
+      user = {
+        userId: targetId,
+        username: ball?.username || stats?.username || user?.username || targetId,
+        nickname: ball?.nickname || stats?.nickname || user?.nickname,
+      };
     }
-    res.json({ ok: true, likeCount, global: deps.game.getGlobalState() });
+
+    if (!user?.userId) {
+      res.status(400).json({
+        ok: false,
+        error: 'No active player to receive likes. Comment/spawn a player first or pass userId.',
+      });
+      return;
+    }
+
+    if (demo) {
+      demo.injectLike(likeCount, user);
+    } else {
+      deps.game.handleLiveEvent({
+        type: 'like',
+        user: {
+          userId: user.userId,
+          username: user.username || user.userId,
+          nickname: user.nickname,
+        },
+        likeCount,
+        timestamp: Date.now(),
+      });
+    }
+
+    const target = deps.game
+      .getSnapshot()
+      .balls.find((b) => b.userId === user!.userId);
+
+    res.json({
+      ok: true,
+      likeCount,
+      user,
+      target: target
+        ? {
+            userId: target.userId,
+            hp: target.hp,
+            maxHp: target.maxHp,
+            hitPower: target.hitPower ?? 0,
+            strengthMult: target.strengthMult ?? 1,
+            titanStacks: target.titanStacks ?? 0,
+            buffs: target.buffs ?? [],
+          }
+        : null,
+      global: deps.game.getGlobalState(),
+    });
   });
 
   router.post('/admin/sim/share', (req, res) => {
