@@ -325,8 +325,8 @@ export function updatePremiumTop5(
 ): void {
   const count = Math.min(5, top5.length);
   handles.height = computeHeight(count);
-  const pulse = 0.5 + Math.sin((scene.time.now - handles.born) / 450) * 0.5;
-  drawCard(handles.bg, handles.neon, handles.headerBg, CARD_W, handles.height, pulse);
+  // Static chrome: ranking should stay readable, never pulse/blink.
+  drawCard(handles.bg, handles.neon, handles.headerBg, CARD_W, handles.height, 0.42);
 
   handles.emptyHint.setVisible(count === 0);
 
@@ -408,10 +408,8 @@ export function updatePremiumTop5(
   handles.lastIds = newIds;
 }
 
-/** Neon pulse — call each frame (cheap redraw of neon + header wash). */
-export function tickPremiumTop5(handles: PremiumTop5Handles, time: number): void {
-  const pulse = 0.5 + Math.sin((time - handles.born) / 450) * 0.5;
-  drawCard(handles.bg, handles.neon, handles.headerBg, CARD_W, handles.height, pulse);
-  handles.headerCrown.setAlpha(0.75 + pulse * 0.25);
-  handles.headerTitle.setAlpha(0.9 + pulse * 0.1);
+/** Static TOP 5 chrome. Kept as a tick hook for scene compatibility. */
+export function tickPremiumTop5(handles: PremiumTop5Handles, _time: number): void {
+  handles.headerCrown.setAlpha(1);
+  handles.headerTitle.setAlpha(1);
 }
