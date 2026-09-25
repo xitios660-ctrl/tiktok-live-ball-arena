@@ -42,8 +42,6 @@ export class WaitingScene extends Phaser.Scene {
     const phoneLite = !!opts.phoneLite;
     if (phoneLite) audio.setPhoneLite(true);
     // Waiting/home must stay free of arena background music.
-    audio.stopBgm(0);
-    audio.stopAmbient(0);
     const cx = CANVAS_WIDTH / 2;
     const cy = CANVAS_HEIGHT / 2;
 
@@ -74,7 +72,10 @@ export class WaitingScene extends Phaser.Scene {
 
     // Keep the browser AudioContext ready, but do not start game music here.
     audio.ensure();
-    this.input.once('pointerdown', () => audio.prepare());
+    this.input.once('pointerdown', () => {
+      audio.prepare();
+      void audio.startBgm(true);
+    });
 
     // Thin cream frame
     this.add
