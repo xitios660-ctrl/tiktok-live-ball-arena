@@ -167,6 +167,13 @@ export async function runCinematicIntro(
     const homeFrame = document.createElement('div');
     homeFrame.className = 'cinematic-frame cinematic-home-frame';
 
+    // A second copy of the same sprite is cross-faded against the first one.
+    // This visually interpolates the 36 source frames at 60 fps instead of
+    // "stepping" from one still to the next.
+    const homeFrameBlend = document.createElement('div');
+    homeFrameBlend.className =
+      'cinematic-frame cinematic-home-frame cinematic-home-frame-blend';
+
     const fx = document.createElement('div');
     fx.className = 'cinematic-fx';
 
@@ -185,7 +192,7 @@ export async function runCinematicIntro(
     const how = makeButton('Como jogar', 'cinematic-hotspot cinematic-hotspot-how');
     hotspots.append(play, connect, rank, how);
 
-    stage.append(homeFrame, fx, glow, hotspots);
+    stage.append(homeFrame, homeFrameBlend, fx, glow, hotspots);
 
     const transition = document.createElement('div');
     transition.className = 'cinematic-transition';
@@ -212,6 +219,7 @@ export async function runCinematicIntro(
       '.cinematic-stage{position:absolute;left:50%;top:50%;width:max(100vw,calc(100vh * 16 / 9));height:max(100vh,calc(100vw * 9 / 16));transform:translate(-50%,-50%);overflow:hidden;will-change:transform,filter;background:#020307;}',
       '.cinematic-frame{position:absolute;inset:0;background-repeat:no-repeat;background-color:#020307;will-change:background-position,transform,filter;}',
       '.cinematic-home-frame{background-size:600% 600%;filter:contrast(1.045) saturate(1.04);}',
+      '.cinematic-home-frame-blend{opacity:0;}',
       '.cinematic-fx{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 44%,transparent 42%,rgba(0,0,0,.18) 100%),linear-gradient(180deg,rgba(0,0,0,.05),transparent 55%,rgba(0,0,0,.12));mix-blend-mode:multiply;}',
       '.cinematic-hotspots{position:absolute;inset:0;z-index:8;pointer-events:none;}',
       '.cinematic-hotspot{position:absolute;pointer-events:auto;border:0!important;outline:0!important;background:transparent!important;color:transparent!important;font-size:0!important;border-radius:18px;appearance:none;-webkit-appearance:none;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:none!important;padding:0;margin:0;transform:translate(-50%,-50%);}',
@@ -248,10 +256,16 @@ export async function runCinematicIntro(
     let launching = false;
     let dragging = false;
     let firstGestureDone = false;
-    let homeFrameIndex = Math.floor((HOME_FRAMES - 1) / 2);
-    let idleDirection = 1;
-    let lastInteraction = performance.now();
-    let idleTimer = 0;
+    let homeFrameFloat = (HOME_FRAMES - 1) / 2;
+    let autoPhase = 0;
+    let animationRaf = 0;
+    let lastAnimationAt = performance.now();
+    let dragStartX = 0;
+    let dragStartFrame = homeFrameFloat;
+    let dragLastFrame = homeFrameFloat;
+    let dragLastAt = performance.now();
+    let inertiaVelocity = 0;
+    let inertiaUntil = 0;
     let transitionTimer = 0;
 
     const hotspotMap: Record<HotspotKey, HTMLButtonElement> = {
@@ -275,10 +289,34 @@ export async function runCinematicIntro(
       });
     };
 
+    const renderHomeFrame = () => {
+      const clamped = Math.max(0, Math.min(HOME_FRAMES - 1, homeFrameFloat));
+      const lower = Math.floor(clamped);
+      const upper = Math.min(HOME_FRAMES - 1, lower + 1);
+      const mix = clamped - lower;
+
+      setSpriteFrame(homeFrame, lower, HOME_FRAMES, HOME_COLS, HOME_ROWS);
+      setSpriteFrame(homeFrameBlend, upper, HOME_FRAMES, HOME_COLS, HOME_ROWS);
+      homeFrameBlend.style.opacity = mix.toFixed(3);
+      homeFrame.dataset.frameFloat = clamped.toFixed(3);
+    };
+
+    const syncAutoPhaseToCurrent = (direction: number) => {
+      const center = (HOME_FRAMES - 1) / 2;
+      const amplitude = center;
+      const normalized = Math.max(
+        -1,
+        Math.min(1, (homeFrameFloat - center) / amplitude)
+      );
+      const a = Math.asin(normalized);
+      autoPhase = direction >= 0 ? a : Math.PI - a;
+    };
+
     const applyHomeAsset = () => {
-      homeFrame.style.backgroundImage =
-        'url("' + (portrait() ? HOME_MOBILE_SPRITE : HOME_DESKTOP_SPRITE) + '")';
-      setSpriteFrame(homeFrame, homeFrameIndex, HOME_FRAMES, HOME_COLS, HOME_ROWS);
+      const url = portrait() ? HOME_MOBILE_SPRITE : HOME_DESKTOP_SPRITE;
+      homeFrame.style.backgroundImage = 'url("' + url + '")';
+      homeFrameBlend.style.backgroundImage = 'url("' + url + '")';
+      renderHomeFrame();
       placeHotspots();
     };
 
@@ -332,41 +370,56 @@ export async function runCinematicIntro(
 
     (Object.keys(hotspotMap) as HotspotKey[]).forEach(bindHotspotFx);
 
-    const scrubFromPointer = (ev: PointerEvent) => {
-      if ((ev.target as HTMLElement | null)?.closest('.cinematic-hotspot')) return;
-      const rect = stage.getBoundingClientRect();
-      if (rect.width <= 1) return;
-      const ratio = Math.max(
-        0,
-        Math.min(1, (ev.clientX - rect.left) / rect.width)
-      );
-      homeFrameIndex = Math.round(ratio * (HOME_FRAMES - 1));
-      setSpriteFrame(homeFrame, homeFrameIndex, HOME_FRAMES, HOME_COLS, HOME_ROWS);
-      lastInteraction = performance.now();
-    };
-
     const onStageDown = (ev: PointerEvent) => {
       if ((ev.target as HTMLElement | null)?.closest('.cinematic-hotspot')) return;
       dragging = true;
+      inertiaVelocity = 0;
+      inertiaUntil = 0;
+      dragStartX = ev.clientX;
+      dragStartFrame = homeFrameFloat;
+      dragLastFrame = homeFrameFloat;
+      dragLastAt = performance.now();
       void firstGesture();
       try {
         stage.setPointerCapture(ev.pointerId);
       } catch {
         // ignored
       }
-      scrubFromPointer(ev);
     };
 
     const onStageMove = (ev: PointerEvent) => {
-      const fine =
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(hover:hover) and (pointer:fine)').matches;
-      if (dragging || fine) scrubFromPointer(ev);
+      if (!dragging) return;
+      const rect = stage.getBoundingClientRect();
+      if (rect.width <= 1) return;
+
+      // Relative dragging feels much more like "grabbing" the cinematic shot
+      // than mapping the finger to a fixed absolute point on screen.
+      const deltaX = ev.clientX - dragStartX;
+      const travel = (deltaX / rect.width) * (HOME_FRAMES - 1) * 1.12;
+      const next = Math.max(
+        0,
+        Math.min(HOME_FRAMES - 1, dragStartFrame + travel)
+      );
+
+      const now = performance.now();
+      const dt = Math.max(8, now - dragLastAt) / 1000;
+      const instantVelocity = (next - dragLastFrame) / dt;
+      inertiaVelocity = inertiaVelocity * 0.62 + instantVelocity * 0.38;
+
+      homeFrameFloat = next;
+      dragLastFrame = next;
+      dragLastAt = now;
+      renderHomeFrame();
     };
 
     const onStageUp = (ev: PointerEvent) => {
+      if (!dragging) return;
       dragging = false;
-      lastInteraction = performance.now();
+
+      // Let the scene coast for a fraction of a second after the finger is
+      // released, then blend seamlessly back into autonomous movement.
+      inertiaVelocity = Math.max(-18, Math.min(18, inertiaVelocity));
+      inertiaUntil = performance.now() + 720;
       try {
         stage.releasePointerCapture(ev.pointerId);
       } catch {
@@ -443,7 +496,7 @@ export async function runCinematicIntro(
     const cleanup = () => {
       if (disposed) return;
       disposed = true;
-      window.clearInterval(idleTimer);
+      window.cancelAnimationFrame(animationRaf);
       window.clearInterval(transitionTimer);
       stage.removeEventListener('pointerdown', onStageDown);
       stage.removeEventListener('pointermove', onStageMove);
@@ -533,18 +586,55 @@ export async function runCinematicIntro(
     applyHomeAsset();
     applyTransitionAsset();
 
-    idleTimer = window.setInterval(() => {
-      if (disposed || launching || dragging) return;
-      if (performance.now() - lastInteraction < 1700) return;
-      homeFrameIndex += idleDirection;
-      if (homeFrameIndex >= HOME_FRAMES - 1) {
-        homeFrameIndex = HOME_FRAMES - 1;
-        idleDirection = -1;
-      } else if (homeFrameIndex <= 0) {
-        homeFrameIndex = 0;
-        idleDirection = 1;
+    const animateHome = (now: number) => {
+      if (disposed) return;
+
+      const dt = Math.min(0.05, Math.max(0, (now - lastAnimationAt) / 1000));
+      lastAnimationAt = now;
+
+      if (!launching && !dragging) {
+        if (now < inertiaUntil && Math.abs(inertiaVelocity) > 0.08) {
+          homeFrameFloat += inertiaVelocity * dt;
+
+          if (homeFrameFloat <= 0) {
+            homeFrameFloat = 0;
+            inertiaVelocity = Math.abs(inertiaVelocity) * 0.34;
+          } else if (homeFrameFloat >= HOME_FRAMES - 1) {
+            homeFrameFloat = HOME_FRAMES - 1;
+            inertiaVelocity = -Math.abs(inertiaVelocity) * 0.34;
+          }
+
+          // Smooth exponential friction, independent of device refresh rate.
+          inertiaVelocity *= Math.exp(-4.8 * dt);
+          renderHomeFrame();
+        } else {
+          if (inertiaUntil !== 0) {
+            syncAutoPhaseToCurrent(inertiaVelocity >= 0 ? 1 : -1);
+            inertiaUntil = 0;
+            inertiaVelocity = 0;
+          }
+
+          // About 14 seconds for a complete there-and-back cycle. The sine
+          // motion naturally eases at both ends instead of snapping direction.
+          const reduced =
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          const cycleSeconds = reduced ? 28 : 14;
+          autoPhase += (Math.PI * 2 * dt) / cycleSeconds;
+
+          const center = (HOME_FRAMES - 1) / 2;
+          const amplitude = center;
+          homeFrameFloat = center + Math.sin(autoPhase) * amplitude;
+          renderHomeFrame();
+        }
       }
-      setSpriteFrame(homeFrame, homeFrameIndex, HOME_FRAMES, HOME_COLS, HOME_ROWS);
-    }, 120);
+
+      animationRaf = window.requestAnimationFrame(animateHome);
+    };
+
+    animationRaf = window.requestAnimationFrame((now) => {
+      lastAnimationAt = now;
+      animateHome(now);
+    });
   });
 }
