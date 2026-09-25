@@ -14,7 +14,7 @@ type TikTokLib = typeof import('tiktok-live-connector');
 const HEARTBEAT_MS = 25_000;
 const MAX_BACKOFF_MS = 10_000;
 const STALE_MS = 90_000;
-const POLL_FALLBACK_MS = 2_000;
+const POLL_FALLBACK_MS = 2_200;
 
 function normalizeUsername(input: string): string {
   const raw = String(input || '').trim();
@@ -521,9 +521,11 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   /**
    * Fallback for TikTok deployments that return a valid room + initial webcast
    * batch but reject the WebSocket handshake ("illegal secret key"). We keep
-   * consuming the signed fetch endpoint incrementally with its cursor. This
-   * uses the exact same decoder/event handlers, so CHAT / LIKE / GIFT still
-   * enter the GameLoop even while the push socket is unavailable.
+   * repeatedly asking for a fresh signed initial batch. Advancing the cursor
+   * here does not behave like a long-poll feed on TikTok, so we intentionally
+   * request a fresh batch every cycle and dedupe by TikTok message ids.
+   * CHAT / LIKE / GIFT therefore keep entering the GameLoop even while the
+   * push socket is unavailable.
    */
   private startPollingFallback(
     conn: InstanceType<TikTokLib['TikTokLiveConnection']>,
@@ -597,7 +599,10 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
           webClient: conn.webClient,
           apiClient: conn.apiClient,
           roomId: this.roomId || roomId,
-          cursor: this.pollCursor || undefined,
+          // IMPORTANT: do not advance the previous cursor here. The Euler
+          // "signed websocket" route returns the newest initial event batch.
+          // Reusing its cursor freezes the fallback after that first batch.
+          cursor: undefined,
           authenticateWs: false,
           useMobile: false,
         });
@@ -625,9 +630,9 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
 
         await processor.call(conn, result.fetchResult);
 
-        if (result.fetchResult.cursor) {
-          this.pollCursor = result.fetchResult.cursor;
-        }
+        // Keep only for diagnostics. We deliberately do not send this cursor
+        // back on the next fallback request.
+        this.pollCursor = result.fetchResult.cursor || '';
 
         this.pollFailures = 0;
         this.lastWsAt = Date.now();
@@ -839,10 +844,11 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     );
     const common = (asRecord(data.common) ||
       asRecord(nestedData?.common)) as { msgId?: string } | undefined;
+    const giftMsgId = rawMessageId(data) || common?.msgId;
+    const giftCreated = rawCreatedAt(data);
     const fp = String(
-      data.msgId ||
-        common?.msgId ||
-        `gift:${user.userId}:${mapped.arenaGiftId}:${repeatCount}:${Math.floor(Date.now() / 2000)}`
+      giftMsgId ||
+        `gift:${user.userId}:${mapped.arenaGiftId}:${repeatCount}:${giftCreated || 'no-ts'}`
     );
     if (!this.dedupe.check(fp)) {
       console.log(`[GIFT] dedupe skip ${fp}`);
