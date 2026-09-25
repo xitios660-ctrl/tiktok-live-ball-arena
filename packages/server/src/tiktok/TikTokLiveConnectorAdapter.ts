@@ -225,6 +225,11 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
 
   private lib: TikTokLib | null = null;
   private connection: InstanceType<TikTokLib['TikTokLiveConnection']> | null = null;
+  private legacyConnection: {
+    disconnect?: () => void;
+    removeAllListeners?: () => void;
+  } | null = null;
+  private legacyActive = false;
   private username: string | null = null;
   private roomId: string | null = null;
   private phase: TikTokConnectionPhase = 'idle';
@@ -311,9 +316,11 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       lastError: this.lastError,
       lastEventAt: this.lastEventAt,
       lastConnectedAt: this.lastConnectedAt,
-      note: this.pollFallbackActive
-        ? 'TikTok LIVE conectado por fallback HTTP incremental (WebSocket rejeitado pelo TikTok). Comentários, likes e presentes continuam sendo processados.'
-        : 'Unofficial Webcast WS (tiktok-live-connector). Needs host LIVE. Not an official TikTok API.',
+      note: this.legacyActive
+        ? 'TikTok LIVE conectado pelo realtime legado de reserva. Comentários, likes e presentes entram em tempo real.'
+        : this.pollFallbackActive
+          ? 'TikTok LIVE em fallback de lotes recentes enquanto o WebSocket principal está indisponível.'
+          : 'Unofficial TikTok Webcast connector. Needs host LIVE.',
     };
   }
 
@@ -476,9 +483,18 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
         this.connection === conn
       ) {
         console.warn(
-          `[TIKTOK] WebSocket rejected (${msg}). Enabling incremental HTTP fallback for @${this.username}.`
+          `[TIKTOK] WebSocket rejected (${msg}). Trying legacy realtime fallback for @${this.username}.`
         );
-        this.startPollingFallback(conn, roomIdHint || this.roomId!);
+
+        const legacyOk = await this.tryLegacyRealtimeFallback(
+          roomIdHint || this.roomId!
+        );
+        if (!legacyOk) {
+          console.warn(
+            `[TIKTOK] legacy realtime unavailable; enabling recent-batch fallback for @${this.username}.`
+          );
+          this.startPollingFallback(conn, roomIdHint || this.roomId!);
+        }
         return;
       }
 
@@ -516,6 +532,136 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       roomId: this.roomId || undefined,
     });
     this.startHeartbeat();
+  }
+
+  /**
+   * Secondary realtime transport using the last stable v1 connector.
+   * v1.2.3 has a different WebSocket/signing path and historically fixed
+   * TikTok's "illegal secret key" handshake regression. We only activate it
+   * when the current connector has already resolved a live room but its push
+   * socket is rejected.
+   */
+  private async tryLegacyRealtimeFallback(roomId: string): Promise<boolean> {
+    if (!this.username || this.intentionalStop) return false;
+
+    await this.teardownLegacy();
+
+    try {
+      // npm alias lets v2.5.0 remain the primary transport while v1.2.3 is
+      // available independently as a compatibility bridge.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const legacyLib = require('tiktok-live-connector-v1') as {
+        WebcastPushConnection: new (
+          username: string,
+          options: Record<string, unknown>
+        ) => EventEmitter & {
+          connect: (roomId?: string) => Promise<unknown>;
+          disconnect: () => void;
+        };
+      };
+
+      const Legacy = legacyLib.WebcastPushConnection;
+      if (typeof Legacy !== 'function') return false;
+
+      const legacy = new Legacy(this.username, {
+        processInitialData: false,
+        fetchRoomInfoOnConnect: false,
+        enableExtendedGiftInfo: false,
+        enableWebsocketUpgrade: true,
+        // Never require a TikTok session cookie. If the legacy WebSocket is
+        // unavailable we fall back to our recent-batch reader below.
+        enableRequestPolling: false,
+      });
+
+      this.legacyConnection = legacy;
+      this.legacyActive = false;
+
+      legacy.on('chat', (data: unknown) => this.handleChat(data));
+      legacy.on('gift', (data: unknown) => this.handleGift(data));
+      legacy.on('like', (data: unknown) => this.handleLike(data));
+      legacy.on('member', (data: unknown) => this.handleMember(data));
+      legacy.on('follow', (data: unknown) => this.handleFollow(data));
+      legacy.on('share', (data: unknown) => this.handleShare(data));
+      legacy.on('social', (data: unknown) => {
+        const d = asRecord(data) || {};
+        const displayType = String(d.displayType || '').toLowerCase();
+        if (displayType.includes('follow')) this.handleFollow(data);
+        if (displayType.includes('share')) this.handleShare(data);
+      });
+      legacy.on('error', (payload: unknown) => {
+        const msg = errMsg(payload);
+        console.warn(`[TIKTOK][LEGACY] ${msg}`);
+      });
+      legacy.on('streamEnd', () => {
+        if (!this.legacyActive) return;
+        console.log(`[TIKTOK][LEGACY] stream ended @${this.username}`);
+        this.legacyActive = false;
+        this.connectedFlag = false;
+        this.liveFlag = false;
+        void this.teardownLegacy().then(() => {
+          if (!this.intentionalStop) this.scheduleReconnect('legacy_stream_end');
+        });
+      });
+      legacy.on('disconnected', () => {
+        if (!this.legacyActive || this.intentionalStop) return;
+        console.warn(`[TIKTOK][LEGACY] disconnected @${this.username}`);
+        this.legacyActive = false;
+        this.connectedFlag = false;
+        this.liveFlag = false;
+        void this.teardownLegacy().then(() =>
+          this.scheduleReconnect('legacy_disconnected')
+        );
+      });
+
+      await legacy.connect(roomId);
+
+      if (this.intentionalStop || this.legacyConnection !== legacy) {
+        try {
+          legacy.disconnect();
+        } catch {
+          // ignored
+        }
+        return false;
+      }
+
+      this.legacyActive = true;
+      this.pollFallbackActive = false;
+      this.connectedFlag = true;
+      this.liveFlag = true;
+      this.roomId = roomId;
+      this.reconnectAttempt = 0;
+      this.lastConnectedAt = Date.now();
+      this.lastWsAt = Date.now();
+      this.lastError = null;
+      this.setPhase('connected');
+      console.log(
+        `[TIKTOK] LEGACY REALTIME CONNECTED @${this.username} room=${roomId}`
+      );
+      this.emitter.emit('connected', {
+        username: this.username,
+        roomId,
+      });
+      this.startHeartbeat();
+      return true;
+    } catch (err) {
+      const msg = errMsg(err);
+      console.warn(`[TIKTOK][LEGACY] connect failed: ${msg}`);
+      await this.teardownLegacy();
+      return false;
+    }
+  }
+
+  private async teardownLegacy(): Promise<void> {
+    const legacy = this.legacyConnection;
+    this.legacyConnection = null;
+    this.legacyActive = false;
+    if (!legacy) return;
+    try {
+      legacy.removeAllListeners?.();
+      legacy.disconnect?.();
+    } catch {
+      // ignored
+    }
   }
 
   /**
@@ -726,6 +872,8 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   }
 
   private async teardown(): Promise<void> {
+    await this.teardownLegacy();
+
     const conn = this.connection;
     this.connection = null;
     if (!conn) return;
