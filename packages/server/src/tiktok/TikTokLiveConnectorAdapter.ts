@@ -400,6 +400,17 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     conn.on(WebcastEvent.MEMBER, (data: unknown) => this.handleMember(data));
     conn.on(WebcastEvent.STREAM_END, () => {
       if (gen !== this.generation) return;
+
+      // The initial signed fetch can contain an old STREAM_END message from the
+      // previous broadcast. During the handshake/fallback bootstrap that event
+      // is stale and must NOT tear down the current live room.
+      if (!this.connectedFlag || this.pollFallbackActive) {
+        console.log(
+          `[TIKTOK] stale STREAM_END ignored @${this.username} (bootstrap/fallback)`
+        );
+        return;
+      }
+
       console.log(`[TIKTOK] STREAM_END @${this.username} — waiting next live`);
       this.connectedFlag = false;
       this.liveFlag = false;
