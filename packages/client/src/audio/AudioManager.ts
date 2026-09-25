@@ -25,7 +25,7 @@ const BGM_BASE = 0.55;
 /** One-shot beep master scale — hits must be unmistakable on phone speakers. */
 const BEEP_SCALE = 0.62;
 
-const CUSTOM_BGM = (import.meta.env.VITE_ARENA_BGM_URL || '').trim();
+const CUSTOM_BGM = (import.meta.env.VITE_ARENA_BGM_URL || '').trim();\nconst CONTINUOUS_BGM = (import.meta.env.VITE_CONTINUOUS_BGM || '').trim() === '1';
 const BGM_CANDIDATES = [CUSTOM_BGM, '/assets/sfx/arena-bgm.ogg', '/assets/sfx/arena-bgm.mp3'].filter(Boolean);
 
 const FILE_MAP: Partial<Record<SfxKind, string>> = {

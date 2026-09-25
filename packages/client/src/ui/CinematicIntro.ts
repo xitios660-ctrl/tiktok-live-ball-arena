@@ -1,4 +1,8 @@
 export interface CinematicIntroOptions {
+  /**
+   * Called on the first real user gesture. The app uses it to unlock browser
+   * audio/fullscreen before iOS autoplay rules can block them.
+   */
   onPlayGesture?: () => void | Promise<void>;
 }
 
@@ -7,17 +11,19 @@ interface IntroOverlayOptions {
   phoneLite: boolean;
 }
 
-const HOME_VIDEO = (import.meta.env.VITE_CINEMATIC_HOME_VIDEO || '/assets/ball-arena/cinematic/home-loop.mp4').trim();
-const PLAY_VIDEO = (import.meta.env.VITE_CINEMATIC_PLAY_VIDEO || '/assets/ball-arena/cinematic/play-transition.mp4').trim();
-const LOGO = '/assets/ball-arena/logos/ball-arena-logo.svg';
+const HOME_SPRITE = (
+  import.meta.env.VITE_CINEMATIC_HOME_SPRITE ||
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/ecf95f37-8eb6-40d3-8ee0-44eac82cce7d.webp'
+).trim();
 
-export function shouldShowCinematicIntro(opts: IntroOverlayOptions): boolean {
-  if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('intro') === '0' || params.get('skipIntro') === '1') return false;
-  if (opts.transparent) return false;
-  return opts.phoneLite || params.get('intro') === '1';
-}
+const TRANSITION_SPRITE = (
+  import.meta.env.VITE_CINEMATIC_TRANSITION_SPRITE ||
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/dad81e56-85c0-467f-b505-657816482657.webp'
+).trim();
+
+const FRAME_COUNT = 24;
+const FRAME_COLS = 6;
+const FRAME_ROWS = 4;
 
 function makeButton(label: string, className: string): HTMLButtonElement {
   const button = document.createElement('button');
@@ -27,12 +33,32 @@ function makeButton(label: string, className: string): HTMLButtonElement {
   return button;
 }
 
+function setSpriteFrame(el: HTMLElement, rawIndex: number): void {
+  const index = Math.max(0, Math.min(FRAME_COUNT - 1, Math.round(rawIndex)));
+  const col = index % FRAME_COLS;
+  const row = Math.floor(index / FRAME_COLS);
+  const x = FRAME_COLS <= 1 ? 0 : (col / (FRAME_COLS - 1)) * 100;
+  const y = FRAME_ROWS <= 1 ? 0 : (row / (FRAME_ROWS - 1)) * 100;
+  el.style.backgroundPosition = x.toFixed(3) + '% ' + y.toFixed(3) + '%';
+  el.dataset.frame = String(index);
+}
+
+function preload(url: string): void {
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+  } catch {
+    // Decorative preload only.
+  }
+}
+
 function makeModal(): {
   root: HTMLDivElement;
   title: HTMLHeadingElement;
   body: HTMLDivElement;
-  close: HTMLButtonElement;
   action: HTMLAnchorElement;
+  close: HTMLButtonElement;
 } {
   const root = document.createElement('div');
   root.className = 'cinematic-modal';
@@ -42,9 +68,6 @@ function makeModal(): {
   card.className = 'cinematic-modal-card';
   card.setAttribute('role', 'dialog');
   card.setAttribute('aria-modal', 'true');
-
-  const close = makeButton('×', 'cinematic-modal-close');
-  close.setAttribute('aria-label', 'Fechar');
 
   const title = document.createElement('h2');
   title.className = 'cinematic-modal-title';
@@ -56,209 +79,184 @@ function makeModal(): {
   action.className = 'cinematic-modal-action';
   action.style.display = 'none';
 
+  const close = makeButton('×', 'cinematic-modal-close');
+  close.setAttribute('aria-label', 'Fechar');
+
   card.append(close, title, body, action);
   root.append(card);
-  return { root, title, body, close, action };
+  return { root, title, body, action, close };
 }
 
-function canUseVideo(video: HTMLVideoElement, timeoutMs = 1600): Promise<boolean> {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (ok: boolean) => {
-      if (done) return;
-      done = true;
-      window.clearTimeout(timer);
-      video.removeEventListener('loadeddata', onReady);
-      video.removeEventListener('canplay', onReady);
-      video.removeEventListener('error', onError);
-      resolve(ok);
-    };
-    const onReady = () => finish(true);
-    const onError = () => finish(false);
-    const timer = window.setTimeout(() => finish(video.readyState >= 2), timeoutMs);
-    video.addEventListener('loadeddata', onReady, { once: true });
-    video.addEventListener('canplay', onReady, { once: true });
-    video.addEventListener('error', onError, { once: true });
-    try {
-      video.load();
-    } catch {
-      finish(false);
-    }
-  });
+export function shouldShowCinematicIntro(opts: IntroOverlayOptions): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('intro') === '0' || params.get('skipIntro') === '1') return false;
+  if (opts.transparent) return false;
+  return opts.phoneLite || params.get('intro') === '1';
 }
 
-function placeVideoHotspot(
-  el: HTMLElement,
-  nx: number,
-  ny: number,
-  nw: number,
-  nh: number
-): void {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const mediaRatio = 16 / 9;
-  const viewportRatio = vw / Math.max(1, vh);
-  let displayW = vw;
-  let displayH = vh;
-  const portrait = vh > vw * 1.18;
-  // Portrait phones use a centered cinematic crop (cover) so the hero fills
-  // the screen without stretching. Landscape/desktop keeps the full 16:9 frame.
-  if (portrait) {
-    if (viewportRatio > mediaRatio) {
-      displayH = vw / mediaRatio;
-    } else {
-      displayW = vh * mediaRatio;
-    }
-  } else if (viewportRatio > mediaRatio) {
-    displayW = vh * mediaRatio;
-  } else {
-    displayH = vw / mediaRatio;
-  }
-  const left = (vw - displayW) / 2;
-  const top = (vh - displayH) / 2;
-  el.style.left = left + (nx - nw / 2) * displayW + 'px';
-  el.style.top = top + (ny - nh / 2) * displayH + 'px';
-  el.style.width = nw * displayW + 'px';
-  el.style.height = nh * displayH + 'px';
-}
-
-export async function runCinematicIntro(options: CinematicIntroOptions = {}): Promise<void> {
+export async function runCinematicIntro(
+  options: CinematicIntroOptions = {}
+): Promise<void> {
   if (typeof document === 'undefined' || !document.body) return;
   if (document.getElementById('cinematic-home')) return;
+
+  preload(HOME_SPRITE);
+  preload(TRANSITION_SPRITE);
 
   return new Promise<void>((resolve) => {
     const root = document.createElement('section');
     root.id = 'cinematic-home';
     root.setAttribute('aria-label', 'Bolla Arena');
 
-    const fallback = document.createElement('div');
-    fallback.className = 'cinematic-fallback';
-
-    const homeVideo = document.createElement('video');
-    homeVideo.className = 'cinematic-home-video';
-    homeVideo.src = HOME_VIDEO;
-    homeVideo.autoplay = true;
-    homeVideo.loop = true;
-    homeVideo.muted = true;
-    homeVideo.playsInline = true;
-    homeVideo.preload = 'auto';
-    homeVideo.setAttribute('aria-hidden', 'true');
-
-    const transitionVideo = document.createElement('video');
-    transitionVideo.className = 'cinematic-transition-video';
-    transitionVideo.src = PLAY_VIDEO;
-    transitionVideo.muted = true;
-    transitionVideo.playsInline = true;
-    transitionVideo.preload = 'auto';
-    transitionVideo.setAttribute('aria-hidden', 'true');
-
-    const shade = document.createElement('div');
-    shade.className = 'cinematic-shade';
+    const ambient = document.createElement('div');
+    ambient.className = 'cinematic-ambient';
 
     const pointerGlow = document.createElement('div');
     pointerGlow.className = 'cinematic-pointer-glow';
 
-    const fallbackUi = document.createElement('div');
-    fallbackUi.className = 'cinematic-fallback-ui';
+    const stage = document.createElement('div');
+    stage.className = 'cinematic-stage';
 
-    const logo = document.createElement('img');
-    logo.className = 'cinematic-logo';
-    logo.src = LOGO;
-    logo.alt = 'Bolla Arena';
+    const homeFrame = document.createElement('div');
+    homeFrame.className = 'cinematic-frame cinematic-home-frame';
+    homeFrame.style.backgroundImage = 'url("' + HOME_SPRITE + '")';
+    setSpriteFrame(homeFrame, 0);
 
-    const playFallback = makeButton('▶  JOGAR', 'cinematic-play cinematic-play-fallback');
-    const fallbackSub = document.createElement('div');
-    fallbackSub.className = 'cinematic-subnav';
-    const connectFallback = makeButton('CONECTAR TIKTOK LIVE', 'cinematic-sub');
-    const rankFallback = makeButton('RANKING', 'cinematic-sub');
-    const howFallback = makeButton('COMO JOGAR', 'cinematic-sub');
-    fallbackSub.append(connectFallback, rankFallback, howFallback);
-    fallbackUi.append(logo, playFallback, fallbackSub);
+    const stageShade = document.createElement('div');
+    stageShade.className = 'cinematic-stage-shade';
 
-    const videoHits = document.createElement('div');
-    videoHits.className = 'cinematic-video-hits';
-    const playHit = makeButton('JOGAR', 'cinematic-hotspot cinematic-hotspot-play');
-    const connectHit = makeButton('CONECTAR TIKTOK LIVE', 'cinematic-hotspot');
-    const rankHit = makeButton('RANKING', 'cinematic-hotspot');
-    const howHit = makeButton('COMO JOGAR', 'cinematic-hotspot');
-    videoHits.append(playHit, connectHit, rankHit, howHit);
+    const badge = document.createElement('div');
+    badge.className = 'cinematic-live-badge';
+    badge.textContent = '●  TIKTOK LIVE';
+
+    stage.append(homeFrame, stageShade, badge);
+
+    const controls = document.createElement('div');
+    controls.className = 'cinematic-controls';
+
+    const copy = document.createElement('div');
+    copy.className = 'cinematic-copy';
+
+    const title = document.createElement('h1');
+    title.textContent = 'ENTRE NA ARENA';
+
+    const subtitle = document.createElement('p');
+    subtitle.textContent = 'Arraste o dedo no cenário para mudar os frames.';
+
+    copy.append(title, subtitle);
+
+    const play = makeButton('', 'cinematic-play');
+    play.setAttribute('aria-label', 'Jogar');
+    const playIcon = document.createElement('span');
+    playIcon.className = 'cinematic-play-icon';
+    playIcon.textContent = '▶';
+    const playLabel = document.createElement('span');
+    playLabel.className = 'cinematic-play-label';
+    playLabel.textContent = 'JOGAR';
+    play.append(playIcon, playLabel);
+
+    const connect = makeButton('CONECTAR TIKTOK LIVE', 'cinematic-secondary cinematic-connect');
+    const secondaryRow = document.createElement('div');
+    secondaryRow.className = 'cinematic-secondary-row';
+    const rank = makeButton('RANKING', 'cinematic-secondary');
+    const how = makeButton('COMO JOGAR', 'cinematic-secondary');
+    secondaryRow.append(rank, how);
 
     const hint = document.createElement('div');
     hint.className = 'cinematic-hint';
     hint.textContent = 'MOVA O MOUSE OU ARRASTE O DEDO';
 
-    const tapBurst = document.createElement('div');
-    tapBurst.className = 'cinematic-tap-burst';
-    tapBurst.setAttribute('aria-hidden', 'true');
+    controls.append(copy, play, connect, secondaryRow, hint);
 
-    playHit.setAttribute('aria-label', 'Jogar');
-    connectHit.setAttribute('aria-label', 'Conectar TikTok Live');
-    rankHit.setAttribute('aria-label', 'Ranking');
-    howHit.setAttribute('aria-label', 'Como jogar');
+    const transition = document.createElement('div');
+    transition.className = 'cinematic-transition';
+    transition.setAttribute('aria-hidden', 'true');
+
+    const transitionStage = document.createElement('div');
+    transitionStage.className = 'cinematic-transition-stage';
+
+    const transitionFrame = document.createElement('div');
+    transitionFrame.className = 'cinematic-frame cinematic-transition-frame';
+    transitionFrame.style.backgroundImage = 'url("' + TRANSITION_SPRITE + '")';
+    setSpriteFrame(transitionFrame, 0);
+
+    const transitionShade = document.createElement('div');
+    transitionShade.className = 'cinematic-transition-shade';
+
+    const transitionCaption = document.createElement('div');
+    transitionCaption.className = 'cinematic-transition-caption';
+    transitionCaption.textContent = 'ENTRANDO NA ARENA';
+
+    const transitionProgress = document.createElement('div');
+    transitionProgress.className = 'cinematic-transition-progress';
+    const transitionProgressFill = document.createElement('span');
+    transitionProgress.append(transitionProgressFill);
+
+    transitionStage.append(transitionFrame, transitionShade);
+    transition.append(transitionStage, transitionCaption, transitionProgress);
 
     const modal = makeModal();
 
     const style = document.createElement('style');
     style.textContent = [
-      '#cinematic-home{position:fixed;inset:0;z-index:99990;overflow:hidden;background:#09090d;color:#fff;font-family:Inter,system-ui,sans-serif;touch-action:none;isolation:isolate;}',
+      '#cinematic-home{position:fixed;inset:0;z-index:99990;overflow:hidden;background:#05060a;color:#f5f7ff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;isolation:isolate;touch-action:none;-webkit-tap-highlight-color:transparent;}',
       '#cinematic-home *{box-sizing:border-box;}',
-      '.cinematic-fallback{position:absolute;inset:-4%;width:108%;height:108%;will-change:transform,opacity;transform:translate3d(var(--cin-bg-x,0px),var(--cin-bg-y,0px),0) scale(1.04);transition:transform 160ms cubic-bezier(.2,.8,.2,1);}',
-      '.cinematic-home-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;will-change:transform,opacity;transform:translate3d(var(--cin-x,0px),var(--cin-y,0px),0) scale(1.006) rotateX(var(--cin-rx,0deg)) rotateY(var(--cin-ry,0deg));transform-origin:center;transition:transform 160ms cubic-bezier(.2,.8,.2,1),opacity 180ms ease;filter:contrast(1.035) saturate(1.035);}',
-      '.cinematic-fallback{overflow:hidden;background:radial-gradient(ellipse at 50% 82%,rgba(255,122,32,.30),transparent 31%),radial-gradient(ellipse at 15% 42%,rgba(25,128,255,.18),transparent 38%),radial-gradient(ellipse at 85% 42%,rgba(139,60,255,.16),transparent 38%),linear-gradient(180deg,#101725 0%,#160d13 50%,#07080d 100%);}',
-      '.cinematic-fallback::before{content:"";position:absolute;left:-12%;right:-12%;bottom:-4%;height:44%;background:linear-gradient(90deg,transparent 0 8%,rgba(34,211,238,.10) 8% 8.2%,transparent 8.2% 18%,rgba(255,138,61,.12) 18% 18.2%,transparent 18.2% 82%,rgba(34,211,238,.10) 82% 82.2%,transparent 82.2% 92%,rgba(255,138,61,.12) 92% 92.2%,transparent 92.2%),repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 72px);transform:perspective(520px) rotateX(67deg);transform-origin:bottom;mask-image:linear-gradient(to top,#000 12%,transparent 92%);}',
-      '.cinematic-fallback::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 18% 20%,rgba(255,126,30,.52) 0 2px,transparent 3px),radial-gradient(circle at 82% 18%,rgba(34,211,238,.42) 0 2px,transparent 3px),radial-gradient(circle at 61% 59%,rgba(255,209,102,.34) 0 1px,transparent 2px),linear-gradient(90deg,rgba(255,92,24,.12),transparent 23%,transparent 77%,rgba(41,151,255,.12));background-size:150px 150px,190px 190px,230px 230px,100% 100%;animation:cinematic-embers 9s linear infinite;opacity:.72;}',
-      '@keyframes cinematic-embers{from{background-position:0 0,0 0,0 0,0 0}to{background-position:36px -180px,-30px -150px,20px -200px,0 0}}',
-      '.cinematic-home-video{opacity:0;z-index:2;}',
-      '#cinematic-home.has-home-video .cinematic-home-video{opacity:1;}',
-      '#cinematic-home.has-home-video .cinematic-fallback{opacity:.82;}',
-      '.cinematic-transition-video{position:absolute;z-index:12;opacity:0;transform:none;width:100%;height:100%;inset:0;object-fit:contain;object-position:center;pointer-events:none;background:rgba(5,5,7,.76);filter:contrast(1.035) saturate(1.035);transition:opacity 140ms ease;}',
-      '#cinematic-home.is-transitioning .cinematic-transition-video{opacity:1;}',
-      '.cinematic-shade{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at 50% 42%,transparent 0 34%,rgba(2,3,8,.1) 60%,rgba(2,3,8,.58) 100%),linear-gradient(180deg,rgba(3,5,10,.06),rgba(3,5,10,.22));}',
-      '.cinematic-pointer-glow{position:absolute;z-index:4;width:42vmax;height:42vmax;border-radius:999px;left:var(--glow-x,50%);top:var(--glow-y,50%);transform:translate(-50%,-50%);pointer-events:none;background:radial-gradient(circle,rgba(255,155,55,.16),rgba(60,170,255,.06) 38%,transparent 68%);mix-blend-mode:screen;filter:blur(8px);transition:left 120ms linear,top 120ms linear;}',
-      '.cinematic-fallback-ui{position:absolute;z-index:6;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:clamp(20px,4vh,48px) 16px max(28px,env(safe-area-inset-bottom));gap:16px;transition:opacity 220ms ease,transform 220ms ease;}',
-      '.cinematic-logo{position:absolute;top:12%;left:50%;transform:translateX(-50%);width:min(72vw,620px);height:auto;max-height:34vh;object-fit:contain;filter:drop-shadow(0 18px 30px rgba(0,0,0,.65)) drop-shadow(0 0 34px rgba(255,112,28,.24)) drop-shadow(0 0 26px rgba(34,211,238,.18));pointer-events:none;}',
-      '.cinematic-play{min-width:min(360px,72vw);min-height:64px;border-radius:14px;border:1px solid rgba(255,220,130,.92);background:linear-gradient(180deg,rgba(209,121,23,.96),rgba(129,65,8,.98));color:#fff;font:900 clamp(20px,3vw,30px) Inter,system-ui,sans-serif;letter-spacing:.06em;box-shadow:0 0 0 2px rgba(255,151,33,.18),0 0 34px rgba(255,124,22,.56),inset 0 1px rgba(255,255,255,.35);cursor:pointer;transition:transform 120ms ease,filter 120ms ease,box-shadow 120ms ease;}',
-      '.cinematic-play:hover,.cinematic-play:focus-visible{filter:brightness(1.14);box-shadow:0 0 0 3px rgba(255,206,96,.26),0 0 50px rgba(255,126,30,.72),inset 0 1px rgba(255,255,255,.4);outline:none;}',
-      '.cinematic-play:active{transform:scale(.97) translateY(2px);}',
-      '.cinematic-subnav{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}',
-      '.cinematic-sub{min-height:46px;padding:0 20px;border-radius:10px;border:1px solid rgba(77,180,255,.5);background:linear-gradient(180deg,rgba(20,27,42,.94),rgba(10,14,24,.96));color:#eef6ff;font-weight:800;font-size:12px;letter-spacing:.04em;box-shadow:0 0 18px rgba(44,154,255,.18);cursor:pointer;}',
-      '.cinematic-sub:hover,.cinematic-sub:focus-visible{border-color:rgba(255,196,80,.82);box-shadow:0 0 26px rgba(62,165,255,.38),0 0 20px rgba(255,140,25,.18);outline:none;}',
-      '.cinematic-video-hits{position:absolute;inset:0;z-index:7;display:none;}',
-      '#cinematic-home.has-home-video .cinematic-fallback-ui{opacity:0;pointer-events:none;}',
-      '#cinematic-home.has-home-video .cinematic-video-hits{display:block;}',
-      '.cinematic-hotspot{position:absolute;border:0;border-radius:16px;background:transparent;color:transparent;font-size:0;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;-webkit-tap-highlight-color:transparent;transition:transform 100ms ease;box-shadow:none!important;}',
-      '.cinematic-hotspot:active{transform:scale(.985);}',
-      '@media(hover:hover) and (pointer:fine){.cinematic-hotspot:hover{transform:scale(1.015)}#cinematic-home.is-over-hotspot .cinematic-pointer-glow{width:48vmax;height:48vmax;opacity:1;filter:blur(5px)}}',
-      '.cinematic-tap-burst{position:absolute;z-index:11;left:0;top:0;width:86px;height:86px;margin:-43px 0 0 -43px;border-radius:50%;pointer-events:none;opacity:0;transform:translate3d(var(--tap-x,-200px),var(--tap-y,-200px),0) scale(.25);background:radial-gradient(circle,rgba(255,239,174,.9) 0 5%,rgba(255,164,52,.45) 18%,rgba(58,188,255,.2) 40%,transparent 70%);filter:blur(.2px);}',
-      '.cinematic-tap-burst.fire{animation:cinematic-tap .42s cubic-bezier(.2,.8,.2,1) both;}',
-      '@keyframes cinematic-tap{0%{opacity:.9;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(.22)}55%{opacity:.58;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(.95)}100%{opacity:0;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(1.45)}}',
-      '.cinematic-hint{position:absolute;z-index:8;left:50%;bottom:max(9px,env(safe-area-inset-bottom));transform:translateX(-50%);padding:6px 10px;border-radius:999px;background:rgba(5,7,12,.48);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.68);font-size:10px;font-weight:700;letter-spacing:.12em;white-space:nowrap;backdrop-filter:blur(8px);pointer-events:none;}',
-      '#cinematic-home.is-launching .cinematic-hint,#cinematic-home.is-launching .cinematic-fallback-ui,#cinematic-home.is-launching .cinematic-video-hits{opacity:0;pointer-events:none;}',
-      '#cinematic-home.fallback-launch .cinematic-fallback,#cinematic-home.fallback-launch .cinematic-home-video{transform:scale(1.48);filter:brightness(1.2) blur(1px);transition:transform 1000ms cubic-bezier(.18,.88,.2,1),filter 1000ms ease;}',
-      '#cinematic-home.fallback-launch .cinematic-shade{background:radial-gradient(circle at 50% 50%,rgba(255,170,40,.22),rgba(2,3,8,.45) 72%);transition:background 800ms ease;}',
-      '.cinematic-modal{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(2,4,9,.68);backdrop-filter:blur(10px);}',
+      '.cinematic-ambient{position:absolute;inset:0;background:radial-gradient(circle at 50% 32%,rgba(255,92,22,.16),transparent 34%),radial-gradient(circle at 8% 32%,rgba(24,122,255,.13),transparent 36%),radial-gradient(circle at 92% 34%,rgba(142,52,255,.12),transparent 34%),linear-gradient(180deg,#08111d 0%,#05060a 58%,#030407 100%);}',
+      '.cinematic-ambient::before{content:"";position:absolute;inset:0;opacity:.34;background-image:radial-gradient(circle at 18% 20%,rgba(255,164,74,.8) 0 1px,transparent 2px),radial-gradient(circle at 78% 14%,rgba(52,190,255,.65) 0 1px,transparent 2px),radial-gradient(circle at 66% 70%,rgba(255,111,40,.55) 0 1px,transparent 2px);background-size:170px 170px,220px 220px,260px 260px;animation:cinematicDust 10s linear infinite;}',
+      '@keyframes cinematicDust{from{background-position:0 0,0 0,0 0}to{background-position:20px -150px,-30px -190px,24px -220px}}',
+      '.cinematic-pointer-glow{position:absolute;z-index:2;width:42vmax;height:42vmax;border-radius:999px;left:var(--pointer-x,50%);top:var(--pointer-y,44%);transform:translate(-50%,-50%);pointer-events:none;background:radial-gradient(circle,rgba(255,164,70,.13),rgba(37,162,255,.05) 36%,transparent 69%);filter:blur(8px);transition:left 90ms linear,top 90ms linear;}',
+      '.cinematic-stage{position:absolute;z-index:3;left:50%;top:50%;width:min(100vw,177.7778vh);aspect-ratio:16/9;transform:translate(-50%,-50%);overflow:hidden;background:#07080c;box-shadow:0 32px 100px rgba(0,0,0,.52);}',
+      '.cinematic-frame{position:absolute;inset:0;background-repeat:no-repeat;background-size:600% 400%;background-color:#07080c;will-change:background-position,transform,filter;}',
+      '.cinematic-home-frame{filter:contrast(1.04) saturate(1.04);transform:scale(1.002);}',
+      '.cinematic-stage-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(2,4,8,.02) 0 49%,rgba(3,5,9,.22) 66%,rgba(3,5,9,.88) 100%),radial-gradient(circle at 50% 40%,transparent 34%,rgba(2,4,8,.18) 82%);}',
+      '.cinematic-live-badge{position:absolute;left:20px;top:18px;padding:8px 14px;border-radius:999px;background:rgba(8,13,22,.72);border:1px solid rgba(31,168,240,.38);color:#d4edff;font-size:10px;font-weight:800;letter-spacing:.08em;backdrop-filter:blur(10px);box-shadow:0 8px 22px rgba(0,0,0,.24);}',
+      '.cinematic-controls{position:absolute;z-index:6;left:50%;bottom:max(30px,env(safe-area-inset-bottom));width:min(760px,calc(100vw - 32px));transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:12px;}',
+      '.cinematic-copy{display:none;text-align:left;width:100%;}',
+      '.cinematic-copy h1{margin:0;color:#f5f7ff;font-size:18px;line-height:1.15;font-weight:900;letter-spacing:.02em;}',
+      '.cinematic-copy p{margin:8px 0 0;color:#9eb0cc;font-size:12px;line-height:1.4;font-weight:600;}',
+      '.cinematic-play,.cinematic-secondary{appearance:none;-webkit-appearance:none;border:0;font:inherit;color:#fff;cursor:pointer;user-select:none;outline:none;transform:translateZ(0);}',
+      '.cinematic-play{position:relative;width:min(360px,64vw);min-height:72px;border-radius:18px;display:flex;align-items:center;justify-content:center;gap:18px;background:linear-gradient(90deg,#ff9e1f 0%,#c66508 58%,#a14005 100%);border:2px solid rgba(255,204,89,.95);box-shadow:0 12px 34px rgba(255,77,8,.34),inset 0 1px rgba(255,255,255,.25);transition:transform 110ms ease,filter 110ms ease,box-shadow 110ms ease;}',
+      '.cinematic-play::before{content:"";position:absolute;inset:5px;border-radius:13px;border:1px solid rgba(255,235,181,.20);pointer-events:none;}',
+      '.cinematic-play:hover,.cinematic-play:focus-visible{filter:brightness(1.09);box-shadow:0 14px 44px rgba(255,88,13,.50),0 0 0 3px rgba(255,189,65,.12),inset 0 1px rgba(255,255,255,.30);}',
+      '.cinematic-play:active,.cinematic-play.is-pressed{transform:translateY(3px) scale(.965);filter:brightness(1.13);box-shadow:0 6px 20px rgba(255,77,8,.32),inset 0 2px 8px rgba(73,21,0,.32);}',
+      '.cinematic-play-icon{font-size:26px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.34));}',
+      '.cinematic-play-label{font-size:24px;font-weight:900;letter-spacing:.035em;}',
+      '.cinematic-connect{width:min(334px,70vw);}',
+      '.cinematic-secondary-row{display:flex;justify-content:center;gap:12px;width:100%;}',
+      '.cinematic-secondary{min-width:160px;min-height:54px;padding:0 22px;border-radius:14px;background:linear-gradient(180deg,rgba(9,18,32,.96),rgba(6,10,18,.97));border:1.5px solid rgba(31,168,240,.58);color:#f5f7ff;font-size:12px;font-weight:850;letter-spacing:.04em;box-shadow:0 8px 22px rgba(0,0,0,.28),0 0 20px rgba(30,141,239,.11);transition:transform 105ms ease,border-color 105ms ease,background 105ms ease,box-shadow 105ms ease;}',
+      '.cinematic-secondary:hover,.cinematic-secondary:focus-visible{border-color:rgba(91,205,255,.90);background:linear-gradient(180deg,rgba(12,28,48,.98),rgba(7,15,27,.98));box-shadow:0 10px 28px rgba(0,0,0,.30),0 0 28px rgba(29,159,255,.26);}',
+      '.cinematic-secondary:active,.cinematic-secondary.is-pressed{transform:translateY(2px) scale(.97);border-color:rgba(255,182,65,.78);}',
+      '.cinematic-hint{margin-top:2px;padding:7px 11px;border-radius:999px;background:rgba(4,7,12,.54);border:1px solid rgba(255,255,255,.10);color:rgba(224,234,250,.70);font-size:9px;font-weight:750;letter-spacing:.10em;backdrop-filter:blur(8px);pointer-events:none;}',
+      '.cinematic-transition{position:absolute;z-index:20;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 42%,rgba(255,97,20,.13),transparent 32%),#030407;opacity:0;visibility:hidden;pointer-events:none;transition:opacity 140ms ease,visibility 0s linear 140ms;}',
+      '.cinematic-transition.show{opacity:1;visibility:visible;transition:opacity 120ms ease;}',
+      '.cinematic-transition-stage{position:absolute;left:50%;top:50%;width:min(100vw,177.7778vh);aspect-ratio:16/9;transform:translate(-50%,-50%);overflow:hidden;background:#05060a;box-shadow:0 0 90px rgba(255,77,8,.15);}',
+      '.cinematic-transition-frame{transform:scale(1.01);filter:contrast(1.05) saturate(1.05);}',
+      '.cinematic-transition-shade{position:absolute;inset:0;background:radial-gradient(circle at 50% 42%,transparent 36%,rgba(2,3,6,.16) 100%);pointer-events:none;}',
+      '.cinematic-transition-caption{position:absolute;left:50%;bottom:max(42px,env(safe-area-inset-bottom));transform:translateX(-50%);color:rgba(242,247,255,.78);font-size:10px;font-weight:850;letter-spacing:.18em;white-space:nowrap;text-shadow:0 2px 10px rgba(0,0,0,.8);}',
+      '.cinematic-transition-progress{position:absolute;left:50%;bottom:max(24px,calc(env(safe-area-inset-bottom) + 10px));transform:translateX(-50%);width:min(260px,56vw);height:3px;border-radius:99px;background:rgba(255,255,255,.10);overflow:hidden;}',
+      '.cinematic-transition-progress span{display:block;width:0%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ff8a1d,#ffd56b,#3ac6ff);box-shadow:0 0 14px rgba(255,139,29,.65);}',
+      '#cinematic-home.is-launching .cinematic-controls{opacity:0;transform:translateX(-50%) translateY(16px);pointer-events:none;transition:opacity 180ms ease,transform 180ms ease;}',
+      '#cinematic-home.is-launching .cinematic-live-badge{opacity:0;transition:opacity 140ms ease;}',
+      '.cinematic-modal{position:absolute;z-index:40;inset:0;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(2,4,9,.72);backdrop-filter:blur(12px);}',
       '.cinematic-modal.open{display:flex;}',
-      '.cinematic-modal-card{position:relative;width:min(540px,94vw);max-height:min(72vh,620px);overflow:auto;border-radius:20px;padding:28px;background:linear-gradient(160deg,rgba(26,30,42,.97),rgba(8,10,16,.98));border:1px solid rgba(255,174,57,.46);box-shadow:0 24px 80px rgba(0,0,0,.62),0 0 34px rgba(255,120,24,.2);}',
-      '.cinematic-modal-title{margin:0 42px 16px 0;font-size:24px;color:#ffd166;}',
-      '.cinematic-modal-body{font-size:14px;line-height:1.55;color:#eef2f7;}',
+      '.cinematic-modal-card{position:relative;width:min(540px,94vw);max-height:min(72vh,620px);overflow:auto;border-radius:20px;padding:28px;background:linear-gradient(160deg,rgba(20,28,43,.98),rgba(6,9,15,.99));border:1px solid rgba(255,174,57,.42);box-shadow:0 24px 80px rgba(0,0,0,.66),0 0 34px rgba(255,120,24,.13);}',
+      '.cinematic-modal-title{margin:0 42px 16px 0;font-size:22px;color:#ffc466;}',
+      '.cinematic-modal-body{font-size:13px;line-height:1.58;color:#e8eff8;}',
       '.cinematic-modal-body p{margin:0 0 10px;}',
-      '.cinematic-modal-close{position:absolute;right:14px;top:12px;width:44px;height:44px;border:0;border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:28px;cursor:pointer;}',
-      '.cinematic-modal-action{display:inline-flex;margin-top:14px;min-height:44px;align-items:center;justify-content:center;padding:0 18px;border-radius:10px;text-decoration:none;background:#ff7b24;color:#fff;font-weight:800;}',
-      '@media(max-width:640px){.cinematic-logo{top:11%;width:min(84vw,500px);max-height:30vh}.cinematic-play{min-width:min(330px,82vw);min-height:60px}.cinematic-subnav{gap:8px;width:min(92vw,620px)}.cinematic-sub{flex:1 1 30%;min-width:0;padding:0 10px;font-size:10px}.cinematic-hint{font-size:9px;letter-spacing:.08em}}',
-      '@media(orientation:portrait){.cinematic-home-video,.cinematic-transition-video{object-fit:cover;object-position:50% 50%}.cinematic-home-video{transform:translate3d(var(--cin-x,0px),var(--cin-y,0px),0) scale(1.01)}#cinematic-home.has-home-video .cinematic-fallback-ui{opacity:1;pointer-events:auto;justify-content:flex-end;padding-bottom:max(54px,env(safe-area-inset-bottom))}#cinematic-home.has-home-video .cinematic-fallback-ui .cinematic-logo,#cinematic-home.has-home-video .cinematic-play-fallback{display:none}#cinematic-home.has-home-video .cinematic-subnav{display:flex}.cinematic-video-hits .cinematic-hotspot:not(.cinematic-hotspot-play){display:none}.cinematic-hint{bottom:max(8px,env(safe-area-inset-bottom))}}',
-      '@media(prefers-reduced-motion:reduce){.cinematic-fallback,.cinematic-home-video{transition:none!important;transform:scale(1.04)!important}.cinematic-pointer-glow{display:none}.cinematic-hint{display:none}}'
+      '.cinematic-modal-close{position:absolute;right:13px;top:12px;width:42px;height:42px;border:0;border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:27px;cursor:pointer;}',
+      '.cinematic-modal-action{display:inline-flex;margin-top:12px;min-height:44px;align-items:center;justify-content:center;padding:0 18px;border-radius:11px;text-decoration:none;background:linear-gradient(90deg,#ff8e1b,#b34b05);color:#fff;font-weight:850;}',
+      '@media(orientation:portrait){.cinematic-stage{left:0;top:0;width:100vw;aspect-ratio:16/9;transform:none;box-shadow:none;border-radius:0 0 26px 26px;}.cinematic-stage-shade{background:linear-gradient(180deg,rgba(2,4,8,.02) 0 46%,rgba(4,6,10,.48) 70%,#05060a 100%);}.cinematic-live-badge{left:18px;top:max(16px,env(safe-area-inset-top));}.cinematic-controls{left:24px;right:24px;top:calc(56.25vw + 26px);bottom:auto;width:auto;transform:none;align-items:stretch;gap:14px;}.cinematic-copy{display:block;}.cinematic-play{width:100%;min-height:72px;}.cinematic-connect{width:100%;min-height:60px;}.cinematic-secondary-row{gap:14px;}.cinematic-secondary-row .cinematic-secondary{flex:1;min-width:0;min-height:58px;padding:0 10px;}.cinematic-hint{align-self:center;margin-top:8px;}.cinematic-transition{background:radial-gradient(circle at 50% 28%,rgba(255,96,17,.14),transparent 36%),linear-gradient(180deg,#05070d,#030407);}.cinematic-transition-stage{width:100vw;top:30%;transform:translate(-50%,-50%);box-shadow:0 20px 80px rgba(0,0,0,.52);}.cinematic-transition-caption{bottom:max(92px,calc(env(safe-area-inset-bottom) + 74px));}.cinematic-transition-progress{bottom:max(72px,calc(env(safe-area-inset-bottom) + 54px));}#cinematic-home.is-launching .cinematic-controls{transform:translateY(16px);}}',
+      '@media(orientation:portrait) and (max-height:720px){.cinematic-controls{top:calc(56.25vw + 14px);gap:9px;}.cinematic-copy p{display:none;}.cinematic-play{min-height:62px;}.cinematic-connect{min-height:50px;}.cinematic-secondary-row .cinematic-secondary{min-height:48px;}.cinematic-hint{display:none;}}',
+      '@media(prefers-reduced-motion:reduce){.cinematic-ambient::before{animation:none}.cinematic-play,.cinematic-secondary{transition:none}.cinematic-pointer-glow{display:none}}'
     ].join('\n');
 
     root.append(
-      fallback,
-      homeVideo,
-      transitionVideo,
-      shade,
+      ambient,
       pointerGlow,
-      fallbackUi,
-      videoHits,
-      hint,
-      tapBurst,
+      stage,
+      controls,
+      transition,
       modal.root,
       style
     );
@@ -266,97 +264,88 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
 
     let disposed = false;
     let launching = false;
-    let homeAudioEnabled = false;
-    let targetX = 0;
-    let targetY = 0;
-    let currentX = 0;
-    let currentY = 0;
-    let raf = 0;
+    let dragging = false;
+    let frame = 0;
+    let idleDirection = 1;
+    let lastInteraction = performance.now();
+    let firstGestureDone = false;
+    let idleTimer = 0;
+    let transitionTimer = 0;
 
-    const enableHomeAudio = () => {
-      if (disposed || launching || homeAudioEnabled) return;
-      homeAudioEnabled = true;
-      homeVideo.muted = false;
-      homeVideo.volume = 1;
+    const pulse = (button: HTMLButtonElement) => {
+      button.classList.add('is-pressed');
+      window.setTimeout(() => button.classList.remove('is-pressed'), 150);
+    };
+
+    const firstGesture = async () => {
+      if (firstGestureDone) return;
+      firstGestureDone = true;
       try {
-        const p = homeVideo.play();
-        if (p && typeof p.catch === 'function') {
-          void p.catch(() => {
-            homeAudioEnabled = false;
-            homeVideo.muted = true;
-          });
-        }
+        await options.onPlayGesture?.();
       } catch {
-        homeAudioEnabled = false;
-        homeVideo.muted = true;
+        // Browser may reject fullscreen/audio. Gameplay still works.
       }
     };
 
-    const allPlayButtons = [playFallback, playHit];
-    const connectButtons = [connectFallback, connectHit];
-    const rankButtons = [rankFallback, rankHit];
-    const howButtons = [howFallback, howHit];
-    const allInteractiveButtons = [
-      playFallback,
-      playHit,
-      connectFallback,
-      connectHit,
-      rankFallback,
-      rankHit,
-      howFallback,
-      howHit,
-    ];
-
-    const fireTapBurst = (clientX: number, clientY: number) => {
-      tapBurst.classList.remove('fire');
-      root.style.setProperty('--tap-x', clientX + 'px');
-      root.style.setProperty('--tap-y', clientY + 'px');
-      void tapBurst.offsetWidth;
-      tapBurst.classList.add('fire');
+    const updatePointer = (ev: PointerEvent) => {
+      root.style.setProperty('--pointer-x', ev.clientX + 'px');
+      root.style.setProperty('--pointer-y', ev.clientY + 'px');
     };
 
-    allInteractiveButtons.forEach((button) => {
-      button.addEventListener('pointerenter', () => root.classList.add('is-over-hotspot'));
-      button.addEventListener('pointerleave', () => root.classList.remove('is-over-hotspot'));
-      button.addEventListener('pointerdown', (ev) => {
-        fireTapBurst(ev.clientX, ev.clientY);
-      });
-    });
-
-    const layoutHotspots = () => {
-      placeVideoHotspot(playHit, 0.5, 0.765, 0.25, 0.11);
-      placeVideoHotspot(connectHit, 0.36, 0.88, 0.18, 0.085);
-      placeVideoHotspot(rankHit, 0.50, 0.88, 0.15, 0.085);
-      placeVideoHotspot(howHit, 0.64, 0.88, 0.17, 0.085);
+    const updateFrameFromPointer = (ev: PointerEvent) => {
+      const rect = stage.getBoundingClientRect();
+      if (!rect.width) return;
+      const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      frame = Math.round(ratio * (FRAME_COUNT - 1));
+      setSpriteFrame(homeFrame, frame);
+      lastInteraction = performance.now();
     };
 
-    const tick = () => {
-      if (disposed) return;
-      currentX += (targetX - currentX) * 0.09;
-      currentY += (targetY - currentY) * 0.09;
-      root.style.setProperty('--cin-x', (-currentX * 6).toFixed(2) + 'px');
-      root.style.setProperty('--cin-y', (-currentY * 4).toFixed(2) + 'px');
-      root.style.setProperty('--cin-bg-x', (-currentX * 12).toFixed(2) + 'px');
-      root.style.setProperty('--cin-bg-y', (-currentY * 8).toFixed(2) + 'px');
-      root.style.setProperty('--cin-ry', (currentX * 0.6).toFixed(2) + 'deg');
-      root.style.setProperty('--cin-rx', (-currentY * 0.4).toFixed(2) + 'deg');
-      raf = window.requestAnimationFrame(tick);
+    const onStagePointerDown = (ev: PointerEvent) => {
+      dragging = true;
+      lastInteraction = performance.now();
+      try {
+        stage.setPointerCapture(ev.pointerId);
+      } catch {
+        // Not supported in every WebView.
+      }
+      void firstGesture();
+      updatePointer(ev);
+      updateFrameFromPointer(ev);
     };
 
-    const onPointer = (ev: PointerEvent) => {
-      if (launching) return;
-      const rect = root.getBoundingClientRect();
-      const nx = ((ev.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
-      const ny = ((ev.clientY - rect.top) / Math.max(1, rect.height)) * 2 - 1;
-      targetX = Math.max(-1, Math.min(1, nx));
-      targetY = Math.max(-1, Math.min(1, ny));
-      root.style.setProperty('--glow-x', ev.clientX + 'px');
-      root.style.setProperty('--glow-y', ev.clientY + 'px');
+    const onStagePointerMove = (ev: PointerEvent) => {
+      updatePointer(ev);
+      const isFinePointer =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+      if (dragging || isFinePointer) updateFrameFromPointer(ev);
     };
 
-    const resetPointer = () => {
-      targetX = 0;
-      targetY = 0;
+    const onStagePointerUp = (ev: PointerEvent) => {
+      dragging = false;
+      lastInteraction = performance.now();
+      try {
+        stage.releasePointerCapture(ev.pointerId);
+      } catch {
+        // ignored
+      }
+    };
+
+    const startIdle = () => {
+      idleTimer = window.setInterval(() => {
+        if (disposed || launching || dragging) return;
+        if (performance.now() - lastInteraction < 2300) return;
+        frame += idleDirection;
+        if (frame >= FRAME_COUNT - 1) {
+          frame = FRAME_COUNT - 1;
+          idleDirection = -1;
+        } else if (frame <= 0) {
+          frame = 0;
+          idleDirection = 1;
+        }
+        setSpriteFrame(homeFrame, frame);
+      }, 140);
     };
 
     const closeModal = () => {
@@ -365,63 +354,62 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
     };
 
     const openModal = (
-      titleText: string,
+      heading: string,
       paragraphs: string[],
       actionText?: string,
       actionHref?: string
     ) => {
-      modal.title.textContent = titleText;
+      modal.title.textContent = heading;
       modal.body.replaceChildren();
-      paragraphs.forEach((text) => {
+      for (const value of paragraphs) {
         const p = document.createElement('p');
-        p.textContent = text;
+        p.textContent = value;
         modal.body.appendChild(p);
-      });
+      }
       if (actionText && actionHref) {
         modal.action.textContent = actionText;
         modal.action.href = actionHref;
         modal.action.style.display = 'inline-flex';
       } else {
-        modal.action.style.display = 'none';
         modal.action.removeAttribute('href');
+        modal.action.style.display = 'none';
       }
       modal.root.classList.add('open');
       modal.root.setAttribute('aria-hidden', 'false');
       modal.close.focus();
     };
 
-    connectButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        openModal(
-          'CONECTAR TIKTOK LIVE',
-          [
-            'O servidor do Bolla Arena conecta automaticamente à conta TikTok configurada quando a live entra no ar.',
-            'Para testes e controles do modo DEMO, use o painel administrativo.'
-          ],
-          'ABRIR PAINEL',
-          '/admin'
-        );
-      });
+    connect.addEventListener('click', () => {
+      pulse(connect);
+      void firstGesture();
+      openModal(
+        'CONECTAR TIKTOK LIVE',
+        [
+          'A conexão da live continua usando o sistema existente do Bolla Arena.',
+          'Para testar o modo DEMO e os controles administrativos, abra o painel.'
+        ],
+        'ABRIR PAINEL',
+        '/admin'
+      );
     });
 
-    rankButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        openModal('RANKING', [
-          'O TOP 5 aparece ao vivo durante a partida e se atualiza conforme kills, vida e posição dos jogadores.',
-          'A classificação da rodada fica integrada ao HUD da arena.'
-        ]);
-      });
+    rank.addEventListener('click', () => {
+      pulse(rank);
+      void firstGesture();
+      openModal('RANKING', [
+        'O TOP 5 é atualizado durante a rodada conforme eliminações e desempenho dos jogadores.',
+        'O ranking continua integrado ao HUD da arena.'
+      ]);
     });
 
-    howButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        openModal('COMO JOGAR', [
-          'Comente na live para entrar na arena. Sua foto aparece dentro da sua bola.',
-          '50 likes: recupera 10 de vida. 100 likes: +20 de vida e +1 de poder. 200 likes: +40 de vida e +2 de poder.',
-          '500 likes: vida completa, +10 de poder e Capivara. 1000 likes: vida completa, +15 de poder e Capivara x3 até o fim da partida.',
-          'As bolas colidem, causam dano e ficam mais fortes conforme a batalha avança.'
-        ]);
-      });
+    how.addEventListener('click', () => {
+      pulse(how);
+      void firstGesture();
+      openModal('COMO JOGAR', [
+        'Comente na live para entrar na arena. Sua foto aparece dentro da sua bola.',
+        'Likes recuperam vida e aumentam poder conforme as metas configuradas.',
+        'Presentes ativam habilidades especiais e vantagens da rodada.'
+      ]);
     });
 
     modal.close.addEventListener('click', closeModal);
@@ -429,100 +417,79 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       if (ev.target === modal.root) closeModal();
     });
 
-    const finish = () => {
+    const cleanup = () => {
       if (disposed) return;
       disposed = true;
-      window.cancelAnimationFrame(raf);
-      window.removeEventListener('resize', layoutHotspots);
-      root.removeEventListener('pointerdown', enableHomeAudio);
-      root.removeEventListener('pointermove', onPointer);
-      root.removeEventListener('pointerleave', resetPointer);
+      window.clearInterval(idleTimer);
+      window.clearInterval(transitionTimer);
+      stage.removeEventListener('pointerdown', onStagePointerDown);
+      stage.removeEventListener('pointermove', onStagePointerMove);
+      stage.removeEventListener('pointerup', onStagePointerUp);
+      stage.removeEventListener('pointercancel', onStagePointerUp);
+      root.removeEventListener('pointermove', updatePointer);
+    };
+
+    const finish = () => {
+      cleanup();
+      root.style.transition = 'opacity 220ms ease';
       root.style.opacity = '0';
-      root.style.transition = 'opacity 180ms ease';
       window.setTimeout(() => {
         root.remove();
         resolve();
-      }, 190);
+      }, 230);
     };
 
     const launch = async () => {
       if (launching) return;
       launching = true;
       closeModal();
+      pulse(play);
+      await firstGesture();
       root.classList.add('is-launching');
-      root.classList.remove('is-over-hotspot');
-      allPlayButtons.forEach((button) => {
-        button.disabled = true;
-      });
+      play.disabled = true;
+      connect.disabled = true;
+      rank.disabled = true;
+      how.disabled = true;
 
-      // Keep user activation intact for iOS video audio: invoke gesture setup
-      // synchronously and start the transition video immediately.
-      try {
-        const gestureResult = options.onPlayGesture?.();
-        if (gestureResult && typeof gestureResult.catch === 'function') {
-          void gestureResult.catch(() => undefined);
+      transition.classList.add('show');
+      transition.setAttribute('aria-hidden', 'false');
+      setSpriteFrame(transitionFrame, 0);
+      transitionProgressFill.style.width = '0%';
+
+      const reduced =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const stepMs = reduced ? 38 : 95;
+      let transitionIndex = 0;
+
+      transitionTimer = window.setInterval(() => {
+        transitionIndex += 1;
+        const clamped = Math.min(FRAME_COUNT - 1, transitionIndex);
+        setSpriteFrame(transitionFrame, clamped);
+        transitionProgressFill.style.width =
+          ((clamped / (FRAME_COUNT - 1)) * 100).toFixed(1) + '%';
+
+        if (clamped >= FRAME_COUNT - 1) {
+          window.clearInterval(transitionTimer);
+          transitionTimer = 0;
+          window.setTimeout(finish, reduced ? 80 : 190);
         }
-      } catch {
-        // Keep launch independent from audio/fullscreen failures.
-      }
-
-      homeVideo.pause();
-      transitionVideo.muted = false;
-      transitionVideo.volume = 1;
-      try {
-        transitionVideo.currentTime = 0;
-      } catch {
-        // ignored
-      }
-      root.classList.add('is-transitioning');
-
-      let fallbackTimer = 0;
-      const onEnded = () => {
-        window.clearTimeout(fallbackTimer);
-        finish();
-      };
-      transitionVideo.addEventListener('ended', onEnded, { once: true });
-      fallbackTimer = window.setTimeout(finish, 9000);
-      try {
-        const playPromise = transitionVideo.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-          void playPromise.catch(() => {
-            root.classList.remove('is-transitioning');
-            root.classList.add('fallback-launch');
-            window.setTimeout(finish, 1050);
-          });
-        }
-      } catch {
-        root.classList.remove('is-transitioning');
-        root.classList.add('fallback-launch');
-        window.setTimeout(finish, 1050);
-      }
+      }, stepMs);
     };
 
-    allPlayButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        void launch();
-      });
-    });
+    play.addEventListener('pointerdown', () => pulse(play));
+    play.addEventListener('click', () => void launch());
 
-    root.addEventListener('pointerdown', enableHomeAudio, { passive: true });
-    root.addEventListener('pointermove', onPointer, { passive: true });
-    root.addEventListener('pointerleave', resetPointer);
-    window.addEventListener('resize', layoutHotspots);
-    layoutHotspots();
-    raf = window.requestAnimationFrame(tick);
-
-    void canUseVideo(homeVideo).then((ready) => {
-      if (disposed || !ready) return;
-      root.classList.add('has-home-video');
-      try {
-        const promise = homeVideo.play();
-        if (promise && typeof promise.catch === 'function') {
-          void promise.catch(() => root.classList.remove('has-home-video'));
-        }
-      } catch {
-        root.classList.remove('has-home-video');
-      }
+    root.addEventListener('pointerdown', () => void firstGesture(), {
+      passive: true,
+      once: true
     });
+    root.addEventListener('pointermove', updatePointer, { passive: true });
+    stage.addEventListener('pointerdown', onStagePointerDown);
+    stage.addEventListener('pointermove', onStagePointerMove);
+    stage.addEventListener('pointerup', onStagePointerUp);
+    stage.addEventListener('pointercancel', onStagePointerUp);
+
+    startIdle();
   });
 }
