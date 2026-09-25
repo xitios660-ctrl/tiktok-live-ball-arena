@@ -7,6 +7,7 @@ import {
   parseTikTokChatPayload,
   TikTokLiveConnectorAdapter,
 } from './tiktok/TikTokLiveConnectorAdapter';
+import { mapTikTokGiftToArenaId } from './tiktok/mapTikTokGift';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error('[SELFTEST] ' + message);
@@ -210,6 +211,31 @@ assert(normalizedGift?.type === 'gift', 'final TikTok gift did not normalize');
 if (normalizedGift?.type === 'gift') {
   assert(normalizedGift.giftId === 'rosa', 'Rose did not map to arena rosa gift');
   assert(normalizedGift.repeatCount === 3, 'gift repeatCount was lost');
+}
+
+/* -------------------------------------------------------------------------- */
+/* Real TikTok gift-name mapping                                               */
+/* -------------------------------------------------------------------------- */
+
+const giftNameCases: Array<[string, number, string]> = [
+  ['Rose', 1, 'rosa'],
+  ['Mini Dino', 10, 'mini_dino'],
+  ['Doughnut', 30, 'rosquinha'],
+  ['Capybara', 100, 'capivara'],
+  ['Galaxy', 1000, 'galaxia'],
+  ['GG', 15, 'raio'],
+  ['Finger Heart', 20, 'ima'],
+  ['Ice Cream Cone', 25, 'gelo'],
+  ['Rocket', 15, 'foguete'],
+  ['Hand Hearts', 35, 'espelho'],
+];
+
+for (const [giftName, coinValue, expectedId] of giftNameCases) {
+  const mapped = mapTikTokGiftToArenaId(undefined, giftName, coinValue);
+  assert(
+    mapped.arenaGiftId === expectedId,
+    `TikTok gift "${giftName}" mapped to ${mapped.arenaGiftId}, expected ${expectedId}`
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -420,6 +446,7 @@ try {
 }
 
 console.log(
-  '[SELFTEST] PASS TikTok CHAT/LIKE/GIFT normalization; comment spawn+respawn; ' +
-    'likes 50/100/200/500/1000; Rosa/Dino/Donut/Capybara/Galaxy/pickup powers'
+  '[SELFTEST] PASS TikTok CHAT/LIKE/GIFT normalization + real gift-name mapping; ' +
+    'comment spawn+respawn; likes 50/100/200/500/1000; ' +
+    'Rosa/Dino/Donut/Capybara/Galaxy/pickup powers'
 );
