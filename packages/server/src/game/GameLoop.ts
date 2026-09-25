@@ -10,6 +10,7 @@ import {
   combatStrengthMult,
   displayStrengthScore,
   LIKE_PERSONAL_MILESTONES,
+  LIKE_COMBO_RESET_MS,
   TITAN_DURATION_MS,
   HIT_POWER_COOLDOWN_MS,
   resolveAbilityKey,
@@ -107,8 +108,14 @@ export class GameLoop {
   private readonly boss: ChatGPTBossController;
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
-  /** Personal like total for cumulative reward milestones within this round. */
-  private personalLikeTotals = new Map<string, number>();
+  /**
+   * Per-viewer continuous LIKE combo. A pause longer than LIKE_COMBO_RESET_MS
+   * starts a brand-new combo from zero, allowing the same rewards again.
+   */
+  private personalLikeCombos = new Map<
+    string,
+    { count: number; lastLikeAt: number }
+  >();
 
   constructor(mode: TikTokMode, durationSec = DEFAULT_ROUND_DURATION_SEC) {
     this.state = {
@@ -283,7 +290,7 @@ export class GameLoop {
     this.physics.clear();
     this.players.clear();
     this.hitPowerCooldown.clear();
-    this.personalLikeTotals.clear();
+    this.personalLikeCombos.clear();
     this.recentCombat = [];
     this.lastSpawnedUserId = null;
     this.globalEvents.resetRound();
@@ -330,7 +337,7 @@ export class GameLoop {
     this.physics.clear();
     this.players.clear();
     this.hitPowerCooldown.clear();
-    this.personalLikeTotals.clear();
+    this.personalLikeCombos.clear();
     this.pickups.clear();
     this.recentCombat = [];
     this.boss.resetRound();
@@ -388,16 +395,32 @@ export class GameLoop {
       return;
     }
 
-    const before = this.personalLikeTotals.get(user.userId) || 0;
+    const now = Date.now();
+    const previous = this.personalLikeCombos.get(user.userId);
+    const comboReset =
+      !previous || now - previous.lastLikeAt > LIKE_COMBO_RESET_MS;
+    const before = comboReset ? 0 : previous.count;
     const total = before + n;
-    this.personalLikeTotals.set(user.userId, total);
+
+    this.personalLikeCombos.set(user.userId, {
+      count: total,
+      lastLikeAt: now,
+    });
+
+    if (comboReset && previous?.count) {
+      console.log(
+        `[LIKE COMBO RESET] @${user.username} previous=${previous.count} gap=${now - previous.lastLikeAt}ms → 0`
+      );
+    }
 
     const crossed = LIKE_PERSONAL_MILESTONES.filter(
       (milestone) => before < milestone.likes && total >= milestone.likes
     );
 
     if (!crossed.length) {
-      console.log(`[LIKE] @${user.username} +${n} total=${total} next=${LIKE_PERSONAL_MILESTONES.find((m) => total < m.likes)?.likes ?? 'MAX'}`);
+      console.log(
+        `[LIKE COMBO] @${user.username} +${n} combo=${total} next=${LIKE_PERSONAL_MILESTONES.find((m) => total < m.likes)?.likes ?? 'MAX'}`
+      );
       return;
     }
 
@@ -408,8 +431,8 @@ export class GameLoop {
 
       if (milestone.capybaraStacks > 0) {
         const until = milestone.capybaraUntilRoundEnd
-          ? Date.now() + Math.max(2_000, (this.state.remainingSec + 2) * 1_000)
-          : Date.now() + TITAN_DURATION_MS;
+          ? now + Math.max(2_000, (this.state.remainingSec + 2) * 1_000)
+          : now + TITAN_DURATION_MS;
 
         let stacks = ball.titanStacks;
         // Always call at least once so an existing x3 stack gets its timer refreshed.
@@ -462,13 +485,13 @@ export class GameLoop {
         userId: user.userId,
         username: user.nickname || user.username,
         value: milestone.strength || healed,
-        timestamp: Date.now(),
+        timestamp: now,
       });
     }
 
     this.emitSnapshot();
     console.log(
-      `[LIKE MILESTONE] @${user.username} +${n} total=${total} rewards=${rewardMessages.join(' | ')}`
+      `[LIKE COMBO MILESTONE] @${user.username} +${n} combo=${total} rewards=${rewardMessages.join(' | ')}`
     );
   }
 
