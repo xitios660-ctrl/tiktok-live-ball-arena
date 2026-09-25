@@ -1,13 +1,15 @@
 process.env.AUTO_BOT_ENABLED = 'false';
 process.env.CHATGPT_BOSS_ENABLED = 'false';
 
-import type { ArenaLiveEvent, ArenaUser } from '@arena/shared';
+import { LIKE_COMBO_RESET_MS, type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
 import { GameLoop } from './game/GameLoop';
 import {
   parseTikTokChatPayload,
   TikTokLiveConnectorAdapter,
 } from './tiktok/TikTokLiveConnectorAdapter';
 import { mapTikTokGiftToArenaId } from './tiktok/mapTikTokGift';
+import { applyPickupAbility } from './game/GiftAbilities';
+import type { PhysicsWorld } from './game/PhysicsWorld';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error('[SELFTEST] ' + message);
@@ -305,7 +307,7 @@ try {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Personal likes: exact 50/100/200/500/1000 milestones                      */
+/* Personal LIKE combo: 50/100/200/500/1000 + reset/repeat                    */
 /* -------------------------------------------------------------------------- */
 
 const likeGame = new GameLoop('production', 300);
@@ -372,6 +374,33 @@ try {
   assert(
     internal.titanUntil > Date.now() + 60_000,
     '1000-like Capybara x3 is not lasting toward the end of the round'
+  );
+
+  // Simulate the viewer stopping likes for longer than the combo window.
+  // The next burst must start at zero and the SAME milestones must pay again.
+  const internals = likeGame as unknown as {
+    personalLikeCombos: Map<string, { count: number; lastLikeAt: number }>;
+  };
+  const combo = internals.personalLikeCombos.get(user.userId);
+  assert(combo, 'like combo state missing');
+  combo.lastLikeAt = Date.now() - LIKE_COMBO_RESET_MS - 50;
+
+  likeGame.adminDamage(user.userId, 40, 'admin');
+  const hpBeforeSecondCombo = getBall(likeGame, user.userId).hp;
+  const powerBeforeSecondCombo = getBall(likeGame, user.userId).hitPower ?? 0;
+
+  likeGame.handleLikes(user, 50);
+  b = getBall(likeGame, user.userId);
+  assert(
+    b.hp === Math.min(b.maxHp, hpBeforeSecondCombo + 10),
+    'new 50-like combo did not grant +10 HP again'
+  );
+
+  likeGame.handleLikes(user, 50);
+  b = getBall(likeGame, user.userId);
+  assert(
+    (b.hitPower ?? 0) === powerBeforeSecondCombo + 1,
+    'new 100-like combo did not grant +1 power again'
   );
 } finally {
   likeGame.destroy();
@@ -441,12 +470,83 @@ try {
     pickups.some((p) => p.ability === 'lightning_zap'),
     'Raio pickup mapped to the wrong ability'
   );
+
+  // Exercise every floor power directly against real PhysicsWorld state.
+  const foe: ArenaUser = {
+    userId: 'power-foe',
+    username: 'power_foe',
+    nickname: 'Power Foe',
+  };
+  giftGame.handleLiveEvent(commentEvent(foe));
+
+  const physics = (giftGame as unknown as { physics: PhysicsWorld }).physics;
+  const caster = physics.getBall(user.userId);
+  const target = physics.getBall(foe.userId);
+  assert(caster && target, 'power test balls missing');
+
+  // Put both balls close and remove spawn protection for deterministic tests.
+  caster.x = 500;
+  caster.y = 960;
+  target.x = 620;
+  target.y = 960;
+  caster.spawnProtectedUntil = 0;
+  target.spawnProtectedUntil = 0;
+
+  const hpBeforeZap = target.hp;
+  const zap = applyPickupAbility(physics, user.userId, 'lightning_zap', user.username);
+  assert(zap, 'lightning_zap returned null');
+  assert(target.hp < hpBeforeZap, 'lightning_zap did not damage target');
+  assert(
+    physics.toPublicStates().find((x) => x.userId === target.userId)?.buffs?.includes('slowed'),
+    'lightning_zap did not slow target'
+  );
+
+  target.vx = 0;
+  target.vy = 0;
+  const magnet = applyPickupAbility(physics, user.userId, 'magnet_pulse', user.username);
+  assert(magnet, 'magnet_pulse returned null');
+  assert(
+    Math.abs(target.vx) + Math.abs(target.vy) > 0,
+    'magnet_pulse did not pull nearby target'
+  );
+
+  const freeze = applyPickupAbility(physics, user.userId, 'freeze_aura', user.username);
+  assert(freeze, 'freeze_aura returned null');
+  assert(
+    physics.toPublicStates().find((x) => x.userId === user.userId)?.buffs?.includes('freeze_aura'),
+    'freeze_aura buff missing'
+  );
+
+  const speedBeforeDash = Math.hypot(caster.vx, caster.vy);
+  const dash = applyPickupAbility(physics, user.userId, 'dash_burst', user.username);
+  assert(dash, 'dash_burst returned null');
+  assert(
+    Math.hypot(caster.vx, caster.vy) >= speedBeforeDash,
+    'dash_burst did not increase/retain boosted speed'
+  );
+  assert(
+    physics.toPublicStates().find((x) => x.userId === user.userId)?.buffs?.includes('dash_burst'),
+    'dash_burst buff missing'
+  );
+
+  const reflect = applyPickupAbility(physics, user.userId, 'reflect_shield', user.username);
+  assert(reflect, 'reflect_shield returned null');
+  assert(
+    physics.toPublicStates().find((x) => x.userId === user.userId)?.buffs?.includes('reflect_shield'),
+    'reflect_shield buff missing'
+  );
+
+  physics.applyDirectDamage(user.userId, 30);
+  const hpBeforeOrb = caster.hp;
+  const healOrb = applyPickupAbility(physics, user.userId, 'heal_orb', user.username);
+  assert(healOrb, 'heal_orb returned null');
+  assert(caster.hp > hpBeforeOrb, 'heal_orb did not restore HP');
 } finally {
   giftGame.destroy();
 }
 
 console.log(
   '[SELFTEST] PASS TikTok CHAT/LIKE/GIFT normalization + real gift-name mapping; ' +
-    'comment spawn+respawn; likes 50/100/200/500/1000; ' +
-    'Rosa/Dino/Donut/Capybara/Galaxy/pickup powers'
+    'comment spawn+respawn; repeatable LIKE combos 50/100/200/500/1000; ' +
+    'Rosa/Dino/Donut/Capybara/Galaxy + Lightning/Magnet/Freeze/Dash/Reflect/Heal powers'
 );
