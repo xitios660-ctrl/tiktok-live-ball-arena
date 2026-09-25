@@ -387,6 +387,28 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       }
     });
 
+    // Decoder-level safety net. TikTok occasionally changes the public event
+    // mapping while still decoding the protobuf correctly. Listening here too
+    // prevents CHAT/GIFT/LIKE from silently disappearing after such changes.
+    // EventDedupe makes this safe when the normal WebcastEvent handler fires too.
+    conn.on(
+      ControlEvent.DECODED_DATA,
+      (type: string, data: unknown) => {
+        if (gen !== this.generation) return;
+        if (type === 'WebcastChatMessage' || type === 'WebcastRoomChatMessage') {
+          this.handleChat(data);
+          return;
+        }
+        if (type === 'WebcastLikeMessage') {
+          this.handleLike(data);
+          return;
+        }
+        if (type === 'WebcastGiftMessage') {
+          this.handleGift(data);
+        }
+      }
+    );
+
     conn.on(ControlEvent.ERROR, (err: unknown) => {
       if (gen !== this.generation) return;
       const msg = errMsg(err);
