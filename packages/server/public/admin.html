@@ -143,6 +143,20 @@
 
   <div class="grid">
     <div class="card">
+      <h2>TikTok Live</h2>
+      <p class="status-line" style="margin:0 0 8px">
+        Cole o <strong>@username</strong> que está AO VIVO ou o link completo da LIVE.
+        O servidor troca de sala sem precisar de novo deploy.
+      </p>
+      <div class="row">
+        <input id="tiktokUsername" type="text" placeholder="@usuario ou link da live" style="max-width:none" />
+        <button class="ok" onclick="connectTikTok()">🔴 Conectar agora</button>
+        <button onclick="post('/admin/tiktok/reconnect')">↻ Reconectar</button>
+      </div>
+      <div id="tiktokDetail" class="status-line">—</div>
+    </div>
+
+    <div class="card">
       <h2>Rodada</h2>
       <div class="row">
         <button class="ok" onclick="post('/admin/round/start')">▶ Iniciar</button>
@@ -269,6 +283,20 @@
       }
       return j;
     }
+    async function connectTikTok() {
+      const input = document.getElementById('tiktokUsername');
+      const username = String(input.value || '').trim();
+      if (!username) {
+        log('Informe o @username ou cole o link da LIVE.');
+        input.focus();
+        return;
+      }
+      const result = await post('/admin/tiktok/connect', { username });
+      if (result && result.status) {
+        log('TikTok: ' + (result.status.label || result.status.phase) + ' @' + (result.status.username || username));
+      }
+    }
+
     function gift(giftId) {
       const userId = document.getElementById('giftTarget').value || undefined;
       const repeatCount = Number(document.getElementById('giftRepeat').value) || 1;
@@ -301,6 +329,15 @@
       if (badge) {
         badge.textContent = `tiktok: ${tk.label || tk.phase || '—'} @${tk.username || '-'}`;
         badge.style.background = tk.live ? '#0d3d2a' : (tk.phase === 'reconnecting' || tk.phase === 'waiting_live' ? '#5a3a00' : '#333');
+      }
+      const tkInput = document.getElementById('tiktokUsername');
+      if (tkInput && !tkInput.value && tk.username) tkInput.value = '@' + tk.username;
+      const tkDetail = document.getElementById('tiktokDetail');
+      if (tkDetail) {
+        tkDetail.textContent =
+          `${tk.label || tk.phase || '—'} · @${tk.username || '-'} · room=${tk.roomId || '-'} · ` +
+          `live=${tk.live ? 'SIM' : 'NÃO'} · último evento=${tk.lastEventAt ? new Date(tk.lastEventAt).toLocaleTimeString() : '-'}` +
+          (tk.lastError ? ` · erro=${tk.lastError}` : '');
       }
       const mb = document.getElementById('modeBadge');
       if (mb) {
