@@ -27,6 +27,16 @@ const TRANSITION_MOBILE_SPRITE = (
   'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/598deecc-d145-4f4e-9ba7-033b355aa212.webp'
 ).trim();
 
+const HOME_DESKTOP_VIDEO = (
+  import.meta.env.VITE_CINEMATIC_HOME_VIDEO_FLUID ||
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/dfa58eb9-0ab1-4f8f-bb09-2d563349aca9.mp4'
+).trim();
+
+const HOME_MOBILE_VIDEO = (
+  import.meta.env.VITE_CINEMATIC_HOME_MOBILE_VIDEO_FLUID ||
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/89276ff2-4840-4ead-8dc5-08b8d1f6aa26.mp4'
+).trim();
+
 const HOME_FRAMES = 36;
 const HOME_COLS = 6;
 const HOME_ROWS = 6;
@@ -174,6 +184,19 @@ export async function runCinematicIntro(
     homeFrameBlend.className =
       'cinematic-frame cinematic-home-frame cinematic-home-frame-blend';
 
+    const homeVideo = document.createElement('video');
+    homeVideo.className = 'cinematic-home-video';
+    homeVideo.muted = true;
+    homeVideo.defaultMuted = true;
+    homeVideo.autoplay = true;
+    homeVideo.loop = true;
+    homeVideo.playsInline = true;
+    homeVideo.preload = 'auto';
+    homeVideo.setAttribute('playsinline', '');
+    homeVideo.setAttribute('webkit-playsinline', '');
+    homeVideo.setAttribute('aria-hidden', 'true');
+    homeVideo.disablePictureInPicture = true;
+
     const fx = document.createElement('div');
     fx.className = 'cinematic-fx';
 
@@ -192,7 +215,7 @@ export async function runCinematicIntro(
     const how = makeButton('Como jogar', 'cinematic-hotspot cinematic-hotspot-how');
     hotspots.append(play, connect, rank, how);
 
-    stage.append(homeFrame, homeFrameBlend, fx, glow, hotspots);
+    stage.append(homeFrame, homeFrameBlend, homeVideo, fx, glow, hotspots);
 
     const transition = document.createElement('div');
     transition.className = 'cinematic-transition';
@@ -220,7 +243,10 @@ export async function runCinematicIntro(
       '.cinematic-frame{position:absolute;inset:0;background-repeat:no-repeat;background-color:#020307;will-change:background-position,transform,filter;}',
       '.cinematic-home-frame{background-size:600% 600%;filter:contrast(1.045) saturate(1.04);}',
       '.cinematic-home-frame-blend{opacity:0;}',
-      '.cinematic-fx{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 44%,transparent 42%,rgba(0,0,0,.18) 100%),linear-gradient(180deg,rgba(0,0,0,.05),transparent 55%,rgba(0,0,0,.12));mix-blend-mode:multiply;}',
+      '.cinematic-home-video{position:absolute;z-index:2;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;opacity:0;background:#020307;pointer-events:none;will-change:opacity;transition:opacity 180ms ease;filter:contrast(1.035) saturate(1.035);}',
+      '#cinematic-home.video-ready .cinematic-home-video{opacity:1;}',
+      '#cinematic-home.video-ready .cinematic-home-frame{opacity:0;}',
+      '.cinematic-fx{position:absolute;z-index:3;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 44%,transparent 42%,rgba(0,0,0,.18) 100%),linear-gradient(180deg,rgba(0,0,0,.05),transparent 55%,rgba(0,0,0,.12));mix-blend-mode:multiply;}',
       '.cinematic-hotspots{position:absolute;inset:0;z-index:8;pointer-events:none;}',
       '.cinematic-hotspot{position:absolute;pointer-events:auto;border:0!important;outline:0!important;background:transparent!important;color:transparent!important;font-size:0!important;border-radius:18px;appearance:none;-webkit-appearance:none;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:none!important;padding:0;margin:0;transform:translate(-50%,-50%);}',
       '.cinematic-hotspot:focus-visible{outline:2px solid rgba(255,214,103,.64)!important;outline-offset:-2px!important;}',
@@ -267,6 +293,12 @@ export async function runCinematicIntro(
     let inertiaVelocity = 0;
     let inertiaUntil = 0;
     let transitionTimer = 0;
+    let resumeVideoTimer = 0;
+    let homeVideoReady = false;
+    let dragStartTime = 0;
+    let dragLastTime = 0;
+    let dragLastTimeAt = performance.now();
+    let videoSwipeVelocity = 0;
 
     const hotspotMap: Record<HotspotKey, HTMLButtonElement> = {
       play,
@@ -312,12 +344,31 @@ export async function runCinematicIntro(
       autoPhase = direction >= 0 ? a : Math.PI - a;
     };
 
+    const playHomeVideo = () => {
+      if (!homeVideoReady || launching || dragging) return;
+      homeVideo.muted = true;
+      const p = homeVideo.play();
+      if (p && typeof p.catch === 'function') void p.catch(() => undefined);
+    };
+
     const applyHomeAsset = () => {
-      const url = portrait() ? HOME_MOBILE_SPRITE : HOME_DESKTOP_SPRITE;
-      homeFrame.style.backgroundImage = 'url("' + url + '")';
-      homeFrameBlend.style.backgroundImage = 'url("' + url + '")';
+      const spriteUrl = portrait() ? HOME_MOBILE_SPRITE : HOME_DESKTOP_SPRITE;
+      const videoUrl = portrait() ? HOME_MOBILE_VIDEO : HOME_DESKTOP_VIDEO;
+
+      homeFrame.style.backgroundImage = 'url("' + spriteUrl + '")';
+      homeFrameBlend.style.backgroundImage = 'url("' + spriteUrl + '")';
       renderHomeFrame();
       placeHotspots();
+
+      if (homeVideo.dataset.src !== videoUrl) {
+        homeVideoReady = false;
+        root.classList.remove('video-ready');
+        homeVideo.dataset.src = videoUrl;
+        homeVideo.src = videoUrl;
+        homeVideo.load();
+      } else {
+        playHomeVideo();
+      }
     };
 
     const applyTransitionAsset = () => {
@@ -370,6 +421,27 @@ export async function runCinematicIntro(
 
     (Object.keys(hotspotMap) as HotspotKey[]).forEach(bindHotspotFx);
 
+    const onVideoReady = () => {
+      if (disposed) return;
+      homeVideoReady = true;
+      root.classList.add('video-ready');
+      playHomeVideo();
+    };
+
+    const onVideoError = () => {
+      homeVideoReady = false;
+      root.classList.remove('video-ready');
+    };
+
+    homeVideo.addEventListener('loadeddata', onVideoReady);
+    homeVideo.addEventListener('canplay', onVideoReady);
+    homeVideo.addEventListener('error', onVideoError);
+
+    const wrapVideoTime = (value: number, duration: number): number => {
+      if (!Number.isFinite(duration) || duration <= 0) return 0;
+      return ((value % duration) + duration) % duration;
+    };
+
     const onStageDown = (ev: PointerEvent) => {
       if ((ev.target as HTMLElement | null)?.closest('.cinematic-hotspot')) return;
       dragging = true;
@@ -379,6 +451,15 @@ export async function runCinematicIntro(
       dragStartFrame = homeFrameFloat;
       dragLastFrame = homeFrameFloat;
       dragLastAt = performance.now();
+      dragLastTimeAt = dragLastAt;
+      videoSwipeVelocity = 0;
+
+      if (homeVideoReady && Number.isFinite(homeVideo.duration) && homeVideo.duration > 0) {
+        homeVideo.pause();
+        dragStartTime = homeVideo.currentTime;
+        dragLastTime = dragStartTime;
+      }
+
       void firstGesture();
       try {
         stage.setPointerCapture(ev.pointerId);
@@ -392,16 +473,38 @@ export async function runCinematicIntro(
       const rect = stage.getBoundingClientRect();
       if (rect.width <= 1) return;
 
-      // Relative dragging feels much more like "grabbing" the cinematic shot
-      // than mapping the finger to a fixed absolute point on screen.
       const deltaX = ev.clientX - dragStartX;
+      const now = performance.now();
+
+      if (homeVideoReady && Number.isFinite(homeVideo.duration) && homeVideo.duration > 0) {
+        // Scrub the actual 30 fps cinematic instead of hopping between a
+        // handful of stills. The short-GOP encode keeps seeking responsive.
+        const duration = homeVideo.duration;
+        const travelSeconds = (deltaX / rect.width) * duration * 1.08;
+        const unwrapped = dragStartTime + travelSeconds;
+        const nextTime = wrapVideoTime(unwrapped, duration);
+
+        const dt = Math.max(8, now - dragLastTimeAt) / 1000;
+        let deltaTime = nextTime - dragLastTime;
+        if (deltaTime > duration / 2) deltaTime -= duration;
+        if (deltaTime < -duration / 2) deltaTime += duration;
+        const instantVideoVelocity = deltaTime / dt;
+        videoSwipeVelocity =
+          videoSwipeVelocity * 0.68 + instantVideoVelocity * 0.32;
+
+        homeVideo.currentTime = nextTime;
+        dragLastTime = nextTime;
+        dragLastTimeAt = now;
+        return;
+      }
+
+      // Sprite fallback for browsers that cannot play the cinematic MP4.
       const travel = (deltaX / rect.width) * (HOME_FRAMES - 1) * 1.12;
       const next = Math.max(
         0,
         Math.min(HOME_FRAMES - 1, dragStartFrame + travel)
       );
 
-      const now = performance.now();
       const dt = Math.max(8, now - dragLastAt) / 1000;
       const instantVelocity = (next - dragLastFrame) / dt;
       inertiaVelocity = inertiaVelocity * 0.62 + instantVelocity * 0.38;
@@ -416,10 +519,37 @@ export async function runCinematicIntro(
       if (!dragging) return;
       dragging = false;
 
-      // Let the scene coast for a fraction of a second after the finger is
-      // released, then blend seamlessly back into autonomous movement.
-      inertiaVelocity = Math.max(-18, Math.min(18, inertiaVelocity));
-      inertiaUntil = performance.now() + 720;
+      if (homeVideoReady && Number.isFinite(homeVideo.duration) && homeVideo.duration > 0) {
+        const duration = homeVideo.duration;
+        const coast = Math.max(-0.42, Math.min(0.42, videoSwipeVelocity * 0.035));
+        if (Math.abs(coast) > 0.01) {
+          homeVideo.currentTime = wrapVideoTime(homeVideo.currentTime + coast, duration);
+        }
+
+        window.clearTimeout(resumeVideoTimer);
+        resumeVideoTimer = window.setTimeout(() => {
+          if (disposed || launching || dragging) return;
+          // A quick swipe gives a tiny acceleration that eases back to 1x.
+          const boost = Math.max(
+            0.82,
+            Math.min(1.28, 1 + Math.abs(videoSwipeVelocity) * 0.012)
+          );
+          try {
+            homeVideo.playbackRate = boost;
+          } catch {
+            homeVideo.playbackRate = 1;
+          }
+          playHomeVideo();
+          window.setTimeout(() => {
+            if (!disposed && !launching) homeVideo.playbackRate = 1;
+          }, 520);
+        }, 48);
+      } else {
+        // Sprite fallback keeps its inertial glide.
+        inertiaVelocity = Math.max(-18, Math.min(18, inertiaVelocity));
+        inertiaUntil = performance.now() + 720;
+      }
+
       try {
         stage.releasePointerCapture(ev.pointerId);
       } catch {
@@ -498,6 +628,11 @@ export async function runCinematicIntro(
       disposed = true;
       window.cancelAnimationFrame(animationRaf);
       window.clearInterval(transitionTimer);
+      window.clearTimeout(resumeVideoTimer);
+      homeVideo.pause();
+      homeVideo.removeEventListener('loadeddata', onVideoReady);
+      homeVideo.removeEventListener('canplay', onVideoReady);
+      homeVideo.removeEventListener('error', onVideoError);
       stage.removeEventListener('pointerdown', onStageDown);
       stage.removeEventListener('pointermove', onStageMove);
       stage.removeEventListener('pointerup', onStageUp);
@@ -520,6 +655,7 @@ export async function runCinematicIntro(
       launching = true;
       closeModal();
       root.classList.add('play-press');
+      homeVideo.pause();
       await firstGesture();
 
       [play, connect, rank, how].forEach((button) => {
@@ -592,7 +728,7 @@ export async function runCinematicIntro(
       const dt = Math.min(0.05, Math.max(0, (now - lastAnimationAt) / 1000));
       lastAnimationAt = now;
 
-      if (!launching && !dragging) {
+      if (!launching && !dragging && !homeVideoReady) {
         if (now < inertiaUntil && Math.abs(inertiaVelocity) > 0.08) {
           homeFrameFloat += inertiaVelocity * dt;
 
