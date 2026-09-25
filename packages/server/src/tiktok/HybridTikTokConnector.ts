@@ -12,11 +12,11 @@ import { TikTokLiveConnectorAdapter } from './TikTokLiveConnectorAdapter';
 /**
  * Production hybrid:
  * - PirateTok direct WSS is authoritative for likes + joins + normal realtime.
- * - Legacy connector runs in parallel as a CHAT/GIFT safety net because its
- *   signed initial-batch fallback has proven able to see comments when TikTok
- *   temporarily stops delivering WebcastChatMessage on the direct WSS.
- *
- * We NEVER take likes from the backup, so personal like combos cannot double.
+ * - Legacy connector runs in parallel as a CHAT/GIFT/LIKE safety net because
+ *   its signed fallback often sees interaction events that TikTok temporarily
+ *   omits from the direct WSS.
+ * - Both transports are kept on the SAME current room and cross-source
+ *   duplicates are suppressed before GameLoop sees them.
  */
 export class HybridTikTokConnector implements ITikTokConnector {
   readonly name = 'hybrid-tiktok-live';
@@ -26,6 +26,9 @@ export class HybridTikTokConnector implements ITikTokConnector {
   private readonly backup = new TikTokLiveConnectorAdapter();
   private readonly chatDedupe = new EventDedupe(2_000, 2_000);
   private readonly giftDedupe = new EventDedupe(3_000, 2_000);
+  private readonly likeDedupe = new EventDedupe(1_200, 5_000);
+  private username: string | null = null;
+  private roomSyncTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.primary.on('event', (event) => this.handlePrimaryEvent(event));
@@ -34,6 +37,26 @@ export class HybridTikTokConnector implements ITikTokConnector {
     this.primary.on('connected', (info) => {
       this.emitter.emit('connected', info);
       this.emitStatus();
+
+      // The backup can remain attached to the previous TikTok room when the
+      // host restarts/restarts LIVE. Force it to resolve the broadcaster again
+      // whenever the realtime primary discovers a different current room.
+      const backupStatus = this.backup.getStatus();
+      if (
+        this.username &&
+        info.roomId &&
+        backupStatus.roomId !== info.roomId
+      ) {
+        console.warn(
+          `[TIKTOK][HYBRID] room drift primary=${info.roomId} backup=${backupStatus.roomId || '-'}; resync backup`
+        );
+        void this.backup.connect(this.username).catch((err) => {
+          console.warn(
+            '[TIKTOK][HYBRID] backup room resync failed:',
+            err instanceof Error ? err.message : String(err)
+          );
+        });
+      }
     });
     this.primary.on('disconnected', (reason) => {
       this.emitter.emit('disconnected', reason);
@@ -82,6 +105,9 @@ export class HybridTikTokConnector implements ITikTokConnector {
   }
 
   async connect(username: string): Promise<void> {
+    this.username = username;
+    this.startRoomSync();
+
     const results = await Promise.allSettled([
       this.primary.connect(username),
       this.backup.connect(username),
@@ -101,6 +127,9 @@ export class HybridTikTokConnector implements ITikTokConnector {
   }
 
   async disconnect(): Promise<void> {
+    this.stopRoomSync();
+    this.username = null;
+
     await Promise.allSettled([
       this.primary.disconnect(),
       this.backup.disconnect(),
@@ -121,7 +150,7 @@ export class HybridTikTokConnector implements ITikTokConnector {
         ...primary,
         name: this.name,
         note:
-          'Realtime principal ativo. Comentários/presentes também possuem canal de backup independente. ' +
+          'Realtime principal ativo. Comentários, likes e presentes também possuem canal de backup independente e sincronizado à sala atual. ' +
           `Backup: ${backup.label}.`,
       };
     }
@@ -151,13 +180,14 @@ export class HybridTikTokConnector implements ITikTokConnector {
       if (!this.chatDedupe.check(this.commentFingerprint(event))) return;
     } else if (event.type === 'gift') {
       if (!this.giftDedupe.check(this.giftFingerprint(event))) return;
+    } else if (event.type === 'like') {
+      if (!this.likeDedupe.check(this.likeFingerprint(event))) return;
     }
 
     this.emitter.emit('event', event);
   }
 
   private handleBackupEvent(event: ArenaLiveEvent): void {
-    // Likes MUST remain single-source (primary) to protect combo accuracy.
     if (event.type === 'comment') {
       if (!this.chatDedupe.check(this.commentFingerprint(event))) return;
       console.log(
@@ -171,6 +201,15 @@ export class HybridTikTokConnector implements ITikTokConnector {
       if (!this.giftDedupe.check(this.giftFingerprint(event))) return;
       console.log(
         `[TIKTOK][CHAT-BACKUP] GIFT @${event.user.username}: ${event.giftName} x${event.repeatCount}`
+      );
+      this.emitter.emit('event', event);
+      return;
+    }
+
+    if (event.type === 'like') {
+      if (!this.likeDedupe.check(this.likeFingerprint(event))) return;
+      console.log(
+        `[TIKTOK][LIKE-BACKUP] @${event.user.username} +${event.likeCount} total=${event.totalLikeCount ?? '?'}`
       );
       this.emitter.emit('event', event);
     }
@@ -195,6 +234,64 @@ export class HybridTikTokConnector implements ITikTokConnector {
       event.giftId,
       event.repeatCount,
     ].join(':');
+  }
+
+  private likeFingerprint(
+    event: Extract<ArenaLiveEvent, { type: 'like' }>
+  ): string {
+    // totalLikeCount is room-global but monotonic and excellent for
+    // cross-source duplicate suppression. When TikTok omits it, use a short
+    // time bucket so two connectors reporting the same batch do not double it.
+    if (event.totalLikeCount != null) {
+      return [
+        'like',
+        event.user.userId,
+        'total',
+        event.totalLikeCount,
+        event.likeCount,
+      ].join(':');
+    }
+
+    return [
+      'like',
+      event.user.userId,
+      event.likeCount,
+      Math.floor(Date.now() / 300),
+    ].join(':');
+  }
+
+  private startRoomSync(): void {
+    this.stopRoomSync();
+    this.roomSyncTimer = setInterval(() => {
+      if (!this.username) return;
+
+      const primary = this.primary.getStatus();
+      const backup = this.backup.getStatus();
+      if (!primary.live || !primary.roomId) return;
+
+      const backupBusy =
+        backup.phase === 'connecting' || backup.phase === 'reconnecting';
+
+      if (
+        !backupBusy &&
+        (!backup.connected || backup.roomId !== primary.roomId)
+      ) {
+        console.warn(
+          `[TIKTOK][HYBRID] periodic room sync primary=${primary.roomId} backup=${backup.roomId || '-'}`
+        );
+        void this.backup.connect(this.username).catch((err) => {
+          console.warn(
+            '[TIKTOK][HYBRID] periodic backup sync failed:',
+            err instanceof Error ? err.message : String(err)
+          );
+        });
+      }
+    }, 12_000);
+  }
+
+  private stopRoomSync(): void {
+    if (this.roomSyncTimer) clearInterval(this.roomSyncTimer);
+    this.roomSyncTimer = null;
   }
 
   private emitStatus(): void {
