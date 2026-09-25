@@ -25,7 +25,8 @@ const BGM_BASE = 0.55;
 /** One-shot beep master scale — hits must be unmistakable on phone speakers. */
 const BEEP_SCALE = 0.62;
 
-const BGM_CANDIDATES = ['/assets/sfx/arena-bgm.ogg', '/assets/sfx/arena-bgm.mp3'];
+const CUSTOM_BGM = (import.meta.env.VITE_ARENA_BGM_URL || '').trim();
+const BGM_CANDIDATES = [CUSTOM_BGM, '/assets/sfx/arena-bgm.ogg', '/assets/sfx/arena-bgm.mp3'].filter(Boolean);
 
 const FILE_MAP: Partial<Record<SfxKind, string>> = {
   // Optional file overrides — leave empty = synth only
