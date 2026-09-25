@@ -187,6 +187,15 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
     hint.className = 'cinematic-hint';
     hint.textContent = 'MOVA O MOUSE OU ARRASTE O DEDO';
 
+    const tapBurst = document.createElement('div');
+    tapBurst.className = 'cinematic-tap-burst';
+    tapBurst.setAttribute('aria-hidden', 'true');
+
+    playHit.setAttribute('aria-label', 'Jogar');
+    connectHit.setAttribute('aria-label', 'Conectar TikTok Live');
+    rankHit.setAttribute('aria-label', 'Ranking');
+    howHit.setAttribute('aria-label', 'Como jogar');
+
     const modal = makeModal();
 
     const style = document.createElement('style');
@@ -217,9 +226,12 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       '.cinematic-video-hits{position:absolute;inset:0;z-index:7;display:none;}',
       '#cinematic-home.has-home-video .cinematic-fallback-ui{opacity:0;pointer-events:none;}',
       '#cinematic-home.has-home-video .cinematic-video-hits{display:block;}',
-      '.cinematic-hotspot{position:absolute;border:1px solid transparent;border-radius:12px;background:transparent;color:transparent;font-size:0;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent;transition:border-color 120ms ease,box-shadow 120ms ease,background 120ms ease,transform 120ms ease;}',
-      '.cinematic-hotspot:hover,.cinematic-hotspot:focus-visible{border-color:rgba(255,198,80,.78);background:rgba(255,135,30,.08);box-shadow:0 0 30px rgba(255,130,24,.55),inset 0 0 18px rgba(255,189,62,.12);}',
-      '.cinematic-hotspot:active{transform:scale(.97);}',
+      '.cinematic-hotspot{position:absolute;border:0;border-radius:16px;background:transparent;color:transparent;font-size:0;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;-webkit-tap-highlight-color:transparent;transition:transform 100ms ease;box-shadow:none!important;}',
+      '.cinematic-hotspot:active{transform:scale(.985);}',
+      '@media(hover:hover) and (pointer:fine){.cinematic-hotspot:hover{transform:scale(1.015)}#cinematic-home.is-over-hotspot .cinematic-pointer-glow{width:48vmax;height:48vmax;opacity:1;filter:blur(5px)}}',
+      '.cinematic-tap-burst{position:absolute;z-index:11;left:0;top:0;width:86px;height:86px;margin:-43px 0 0 -43px;border-radius:50%;pointer-events:none;opacity:0;transform:translate3d(var(--tap-x,-200px),var(--tap-y,-200px),0) scale(.25);background:radial-gradient(circle,rgba(255,239,174,.9) 0 5%,rgba(255,164,52,.45) 18%,rgba(58,188,255,.2) 40%,transparent 70%);filter:blur(.2px);}',
+      '.cinematic-tap-burst.fire{animation:cinematic-tap .42s cubic-bezier(.2,.8,.2,1) both;}',
+      '@keyframes cinematic-tap{0%{opacity:.9;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(.22)}55%{opacity:.58;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(.95)}100%{opacity:0;transform:translate3d(var(--tap-x),var(--tap-y),0) scale(1.45)}}',
       '.cinematic-hint{position:absolute;z-index:8;left:50%;bottom:max(9px,env(safe-area-inset-bottom));transform:translateX(-50%);padding:6px 10px;border-radius:999px;background:rgba(5,7,12,.48);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.68);font-size:10px;font-weight:700;letter-spacing:.12em;white-space:nowrap;backdrop-filter:blur(8px);pointer-events:none;}',
       '#cinematic-home.is-launching .cinematic-hint,#cinematic-home.is-launching .cinematic-fallback-ui,#cinematic-home.is-launching .cinematic-video-hits{opacity:0;pointer-events:none;}',
       '#cinematic-home.fallback-launch .cinematic-fallback,#cinematic-home.fallback-launch .cinematic-home-video{transform:scale(1.48);filter:brightness(1.2) blur(1px);transition:transform 1000ms cubic-bezier(.18,.88,.2,1),filter 1000ms ease;}',
@@ -246,6 +258,7 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       fallbackUi,
       videoHits,
       hint,
+      tapBurst,
       modal.root,
       style
     );
@@ -283,6 +296,32 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
     const connectButtons = [connectFallback, connectHit];
     const rankButtons = [rankFallback, rankHit];
     const howButtons = [howFallback, howHit];
+    const allInteractiveButtons = [
+      playFallback,
+      playHit,
+      connectFallback,
+      connectHit,
+      rankFallback,
+      rankHit,
+      howFallback,
+      howHit,
+    ];
+
+    const fireTapBurst = (clientX: number, clientY: number) => {
+      tapBurst.classList.remove('fire');
+      root.style.setProperty('--tap-x', clientX + 'px');
+      root.style.setProperty('--tap-y', clientY + 'px');
+      void tapBurst.offsetWidth;
+      tapBurst.classList.add('fire');
+    };
+
+    allInteractiveButtons.forEach((button) => {
+      button.addEventListener('pointerenter', () => root.classList.add('is-over-hotspot'));
+      button.addEventListener('pointerleave', () => root.classList.remove('is-over-hotspot'));
+      button.addEventListener('pointerdown', (ev) => {
+        fireTapBurst(ev.clientX, ev.clientY);
+      });
+    });
 
     const layoutHotspots = () => {
       placeVideoHotspot(playHit, 0.5, 0.765, 0.25, 0.11);
@@ -411,6 +450,7 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       launching = true;
       closeModal();
       root.classList.add('is-launching');
+      root.classList.remove('is-over-hotspot');
       allPlayButtons.forEach((button) => {
         button.disabled = true;
       });
