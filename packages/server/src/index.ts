@@ -47,6 +47,10 @@ async function main() {
   const io = new SocketIOServer(server, { cors: { origin: '*' } });
 
   const game = new GameLoop(MODE, ROUND_SEC);
+  // Initialize the round BEFORE connecting to TikTok. The connector can emit
+  // recent real comments/gifts during connect(); resetting afterwards would
+  // erase characters that just spawned from those events.
+  game.resetToWaiting();
   const connector = createConnector(MODE);
 
   const getDemo = (): DemoEventSimulator | null =>
@@ -165,8 +169,6 @@ a{color:#fe2c55}</style></head>
       );
     }
   }
-
-  game.resetToWaiting();
 
   server.listen(PORT, HOST, () => {
     console.log(`\n🏟️  TikTok Live Ball Arena`);
