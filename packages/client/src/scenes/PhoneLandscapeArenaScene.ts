@@ -93,8 +93,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     audio.setPhoneLite(true);
     const initialAudioPhase = data?.round?.phase ?? 'running';
     audio.prepare();
-    if (initialAudioPhase === 'running') void audio.startBgm(true);
-    else audio.stopBgm(0);
+    void audio.startBgm(true);
 
     this.bg = this.add.graphics().setDepth(0);
     this.field = this.add.graphics().setDepth(1);
@@ -327,8 +326,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private onRound = (state: RoundState): void => {
     this.lastRemaining = state.remainingSec;
     this.lastPhase = state.phase;
-    if (state.phase === 'running') void audio.startBgm(true);
-    else audio.stopBgm(0.25);
+    void audio.startBgm(true);
     this.lastPlayerCount = state.playerCount ?? this.lastPlayerCount;
     this.timer.setText(this.formatTime(state.remainingSec));
     this.players.setText('PLAYERS: ' + this.lastPlayerCount);
@@ -351,8 +349,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private onSnapshot = (snap: GameSnapshot): void => {
     this.lastRemaining = snap.remainingSec;
     this.lastPhase = snap.phase;
-    if (snap.phase === 'running') void audio.startBgm(true);
-    else audio.stopBgm(0.25);
+    void audio.startBgm(true);
     this.lastPlayerCount = snap.playerCount;
     this.timer.setText(this.formatTime(snap.remainingSec));
     this.players.setText('PLAYERS: ' + snap.playerCount);
