@@ -29,7 +29,7 @@ const TRANSITION_MOBILE_SPRITE = (
 
 const HOME_DESKTOP_VIDEO = (
   import.meta.env.VITE_CINEMATIC_HOME_VIDEO_FLUID ||
-  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/dfa58eb9-0ab1-4f8f-bb09-2d563349aca9.mp4'
+  'https://d2ol7oe51mr4n9.cloudfront.net/user_3ExHvVfp1S2A6CycImN7kDdmbsV/4e5d0a28-3a18-44d9-a92f-fd25a5c2d6cd.mp4'
 ).trim();
 
 const HOME_MOBILE_VIDEO = (
