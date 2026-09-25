@@ -1,3 +1,33 @@
+# Etapa atual: **Cinematic V4 — frame scrub + responsive portrait**
+
+Data: 2026-09-25 (America/Sao_Paulo)
+
+### Implementado
+- Home reconstruída com o mesmo método do vídeo de referência: frames extraídos e consolidados em sprites.
+- Sprite HOME novo: trecho limpo do vídeo Omni do Bolla Arena, 24 frames, 960x540 por frame, sem botões/menus baked-in.
+- Scrub por mouse e toque com interpolação suave; ao sair/soltar volta para o frame central.
+- Layout desktop full-screen cinematográfico.
+- Layout portrait dedicado: fundo desfocado + frame 16:9 nítido preservado, sem esticar/cortar o BOSS de forma agressiva.
+- Logo e botões agora são elementos DOM reais, não hotspots invisíveis sobre a arte.
+- Estados hover/pressed, brilho, shimmer e burst visual no toque.
+- JOGAR reproduz sequência de frames de transição + áudio do próprio vídeo e então revela o jogo já carregado.
+- Música do jogo fica bloqueada durante HOME/transição e inicia somente quando a rodada está em `running`.
+- Waiting/results param BGM; transição e BGM não tocam juntas.
+- BGM V4 usa somente áudio derivado do vídeo original do Bolla Arena, sem mixar duas músicas.
+- Figma atualizado com frames FINAL V4 desktop e portrait.
+
+### Assets V4
+- HOME sprite: 3.2 MB WebP
+- Transition sprite: 3.3 MB WebP
+- Transition audio: 96 KB MP3
+- Game theme: 707 KB MP3
+
+### Deploy
+- Render build aprovado e versão atual publicada.
+- Assets externos validados via HTTP 200.
+
+---
+
 # Etapa atual: **Cinematic V3 — frame-based reference-style UI**
 
 Data: 2026-09-25 (America/Sao_Paulo)
