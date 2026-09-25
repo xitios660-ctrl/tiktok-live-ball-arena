@@ -9,6 +9,11 @@ import {
 } from './tiktok/TikTokLiveConnectorAdapter';
 import { mapTikTokGiftToArenaId } from './tiktok/mapTikTokGift';
 import { applyPickupAbility } from './game/GiftAbilities';
+import {
+  mapPirateChatEvent,
+  mapPirateLikeEvent,
+  mapPirateGiftEvent,
+} from './tiktok/PirateTokConnectorAdapter';
 import type { PhysicsWorld } from './game/PhysicsWorld';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -42,6 +47,67 @@ function giftEvent(
     coinValue,
     timestamp: Date.now(),
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* PirateTok direct realtime payload mapping                                   */
+/* -------------------------------------------------------------------------- */
+
+const pirateUser = {
+  id: '987654321',
+  uniqueId: 'pirate_viewer',
+  nickname: 'Pirate Viewer',
+  avatarThumb: { urlList: ['https://example.com/pirate.jpg'] },
+};
+
+const pirateChat = mapPirateChatEvent({
+  common: { msgId: 'chat-1' },
+  user: pirateUser,
+  content: 'entrei',
+});
+assert(pirateChat?.type === 'comment', 'PirateTok CHAT did not map');
+if (pirateChat?.type === 'comment') {
+  assert(pirateChat.user.userId === '987654321', 'PirateTok CHAT userId mismatch');
+  assert(pirateChat.user.username === 'pirate_viewer', 'PirateTok CHAT username mismatch');
+  assert(pirateChat.comment === 'entrei', 'PirateTok CHAT content mismatch');
+  assert(pirateChat.user.avatarUrl?.includes('pirate.jpg'), 'PirateTok CHAT avatar missing');
+}
+
+const pirateLike = mapPirateLikeEvent({
+  common: { msgId: 'like-1' },
+  user: pirateUser,
+  count: 17,
+  total: 321,
+});
+assert(pirateLike?.type === 'like', 'PirateTok LIKE did not map');
+if (pirateLike?.type === 'like') {
+  assert(pirateLike.likeCount === 17, 'PirateTok LIKE count mismatch');
+  assert(pirateLike.totalLikeCount === 321, 'PirateTok LIKE total mismatch');
+  assert(pirateLike.user.userId === '987654321', 'PirateTok LIKE user mismatch');
+}
+
+const pirateGiftProgress = mapPirateGiftEvent({
+  common: { msgId: 'gift-progress' },
+  user: pirateUser,
+  giftId: 5655,
+  repeatCount: 2,
+  repeatEnd: 0,
+  gift: { type: 1, name: 'Rose', diamondCount: 1 },
+});
+assert(pirateGiftProgress === null, 'PirateTok combo gift progress must not pay early');
+
+const pirateGiftFinal = mapPirateGiftEvent({
+  common: { msgId: 'gift-final' },
+  user: pirateUser,
+  giftId: 5655,
+  repeatCount: 3,
+  repeatEnd: 1,
+  gift: { type: 1, name: 'Rose', diamondCount: 1 },
+});
+assert(pirateGiftFinal?.type === 'gift', 'PirateTok GIFT final did not map');
+if (pirateGiftFinal?.type === 'gift') {
+  assert(pirateGiftFinal.giftId === 'rosa', 'PirateTok Rose did not map to rosa');
+  assert(pirateGiftFinal.repeatCount === 3, 'PirateTok gift repeat count mismatch');
 }
 
 /* -------------------------------------------------------------------------- */
@@ -546,7 +612,7 @@ try {
 }
 
 console.log(
-  '[SELFTEST] PASS TikTok CHAT/LIKE/GIFT normalization + real gift-name mapping; ' +
+  '[SELFTEST] PASS PirateTok direct CHAT/LIKE/GIFT + legacy normalization + real gift-name mapping; ' +
     'comment spawn+respawn; repeatable LIKE combos 50/100/200/500/1000; ' +
     'Rosa/Dino/Donut/Capybara/Galaxy + Lightning/Magnet/Freeze/Dash/Reflect/Heal powers'
 );
