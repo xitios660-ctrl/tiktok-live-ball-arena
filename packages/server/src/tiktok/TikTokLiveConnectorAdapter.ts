@@ -12,8 +12,18 @@ import { mapTikTokGiftToArenaId } from './mapTikTokGift';
 type TikTokLib = typeof import('tiktok-live-connector');
 
 const HEARTBEAT_MS = 25_000;
-const MAX_BACKOFF_MS = 60_000;
+const MAX_BACKOFF_MS = 10_000;
 const STALE_MS = 90_000;
+
+function normalizeUsername(input: string): string {
+  const raw = String(input || '').trim();
+  const fromUrl = raw.match(/tiktok\.com\/@([^/?#]+)/i)?.[1];
+  return decodeURIComponent(fromUrl || raw)
+    .replace(/^@/, '')
+    .replace(/\?.*$/, '')
+    .replace(/\/$/, '')
+    .trim();
+}
 
 function errMsg(err: unknown): string {
   if (err instanceof Error) return err.message || err.name;
@@ -203,8 +213,19 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   private lastLikeAt = 0;
 
   async connect(username: string): Promise<void> {
-    this.username = username.replace(/^@/, '').trim();
+    const nextUsername = normalizeUsername(username);
+    const changed = this.username != null && this.username !== nextUsername;
+    this.username = nextUsername;
     this.intentionalStop = false;
+    if (changed) {
+      console.log(`[TIKTOK] switching broadcaster → @${this.username}`);
+      this.reconnectAttempt = 0;
+      this.lastError = null;
+      this.roomId = null;
+      this.lastTotalLikeCount = null;
+      this.lastLikeUserId = null;
+      this.lastLikeAt = 0;
+    }
     if (!this.username) {
       const err = new Error('[TIKTOK] TIKTOK_USERNAME empty — set host uniqueId');
       this.setPhase('error', err.message);
@@ -284,10 +305,16 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       process.env.EULER_STREAM_API_KEY ||
       undefined;
     const conn = new TikTokLiveConnection(this.username, {
-      processInitialData: false,
-      // Extended gift gallery hits Euler Business routes; gifts still work via Webcast events.
+      // Process the initial event batch too: if someone comments while the
+      // WebSocket is finishing its handshake, that comment is not lost.
+      processInitialData: true,
+      // Gift name/id/count already arrive in WebcastGiftMessage. Avoid an
+      // extra paid/fragile gift-gallery request on every reconnect.
       enableExtendedGiftInfo: false,
-      fetchRoomInfoOnConnect: true,
+      // Do not let a flaky room-info "offline" check veto a valid WebSocket.
+      // connect() still has to resolve a real room id, so this does not create
+      // fake live events.
+      fetchRoomInfoOnConnect: false,
       ...(signApiKey ? { signApiKey } : {}),
     });
     this.connection = conn;
@@ -344,7 +371,33 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     });
 
     try {
-      const state = await conn.connect();
+      // Resolve the room explicitly first. Passing roomId into connect() skips
+      // an additional username-resolution pass and has proven more reliable
+      // when TikTok's HTML/live-status route temporarily says "offline".
+      let roomIdHint: string | undefined;
+      try {
+        const fetchRoomId = (
+          conn as unknown as {
+            fetchRoomId?: (uniqueId?: string) => Promise<string | number>;
+          }
+        ).fetchRoomId;
+        if (typeof fetchRoomId === 'function') {
+          const candidate = await fetchRoomId.call(conn, this.username);
+          if (candidate != null && String(candidate).trim()) {
+            roomIdHint = String(candidate);
+            this.roomId = roomIdHint;
+            console.log(
+              `[TIKTOK] room resolved @${this.username} → ${roomIdHint}`
+            );
+          }
+        }
+      } catch (roomErr) {
+        console.warn(
+          `[TIKTOK] room resolve @${this.username}: ${errMsg(roomErr)}`
+        );
+      }
+
+      const state = await conn.connect(roomIdHint);
       if (gen !== this.generation) return;
       if (state?.roomId != null) this.roomId = String(state.roomId);
       if (!this.connectedFlag) {
@@ -470,25 +523,81 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   }
 
   private handleGift(raw: unknown): void {
-    const data = raw as Record<string, unknown>;
-    const giftObj = data.gift as { gift_type?: number; name?: string; diamond_count?: number } | undefined;
-    const giftType = Number(data.giftType ?? giftObj?.gift_type ?? 0);
-    const repeatEnd = Boolean(data.repeatEnd ?? data.repeat_end);
+    const data = asRecord(raw) || {};
+    const nestedData = asRecord(data.data);
+    const giftObj = (asRecord(data.gift) || asRecord(nestedData?.gift)) as
+      | Record<string, unknown>
+      | undefined;
+    const details = (asRecord(data.giftDetails) ||
+      asRecord(nestedData?.giftDetails)) as Record<string, unknown> | undefined;
+    const extended = (asRecord(data.extendedGiftInfo) ||
+      asRecord(nestedData?.extendedGiftInfo)) as Record<string, unknown> | undefined;
+
+    const giftType = Number(
+      data.giftType ??
+        nestedData?.giftType ??
+        details?.giftType ??
+        giftObj?.gift_type ??
+        giftObj?.giftType ??
+        0
+    );
+    const repeatEnd = Boolean(
+      data.repeatEnd ??
+        data.repeat_end ??
+        nestedData?.repeatEnd ??
+        nestedData?.repeat_end ??
+        giftObj?.repeat_end ??
+        giftObj?.repeatEnd
+    );
     if (giftType === 1 && !repeatEnd) return;
 
-    const user = toUser(data.user as Record<string, unknown> | undefined);
-    const extended = data.extendedGiftInfo as { name?: string; diamond_count?: number } | undefined;
-    const details = data.giftDetails as { giftName?: string } | undefined;
-    const rawName = String(data.giftName || extended?.name || details?.giftName || giftObj?.name || '');
+    const nestedUser =
+      asRecord(data.user) ||
+      asRecord(nestedData?.user) ||
+      asRecord(data.userInfo) ||
+      asRecord(nestedData?.userInfo);
+    const user = toUser(nestedUser || nestedData || data);
+    const rawName = String(
+      data.giftName ||
+        nestedData?.giftName ||
+        extended?.name ||
+        details?.giftName ||
+        giftObj?.name ||
+        ''
+    );
     const diamond =
-      Number(data.diamondCount ?? extended?.diamond_count ?? giftObj?.diamond_count ?? 0) || 0;
+      Number(
+        data.diamondCount ??
+          nestedData?.diamondCount ??
+          extended?.diamond_count ??
+          extended?.diamondCount ??
+          details?.diamondCount ??
+          giftObj?.diamond_count ??
+          giftObj?.diamondCount ??
+          0
+      ) || 0;
     const mapped = mapTikTokGiftToArenaId(
-      data.giftId as string | number | undefined,
+      (data.giftId ??
+        nestedData?.giftId ??
+        giftObj?.gift_id ??
+        giftObj?.giftId) as string | number | undefined,
       rawName,
       diamond
     );
-    const repeatCount = Math.max(1, Number(data.repeatCount ?? data.repeat_count ?? 1));
-    const common = data.common as { msgId?: string } | undefined;
+    const repeatCount = Math.max(
+      1,
+      Number(
+        data.repeatCount ??
+          data.repeat_count ??
+          nestedData?.repeatCount ??
+          nestedData?.repeat_count ??
+          giftObj?.repeat_count ??
+          giftObj?.repeatCount ??
+          1
+      )
+    );
+    const common = (asRecord(data.common) ||
+      asRecord(nestedData?.common)) as { msgId?: string } | undefined;
     const fp = String(
       data.msgId ||
         common?.msgId ||
@@ -594,28 +703,37 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
   }
 
   private handleShare(raw: unknown): void {
-    const data = raw as {
-      user?: Record<string, unknown>;
-      msgId?: string;
-      common?: { msgId?: string };
-    };
-    const user = toUser(data.user);
+    const data = asRecord(raw) || {};
+    const nestedData = asRecord(data.data);
+    const user = toUser(
+      asRecord(data.user) || asRecord(nestedData?.user) || nestedData || data
+    );
     const fp = String(
-      data.msgId || data.common?.msgId || `share:${user.userId}:${Math.floor(Date.now() / 3000)}`
+      data.msgId ||
+        asRecord(data.common)?.msgId ||
+        nestedData?.msgId ||
+        asRecord(nestedData?.common)?.msgId ||
+        `share:${user.userId}:${Math.floor(Date.now() / 3000)}`
     );
     if (!this.dedupe.check(fp)) return;
     this.push({ type: 'share', user, timestamp: Date.now() }, '[SHARE]', `@${user.username}`);
   }
 
   private handleFollow(raw: unknown): void {
-    const data = raw as { user?: Record<string, unknown> };
-    const user = toUser(data.user);
+    const data = asRecord(raw) || {};
+    const nestedData = asRecord(data.data);
+    const user = toUser(
+      asRecord(data.user) || asRecord(nestedData?.user) || nestedData || data
+    );
     this.push({ type: 'follow', user, timestamp: Date.now() }, '[FOLLOW]', `@${user.username}`);
   }
 
   private handleMember(raw: unknown): void {
-    const data = raw as { user?: Record<string, unknown> };
-    const user = toUser(data.user);
+    const data = asRecord(raw) || {};
+    const nestedData = asRecord(data.data);
+    const user = toUser(
+      asRecord(data.user) || asRecord(nestedData?.user) || nestedData || data
+    );
     this.push({ type: 'join', user, timestamp: Date.now() }, '[JOIN]', `@${user.username}`);
   }
 }
