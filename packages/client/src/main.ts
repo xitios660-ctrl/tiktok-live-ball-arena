@@ -259,10 +259,8 @@ const fontsReady =
 void fontsReady.then(async () => {
   const wantsCinematicIntro = shouldShowCinematicIntro(opts);
 
-  // The real game boots behind the cinematic layer so the socket/round state
-  // is already warm when JOGAR finishes. BGM is explicitly held while the
-  // home/transition owns the screen to prevent two tracks from overlapping.
-  if (wantsCinematicIntro) audio.setBgmAllowed(false);
+  // Boot the real game behind the cinematic layer so socket/round state is
+  // already warm. One soundtrack is shared by home -> transition -> gameplay.
   boot();
 
   if (wantsCinematicIntro) {
@@ -272,13 +270,13 @@ void fontsReady.then(async () => {
         tryEnterPhoneFullscreen();
         try {
           audio.prepare();
+          await audio.startBgm(true);
           audioUnlockedThisSession = true;
         } catch {
           // The normal audio gate remains available after the transition.
         }
       },
     });
-    audio.setBgmAllowed(true);
   }
 
   setupAudioUnlockGate();
