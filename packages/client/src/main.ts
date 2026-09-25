@@ -258,9 +258,6 @@ const fontsReady =
     : Promise.resolve();
 void fontsReady.then(async () => {
   const wantsCinematicIntro = shouldShowCinematicIntro(opts);
-  // Never let arena BGM leak under the cinematic videos.
-  if (wantsCinematicIntro) audio.setBgmAllowed(false);
-
   // Boot the real game behind the cinematic layer so the socket and round
   // state are already warm when the player presses JOGAR.
   boot();
@@ -273,17 +270,15 @@ void fontsReady.then(async () => {
     await runCinematicIntro({
       onPlayGesture: async () => {
         tryEnterPhoneFullscreen();
-        // Unlock the AudioContext only. The BGM is intentionally held until
-        // the cinematic transition finishes and gameplay is revealed.
         try {
           audio.prepare();
+          await audio.startBgm(true);
           audioUnlockedThisSession = true;
         } catch {
           // The normal audio gate remains available after the transition.
         }
       },
     });
-    audio.setBgmAllowed(true);
   }
 
   setupAudioUnlockGate();
