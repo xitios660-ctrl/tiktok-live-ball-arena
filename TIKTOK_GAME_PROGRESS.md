@@ -1,3 +1,37 @@
+# Etapa atual: **Cinematic V3 — frame-based reference-style UI**
+
+Data: 2026-09-25 (America/Sao_Paulo)
+
+### Mudança de direção
+- Removido o conceito de vídeo 16:9 esticado/cortado como página inteira.
+- Home reconstruída com sequência de frames interativa inspirada no site de referência enviado pelo usuário.
+- Desktop: hero central cinematográfico, copy editorial à esquerda, cards de informação à direita, cursor/retículo e botões reais.
+- Portrait: sprite dedicado para tela em pé, hero próprio, texto e controles abaixo sem distorção.
+- Mouse move os frames no desktop; arrastar o dedo faz o mesmo no mobile; idle anima sozinho quando não há interação.
+- JOGAR usa estado pressionado real e sequência de frames para entrar na arena.
+- Nenhum botão usa hotspot invisível maior que o elemento visível.
+
+### Áudio
+- Apenas uma trilha principal por vez.
+- A trilha configurada agora reutiliza o áudio do vídeo principal do Bolla Arena para combinar com toda a identidade.
+- Camada de ambient/drone removida para impedir duas músicas sobrepostas.
+- Waiting e fases da arena não param/reiniciam a trilha; ela continua pelo fluxo.
+
+### Assets
+- Home desktop 36 frames: `7bed6250-8f35-41c5-820e-2becc2dd02ee.webp`
+- Home portrait 36 frames: `d5b8f7ff-aa18-4c85-8910-8adc6531b7e6.webp`
+- Transition sprite: sequência de frames já existente, sem vídeo esticado.
+
+### Figma
+- Arquivo: `Bolla Arena — Responsive Interactive UI`
+- Frames novos: `Cinematic V3 / Desktop` e `Cinematic V3 / Portrait`
+
+### Commits principais
+- `a0745769` — Rebuild cinematic intro around interactive frames
+- `e3699276` — Remove ambient layer from soundtrack
+
+---
+
 # Etapa atual: **Frame-based responsive cinematic UI (Figma V2)**\n\nData: 2026-09-24/25 (America/Sao_Paulo)\n\n### Redesign\n- Home cinematográfica migrada de vídeo esticado para sprite de 24 frames controlado por mouse/toque.\n- Mobile portrait passa a usar hero 16:9 próprio + botões reais abaixo, sem crop gigante.\n- Desktop/landscape mantém palco 16:9 central com controles reais.\n- JOGAR usa botão visível com estado pressionado e transição por 24 frames.\n- Botões Conectar, Ranking e Como Jogar não dependem mais de hotspots transparentes.\n\n### Áudio\n- Trilha configurada como canal único contínuo; sprites não possuem áudio concorrente.\n- Ambient drone é desativado quando VITE_CONTINUOUS_BGM=1.\n- Stop de BGM solicitado por cenas é ignorado enquanto o modo contínuo estiver ativo.\n\n### Design\n- Figma: Bolla Arena — Responsive Interactive UI.\n- Mobile V2: frame 390x844 inspirado no node 4:10.\n\n---\n# Etapa atual: **Cinematic interactive home + animated JOGAR transition**
 
 Data: 2026-09-24 (America/Sao_Paulo)
