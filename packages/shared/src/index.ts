@@ -555,7 +555,14 @@ export const LIKE_PERSONAL_STEP = 100;
 export const LIKE_PERSONAL_HEAL = 20;
 export const LIKE_PERSONAL_STRENGTH = 1;
 
-/** Personal, cumulative milestones. Each reward fires once per player per round. */
+/**
+ * A viewer's like combo ends after this much silence. The next LIKE starts
+ * again from zero, so the same viewer can earn the milestone rewards again.
+ * 3s is safely above the normal ~0.8–1.7s TikTok batch cadence we observe.
+ */
+export const LIKE_COMBO_RESET_MS = 3_000;
+
+/** Personal milestones inside EACH continuous like combo. */
 export const LIKE_PERSONAL_MILESTONES = [
   { likes: 50, heal: 10, strength: 0, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
   { likes: 100, heal: 20, strength: 1, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
