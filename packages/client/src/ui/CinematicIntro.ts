@@ -100,8 +100,16 @@ function placeVideoHotspot(
   const viewportRatio = vw / Math.max(1, vh);
   let displayW = vw;
   let displayH = vh;
-  // The cinematic is 16:9. Keep the whole frame visible (object-fit: contain).
-  if (viewportRatio > mediaRatio) {
+  const portrait = vh > vw * 1.18;
+  // Portrait phones use a centered cinematic crop (cover) so the hero fills
+  // the screen without stretching. Landscape/desktop keeps the full 16:9 frame.
+  if (portrait) {
+    if (viewportRatio > mediaRatio) {
+      displayH = vw / mediaRatio;
+    } else {
+      displayW = vh * mediaRatio;
+    }
+  } else if (viewportRatio > mediaRatio) {
     displayW = vh * mediaRatio;
   } else {
     displayH = vw / mediaRatio;
@@ -225,6 +233,7 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
       '.cinematic-modal-close{position:absolute;right:14px;top:12px;width:44px;height:44px;border:0;border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:28px;cursor:pointer;}',
       '.cinematic-modal-action{display:inline-flex;margin-top:14px;min-height:44px;align-items:center;justify-content:center;padding:0 18px;border-radius:10px;text-decoration:none;background:#ff7b24;color:#fff;font-weight:800;}',
       '@media(max-width:640px){.cinematic-logo{top:11%;width:min(84vw,500px);max-height:30vh}.cinematic-play{min-width:min(330px,82vw);min-height:60px}.cinematic-subnav{gap:8px;width:min(92vw,620px)}.cinematic-sub{flex:1 1 30%;min-width:0;padding:0 10px;font-size:10px}.cinematic-hint{font-size:9px;letter-spacing:.08em}}',
+      '@media(orientation:portrait){.cinematic-home-video,.cinematic-transition-video{object-fit:cover;object-position:50% 50%}.cinematic-home-video{transform:translate3d(var(--cin-x,0px),var(--cin-y,0px),0) scale(1.01)}#cinematic-home.has-home-video .cinematic-fallback-ui{opacity:1;pointer-events:auto;justify-content:flex-end;padding-bottom:max(54px,env(safe-area-inset-bottom))}#cinematic-home.has-home-video .cinematic-fallback-ui .cinematic-logo,#cinematic-home.has-home-video .cinematic-play-fallback{display:none}#cinematic-home.has-home-video .cinematic-subnav{display:flex}.cinematic-video-hits .cinematic-hotspot:not(.cinematic-hotspot-play){display:none}.cinematic-hint{bottom:max(8px,env(safe-area-inset-bottom))}}',
       '@media(prefers-reduced-motion:reduce){.cinematic-fallback,.cinematic-home-video{transition:none!important;transform:scale(1.04)!important}.cinematic-pointer-glow{display:none}.cinematic-hint{display:none}}'
     ].join('\n');
 
