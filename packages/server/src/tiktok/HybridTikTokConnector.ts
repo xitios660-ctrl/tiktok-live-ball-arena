@@ -29,12 +29,17 @@ export class HybridTikTokConnector implements ITikTokConnector {
   private readonly likeDedupe = new EventDedupe(1_200, 5_000);
   private username: string | null = null;
   private roomSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private lastPrimarySignalAt = 0;
+  private lastBackupSignalAt = 0;
+  private primaryRefreshInFlight = false;
+  private backupRefreshInFlight = false;
 
   constructor() {
     this.primary.on('event', (event) => this.handlePrimaryEvent(event));
     this.backup.on('event', (event) => this.handleBackupEvent(event));
 
     this.primary.on('connected', (info) => {
+      this.lastPrimarySignalAt = Date.now();
       this.emitter.emit('connected', info);
       this.emitStatus();
 
@@ -75,6 +80,7 @@ export class HybridTikTokConnector implements ITikTokConnector {
     });
 
     this.backup.on('connected', (info) => {
+      this.lastBackupSignalAt = Date.now();
       console.log(
         `[TIKTOK][CHAT-BACKUP] connected @${info.username} room=${info.roomId || '-'}`
       );
@@ -106,6 +112,9 @@ export class HybridTikTokConnector implements ITikTokConnector {
 
   async connect(username: string): Promise<void> {
     this.username = username;
+    const now = Date.now();
+    this.lastPrimarySignalAt = now;
+    this.lastBackupSignalAt = now;
     this.startRoomSync();
 
     const results = await Promise.allSettled([
@@ -176,6 +185,7 @@ export class HybridTikTokConnector implements ITikTokConnector {
   }
 
   private handlePrimaryEvent(event: ArenaLiveEvent): void {
+    this.lastPrimarySignalAt = Date.now();
     if (event.type === 'comment') {
       if (!this.chatDedupe.check(this.commentFingerprint(event))) return;
     } else if (event.type === 'gift') {
@@ -188,6 +198,7 @@ export class HybridTikTokConnector implements ITikTokConnector {
   }
 
   private handleBackupEvent(event: ArenaLiveEvent): void {
+    this.lastBackupSignalAt = Date.now();
     if (event.type === 'comment') {
       if (!this.chatDedupe.check(this.commentFingerprint(event))) return;
       console.log(
@@ -262,36 +273,93 @@ export class HybridTikTokConnector implements ITikTokConnector {
 
   private startRoomSync(): void {
     this.stopRoomSync();
+
+    // TikTok can leave a socket looking "connected" while interaction events
+    // silently stop. Keep two transports alive and refresh them at different
+    // cadences so there is always another channel listening while one recovers.
     this.roomSyncTimer = setInterval(() => {
       if (!this.username) return;
 
+      const now = Date.now();
       const primary = this.primary.getStatus();
       const backup = this.backup.getStatus();
-      if (!primary.live || !primary.roomId) return;
 
+      const primaryBusy =
+        primary.phase === 'connecting' || primary.phase === 'reconnecting';
       const backupBusy =
         backup.phase === 'connecting' || backup.phase === 'reconnecting';
 
+      const backupSilentMs = now - (this.lastBackupSignalAt || now);
+      const primarySilentMs = now - (this.lastPrimarySignalAt || now);
+
+      const backupNeedsRefresh =
+        !backup.connected ||
+        (!!primary.roomId && backup.roomId !== primary.roomId) ||
+        (primary.live && backupSilentMs > 24_000);
+
+      // Refresh backup first. It is the catch-up channel for CHAT/GIFT/LIKE.
       if (
+        backupNeedsRefresh &&
         !backupBusy &&
-        (!backup.connected || backup.roomId !== primary.roomId)
+        !this.backupRefreshInFlight
       ) {
+        this.backupRefreshInFlight = true;
+        this.lastBackupSignalAt = now;
         console.warn(
-          `[TIKTOK][HYBRID] periodic room sync primary=${primary.roomId} backup=${backup.roomId || '-'}`
+          `[TIKTOK][HYBRID] refresh backup room=${backup.roomId || '-'} primary=${primary.roomId || '-'} silent=${Math.round(backupSilentMs / 1000)}s`
         );
-        void this.backup.connect(this.username).catch((err) => {
-          console.warn(
-            '[TIKTOK][HYBRID] periodic backup sync failed:',
-            err instanceof Error ? err.message : String(err)
-          );
-        });
+
+        void this.backup
+          .connect(this.username)
+          .catch((err) => {
+            console.warn(
+              '[TIKTOK][HYBRID] backup refresh failed:',
+              err instanceof Error ? err.message : String(err)
+            );
+          })
+          .finally(() => {
+            this.backupRefreshInFlight = false;
+          });
+        return;
       }
-    }, 12_000);
+
+      // Only recycle the primary when the backup was not refreshed in this
+      // tick. This prevents both receivers from being offline simultaneously.
+      const primaryNeedsRefresh =
+        !primary.connected ||
+        (backup.live && primarySilentMs > 48_000);
+
+      if (
+        primaryNeedsRefresh &&
+        !primaryBusy &&
+        !this.primaryRefreshInFlight
+      ) {
+        this.primaryRefreshInFlight = true;
+        this.lastPrimarySignalAt = now;
+        console.warn(
+          `[TIKTOK][HYBRID] refresh primary room=${primary.roomId || '-'} silent=${Math.round(primarySilentMs / 1000)}s`
+        );
+
+        void this.primary
+          .connect(this.username)
+          .catch((err) => {
+            console.warn(
+              '[TIKTOK][HYBRID] primary refresh failed:',
+              err instanceof Error ? err.message : String(err)
+            );
+          })
+          .finally(() => {
+            this.primaryRefreshInFlight = false;
+          });
+      }
+    }, 8_000);
   }
 
   private stopRoomSync(): void {
     if (this.roomSyncTimer) clearInterval(this.roomSyncTimer);
     this.roomSyncTimer = null;
+    this.primaryRefreshInFlight = false;
+    this.backupRefreshInFlight = false;
   }
 
   private emitStatus(): void {
