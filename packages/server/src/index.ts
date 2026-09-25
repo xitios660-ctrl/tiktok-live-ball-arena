@@ -182,7 +182,7 @@ a{color:#fe2c55}</style></head>
     if (MODE === 'demo') {
       console.log(`   DEMO events are SIMULATED — not real TikTok`);
     } else {
-      console.log(`   PRODUCTION: unofficial Webcast WS — needs @${USERNAME} LIVE`);
+      console.log(`   PRODUCTION: direct TikTok realtime — needs @${USERNAME} publicly LIVE`);
     }
     console.log('');
   });
