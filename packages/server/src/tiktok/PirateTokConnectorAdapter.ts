@@ -878,16 +878,16 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
         ) return;
 
         const msg = err instanceof Error ? err.message : String(err);
+        const resolvedRoomId = this.roomId;
         this.lastError = msg;
         this.connected = false;
         this.live = false;
-        this.roomId = null;
 
         const offline =
           /not currently live|HostNotOnline|offline|not.*live/i.test(msg);
         if (offline) {
           console.warn(
-            `[TIKTOK][PIRATE] profile endpoint says offline for @${this.username}; room=${this.roomId || '-'}`
+            `[TIKTOK][PIRATE] profile endpoint says offline for @${this.username}; resolvedRoom=${resolvedRoomId || '-'}`
           );
         } else {
           this.setPhase('error', msg);
@@ -899,11 +899,16 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
           this.client = null;
         }
 
-        if (offline && this.roomId) {
-          void this.startDirectRoom(this.roomId, gen);
+        if (offline && resolvedRoomId) {
+          // The profile status endpoint is frequently stale during an active
+          // LIVE. We already resolved a room, so connect to that room directly
+          // instead of throwing the id away and looping "offline".
+          this.roomId = resolvedRoomId;
+          void this.startDirectRoom(resolvedRoomId, gen);
           return;
         }
 
+        this.roomId = null;
         if (offline) this.setPhase('waiting_live', msg);
         this.scheduleRetry(gen, offline ? RETRY_OFFLINE_MS : 3_000);
       });
