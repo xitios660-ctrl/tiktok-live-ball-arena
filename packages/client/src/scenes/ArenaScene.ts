@@ -437,12 +437,12 @@ export class ArenaScene extends Phaser.Scene {
         .setAlpha(0.6);
     }
 
-    // Arena BGM belongs only to an active round, never the cinematic home/waiting/results.
-    const ambientIntensity = this.phoneLite ? 0.75 : 0.95;
+    // Arena soundtrack belongs only to an active round.
     const initialAudioPhase = data?.round?.phase ?? 'running';
     this.lastPhase = initialAudioPhase;
     audio.prepare();
-    void audio.startBgm(true);
+    if (initialAudioPhase === 'running') void audio.startBgm(true);
+    else audio.stopBgm(0);
 
     this.game.events.on(SOCKET_EVENTS.ROUND_STATE, this.onRound, this);
     this.game.events.on(SOCKET_EVENTS.LIVE_EVENT, this.onLive, this);
@@ -524,7 +524,9 @@ export class ArenaScene extends Phaser.Scene {
   private onRound = (state: RoundState) => {
     this.applyTimerVisuals(state.remainingSec, state.phase, state.durationSec);
     this.playersText.setText(`PLAYERS NA ARENA: ${state.playerCount ?? 0}`);
-    void audio.startBgm(true);
+    this.lastPhase = state.phase;
+    if (state.phase === 'running') void audio.startBgm(true);
+    else audio.stopBgm(0.35);
     if (state.phase === 'results') {
       this.resultsHint.setText(`Próxima rodada em ${state.resultsRemainingSec ?? 0}s`);
     }
@@ -544,7 +546,9 @@ export class ArenaScene extends Phaser.Scene {
   private onSnapshot = (snap: GameSnapshot) => {
     this.applyTimerVisuals(snap.remainingSec, snap.phase);
     this.playersText.setText(`PLAYERS NA ARENA: ${snap.playerCount}`);
-    void audio.startBgm(true);
+    this.lastPhase = snap.phase;
+    if (snap.phase === 'running') void audio.startBgm(true);
+    else audio.stopBgm(0.35);
     this.syncBalls(snap.balls);
     this.pickupsLayer?.sync(snap.pickups);
     if (this.likesText) {
