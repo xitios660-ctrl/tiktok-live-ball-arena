@@ -9,6 +9,7 @@ import {
 } from './tiktok/TikTokLiveConnectorAdapter';
 import { mapTikTokGiftToArenaId } from './tiktok/mapTikTokGift';
 import { applyPickupAbility } from './game/GiftAbilities';
+import { AutoBotSpawner } from './game/AutoBotSpawner';
 import {
   mapPirateChatEvent,
   mapPirateLikeEvent,
@@ -108,6 +109,43 @@ assert(pirateGiftFinal?.type === 'gift', 'PirateTok GIFT final did not map');
 if (pirateGiftFinal?.type === 'gift') {
   assert(pirateGiftFinal.giftId === 'rosa', 'PirateTok Rose did not map to rosa');
   assert(pirateGiftFinal.repeatCount === 3, 'PirateTok gift repeat count mismatch');
+}
+
+/* -------------------------------------------------------------------------- */
+/* Auto bots: exact batch of 3 without touching comment/like paths            */
+/* -------------------------------------------------------------------------- */
+
+{
+  const oldEnabled = process.env.AUTO_BOT_ENABLED;
+  const oldInterval = process.env.AUTO_BOT_INTERVAL_MS;
+  const oldBatch = process.env.AUTO_BOT_BATCH_SIZE;
+  const oldMax = process.env.AUTO_BOT_MAX_PLAYERS;
+
+  process.env.AUTO_BOT_ENABLED = 'true';
+  process.env.AUTO_BOT_INTERVAL_MS = '30000';
+  process.env.AUTO_BOT_BATCH_SIZE = '3';
+  process.env.AUTO_BOT_MAX_PLAYERS = '40';
+
+  const joined: string[] = [];
+  const spawner = new AutoBotSpawner({
+    getPlayerCount: () => joined.length,
+    canAcceptJoin: () => true,
+    injectJoin: (user) => joined.push(user.userId),
+  });
+
+  const spawned = spawner.runNowForTest();
+  assert(spawned === 3, 'auto bot batch must spawn exactly 3 bots');
+  assert(joined.length === 3, 'auto bot batch injected the wrong player count');
+  spawner.stop();
+
+  if (oldEnabled == null) delete process.env.AUTO_BOT_ENABLED;
+  else process.env.AUTO_BOT_ENABLED = oldEnabled;
+  if (oldInterval == null) delete process.env.AUTO_BOT_INTERVAL_MS;
+  else process.env.AUTO_BOT_INTERVAL_MS = oldInterval;
+  if (oldBatch == null) delete process.env.AUTO_BOT_BATCH_SIZE;
+  else process.env.AUTO_BOT_BATCH_SIZE = oldBatch;
+  if (oldMax == null) delete process.env.AUTO_BOT_MAX_PLAYERS;
+  else process.env.AUTO_BOT_MAX_PLAYERS = oldMax;
 }
 
 /* -------------------------------------------------------------------------- */
