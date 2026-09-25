@@ -258,27 +258,27 @@ const fontsReady =
     : Promise.resolve();
 void fontsReady.then(async () => {
   const wantsCinematicIntro = shouldShowCinematicIntro(opts);
-  // Boot the real game behind the cinematic layer so the socket and round
-  // state are already warm when the player presses JOGAR.
+
+  // The real game boots behind the cinematic layer so the socket/round state
+  // is already warm when JOGAR finishes. BGM is explicitly held while the
+  // home/transition owns the screen to prevent two tracks from overlapping.
+  if (wantsCinematicIntro) audio.setBgmAllowed(false);
   boot();
 
   if (wantsCinematicIntro) {
-    // The stock mobile audio gate exists in index.html and is visible by default.
-    // Hide it while the cinematic home owns the screen; JOGAR itself is the
-    // first user gesture and attempts the audio unlock.
     document.getElementById('audio-unlock-gate')?.classList.add('hidden');
     await runCinematicIntro({
       onPlayGesture: async () => {
         tryEnterPhoneFullscreen();
         try {
           audio.prepare();
-          await audio.startBgm(true);
           audioUnlockedThisSession = true;
         } catch {
           // The normal audio gate remains available after the transition.
         }
       },
     });
+    audio.setBgmAllowed(true);
   }
 
   setupAudioUnlockGate();
