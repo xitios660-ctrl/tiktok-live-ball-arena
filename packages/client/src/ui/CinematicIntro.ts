@@ -406,50 +406,48 @@ export async function runCinematicIntro(options: CinematicIntroOptions = {}): Pr
         button.disabled = true;
       });
 
+      // Keep user activation intact for iOS video audio: invoke gesture setup
+      // synchronously and start the transition video immediately.
       try {
-        await options.onPlayGesture?.();
+        const gestureResult = options.onPlayGesture?.();
+        if (gestureResult && typeof gestureResult.catch === 'function') {
+          void gestureResult.catch(() => undefined);
+        }
       } catch {
         // Keep launch independent from audio/fullscreen failures.
       }
 
-      const transitionReady = await canUseVideo(transitionVideo, 1100);
-      if (transitionReady) {
-        homeVideo.pause();
-        transitionVideo.muted = false;
-        transitionVideo.volume = 1;
-        try {
-          transitionVideo.currentTime = 0;
-        } catch {
-          // ignored
-        }
-        root.classList.add('is-transitioning');
-
-        let fallbackTimer = 0;
-        const onEnded = () => {
-          window.clearTimeout(fallbackTimer);
-          finish();
-        };
-        transitionVideo.addEventListener('ended', onEnded, { once: true });
-        fallbackTimer = window.setTimeout(finish, 9000);
-        try {
-          const playPromise = transitionVideo.play();
-          if (playPromise && typeof playPromise.catch === 'function') {
-            void playPromise.catch(() => {
-              root.classList.remove('is-transitioning');
-              root.classList.add('fallback-launch');
-              window.setTimeout(finish, 1050);
-            });
-          }
-        } catch {
-          root.classList.remove('is-transitioning');
-          root.classList.add('fallback-launch');
-          window.setTimeout(finish, 1050);
-        }
-        return;
+      homeVideo.pause();
+      transitionVideo.muted = false;
+      transitionVideo.volume = 1;
+      try {
+        transitionVideo.currentTime = 0;
+      } catch {
+        // ignored
       }
+      root.classList.add('is-transitioning');
 
-      root.classList.add('fallback-launch');
-      window.setTimeout(finish, 1050);
+      let fallbackTimer = 0;
+      const onEnded = () => {
+        window.clearTimeout(fallbackTimer);
+        finish();
+      };
+      transitionVideo.addEventListener('ended', onEnded, { once: true });
+      fallbackTimer = window.setTimeout(finish, 9000);
+      try {
+        const playPromise = transitionVideo.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          void playPromise.catch(() => {
+            root.classList.remove('is-transitioning');
+            root.classList.add('fallback-launch');
+            window.setTimeout(finish, 1050);
+          });
+        }
+      } catch {
+        root.classList.remove('is-transitioning');
+        root.classList.add('fallback-launch');
+        window.setTimeout(finish, 1050);
+      }
     };
 
     allPlayButtons.forEach((button) => {
