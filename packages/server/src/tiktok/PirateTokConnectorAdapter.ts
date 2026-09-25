@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { ArenaLiveEvent, ArenaUser } from '@arena/shared';
 import type {
   ConnectorEventMap,
@@ -32,6 +34,102 @@ const dynamicImport = new Function(
 
 const RETRY_OFFLINE_MS = 4_000;
 const MAX_RECENT_IDS = 8_000;
+const TIKTOK_OFFLINE_STATUS = 4;
+let pirateRuntimePatched = false;
+
+function patchPirateTokLiveStatusCheck(): void {
+  if (pirateRuntimePatched) return;
+  pirateRuntimePatched = true;
+
+  try {
+    const entry = require.resolve('piratetok-live-js');
+    const apiPath = path.join(path.dirname(entry), 'http', 'api.js');
+    if (!fs.existsSync(apiPath)) {
+      console.warn('[TIKTOK][PIRATE] runtime patch skipped: api.js not found');
+      return;
+    }
+
+    const original = fs.readFileSync(apiPath, 'utf8');
+    const patched = original.replace(
+      /if\s*\(liveStatus\s*!==\s*2\s*&&\s*userStatus\s*!==\s*2\)\s*throw\s+new\s+HostNotOnlineError\(clean\);?/,
+      'if (liveStatus === 4 && userStatus === 4) throw new HostNotOnlineError(clean);'
+    );
+
+    if (patched !== original) {
+      fs.writeFileSync(apiPath, patched, 'utf8');
+      console.log(
+        '[TIKTOK][PIRATE] patched LIVE status detection: status 4 = offline'
+      );
+    } else if (!original.includes('liveStatus === 4 && userStatus === 4')) {
+      console.warn(
+        '[TIKTOK][PIRATE] runtime status-check pattern not found; using API probe guard'
+      );
+    }
+  } catch (err) {
+    console.warn(
+      '[TIKTOK][PIRATE] runtime patch failed:',
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+}
+
+async function probeTikTokRoom(username: string): Promise<{
+  roomId: string | null;
+  liveStatus: number;
+  userStatus: number;
+  active: boolean;
+}> {
+  const params = new URLSearchParams({
+    aid: '1988',
+    app_name: 'tiktok_web',
+    device_platform: 'web_pc',
+    app_language: 'pt',
+    browser_language: 'pt-BR',
+    region: 'BR',
+    user_is_login: 'false',
+    sourceType: '54',
+    staleTime: '0',
+    uniqueId: username,
+    _: String(Date.now()),
+  });
+
+  const response = await fetch(
+    'https://www.tiktok.com/api-live/user/room?' + params.toString(),
+    {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/132 Safari/537.36',
+        Referer: 'https://www.tiktok.com/@' + username + '/live',
+        'Cache-Control': 'no-cache',
+      },
+      signal: AbortSignal.timeout(10_000),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('TikTok room probe HTTP ' + response.status);
+  }
+
+  const body = (await response.json()) as Obj;
+  const data = asObj(body.data) || {};
+  const user = asObj(data.user) || {};
+  const liveRoom = asObj(data.liveRoom) || {};
+
+  const roomId = String(user.roomId || liveRoom.id || liveRoom.roomId || '');
+  const liveStatus = Number(liveRoom.status ?? 0) || 0;
+  const userStatus = Number(user.status ?? 0) || 0;
+
+  // TikTok's current web API uses status=4 for offline. Status=3 is a valid
+  // active state in the current API, so requiring status=2 causes false
+  // "not live" errors and drops every chat/like/gift.
+  const active =
+    !!roomId &&
+    roomId !== '0' &&
+    liveStatus !== TIKTOK_OFFLINE_STATUS &&
+    userStatus !== TIKTOK_OFFLINE_STATUS;
+
+  return { roomId: roomId || null, liveStatus, userStatus, active };
+}
 
 function asObj(value: unknown): Obj | undefined {
   return value && typeof value === 'object' ? (value as Obj) : undefined;
@@ -309,6 +407,11 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
   }
 
   private async load(): Promise<PirateModule> {
+    // PirateTok's published build still assumes only status=2 means LIVE.
+    // TikTok currently reports this account's active rooms as status=3.
+    // Patch before the ESM module is imported so connect() does not reject a
+    // genuinely active LIVE as offline.
+    patchPirateTokLiveStatusCheck();
     return (await dynamicImport('piratetok-live-js')) as PirateModule;
   }
 
@@ -316,6 +419,21 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
     if (this.intentionalStop || gen !== this.generation || !this.username) return;
 
     try {
+      const probe = await probeTikTokRoom(this.username).catch((err) => {
+        console.warn(
+          '[TIKTOK][PIRATE] room probe failed:',
+          err instanceof Error ? err.message : String(err)
+        );
+        return null;
+      });
+
+      if (probe) {
+        console.log(
+          `[TIKTOK][PIRATE] room probe @${this.username}: room=${probe.roomId || '-'} liveStatus=${probe.liveStatus} userStatus=${probe.userStatus} active=${probe.active}`
+        );
+        if (probe.roomId) this.roomId = probe.roomId;
+      }
+
       const lib = await this.load();
       if (this.intentionalStop || gen !== this.generation) return;
 
@@ -442,12 +560,54 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
       });
 
       client.on(E.liveEnded, () => {
-        if (gen !== this.generation || this.client !== client) return;
-        console.log(`[TIKTOK][PIRATE] LIVE ended @${this.username}`);
-        this.connected = false;
-        this.live = false;
-        this.roomId = null;
-        this.setPhase('waiting_live', 'TikTok informou que a LIVE terminou');
+        if (gen !== this.generation || this.client !== client || !this.username) {
+          return;
+        }
+
+        // TikTok can replay a stale WebcastControlMessage(action=3) right after
+        // joining a new room. Never kill the connector on that packet alone.
+        void probeTikTokRoom(this.username)
+          .then((probe) => {
+            if (gen !== this.generation || this.client !== client) return;
+
+            if (probe.active) {
+              const oldRoom = this.roomId;
+              this.roomId = probe.roomId || this.roomId;
+              this.connected = true;
+              this.live = true;
+              this.lastError = null;
+              this.setPhase('connected');
+
+              if (oldRoom && probe.roomId && oldRoom !== probe.roomId) {
+                console.warn(
+                  `[TIKTOK][PIRATE] stale room ${oldRoom}; current LIVE is ${probe.roomId}. reconnecting now`
+                );
+                try {
+                  client.disconnect();
+                } catch {
+                  // ignored
+                }
+              } else {
+                console.log(
+                  `[TIKTOK][PIRATE] stale LIVE-ended control ignored; API still active status=${probe.liveStatus}/${probe.userStatus}`
+                );
+              }
+              return;
+            }
+
+            console.log(`[TIKTOK][PIRATE] LIVE ended confirmed @${this.username}`);
+            this.connected = false;
+            this.live = false;
+            this.roomId = null;
+            this.setPhase('waiting_live', 'TikTok confirmou que a LIVE terminou');
+          })
+          .catch((err) => {
+            // A failed probe is not enough evidence to discard a working WSS.
+            console.warn(
+              '[TIKTOK][PIRATE] LIVE-ended probe failed; keeping socket alive:',
+              err instanceof Error ? err.message : String(err)
+            );
+          });
       });
 
       client.on(E.disconnected, () => {
