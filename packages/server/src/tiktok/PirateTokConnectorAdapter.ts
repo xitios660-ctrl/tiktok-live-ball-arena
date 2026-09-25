@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { ArenaLiveEvent, ArenaUser } from '@arena/shared';
 import type {
   ConnectorEventMap,
@@ -304,6 +305,8 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
   private generation = 0;
   private intentionalStop = false;
   private dedupe = new IdDedupe();
+  private directAbort: AbortController | null = null;
+  private directRoomActive = false;
 
   on<K extends keyof ConnectorEventMap>(
     event: K,
@@ -362,6 +365,8 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
     this.generation += 1;
     this.clearRetry();
 
+    this.stopDirectRoom();
+
     if (this.client) {
       try {
         this.client.disconnect();
@@ -390,6 +395,8 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
     this.intentionalStop = true;
     this.generation += 1;
     this.clearRetry();
+    this.stopDirectRoom();
+
     const client = this.client;
     this.client = null;
     if (client) {
@@ -413,6 +420,236 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
     // genuinely active LIVE as offline.
     patchPirateTokLiveStatusCheck();
     return (await dynamicImport('piratetok-live-js')) as PirateModule;
+  }
+
+  private async loadDirectInternals(): Promise<{
+    fetchTTWID: (timeoutMs?: number, userAgent?: string) => Promise<string>;
+    buildWssUrl: (
+      cdnHost: string,
+      roomId: string,
+      language?: string,
+      region?: string,
+      compress?: boolean
+    ) => string;
+    connectWss: (
+      wssUrl: string,
+      ttwid: string,
+      roomId: string,
+      callbacks: {
+        onEvent: (event: { type: string; data: unknown; roomId?: string }) => void;
+        onError: (error: Error) => void;
+        staleTimeoutMs?: number;
+      },
+      signal: AbortSignal,
+      options?: {
+        userAgent?: string;
+        cookies?: string;
+        acceptLanguage?: string;
+      }
+    ) => Promise<void>;
+  }> {
+    const entry = require.resolve('piratetok-live-js');
+    const dist = path.dirname(entry);
+    const importFile = async (relative: string) =>
+      dynamicImport(pathToFileURL(path.join(dist, relative)).href);
+
+    const [auth, url, wss] = await Promise.all([
+      importFile('auth/ttwid.js'),
+      importFile('connection/url.js'),
+      importFile('connection/wss.js'),
+    ]);
+
+    return {
+      fetchTTWID: (auth as { fetchTTWID: (timeoutMs?: number, userAgent?: string) => Promise<string> }).fetchTTWID,
+      buildWssUrl: (url as { buildWssUrl: (cdnHost: string, roomId: string, language?: string, region?: string, compress?: boolean) => string }).buildWssUrl,
+      connectWss: (wss as { connectWss: (
+        wssUrl: string,
+        ttwid: string,
+        roomId: string,
+        callbacks: {
+          onEvent: (event: { type: string; data: unknown; roomId?: string }) => void;
+          onError: (error: Error) => void;
+          staleTimeoutMs?: number;
+        },
+        signal: AbortSignal,
+        options?: { userAgent?: string; cookies?: string; acceptLanguage?: string }
+      ) => Promise<void> }).connectWss,
+    };
+  }
+
+  private routeDirectEvent(type: string, data: unknown): void {
+    const obj = asObj(data) || {};
+
+    // Any real room traffic proves that this room exists even when TikTok's
+    // profile endpoint incorrectly reports it as offline.
+    if (type !== 'liveEnded') {
+      this.connected = true;
+      this.live = true;
+      this.lastError = null;
+      if (this.phase !== 'connected') this.setPhase('connected');
+    }
+
+    if (type === 'chat') {
+      const key = commonMessageId(obj);
+      if (key && this.dedupe.seen('chat:' + key)) return;
+      const event = mapPirateChatEvent(data);
+      if (event?.type === 'comment') {
+        this.push(
+          event,
+          '[COMMENT]',
+          `@${event.user.username} id=${event.user.userId}: ${event.comment.slice(0, 100)}`
+        );
+      }
+      return;
+    }
+
+    if (type === 'like') {
+      const key = commonMessageId(obj);
+      if (key && this.dedupe.seen('like:' + key)) return;
+      const event = mapPirateLikeEvent(data);
+      if (event?.type === 'like') {
+        this.push(
+          event,
+          '[LIKE]',
+          `@${event.user.username} +${event.likeCount} total=${event.totalLikeCount ?? '?'}`
+        );
+      }
+      return;
+    }
+
+    if (type === 'gift') {
+      const mapped = mapPirateGiftEvent(data);
+      if (!mapped || mapped.type !== 'gift') return;
+      const key =
+        commonMessageId(obj) ||
+        [
+          mapped.user.userId,
+          mapped.giftId,
+          mapped.repeatCount,
+          scalarId(obj.groupId),
+          scalarId(obj.logId),
+        ].join(':');
+      if (key && this.dedupe.seen('gift:' + key)) return;
+      this.push(
+        mapped,
+        '[GIFT]',
+        `@${mapped.user.username} ${mapped.giftName} x${mapped.repeatCount} -> ${mapped.giftId}`
+      );
+      return;
+    }
+
+    if (type === 'join' || type === 'member') {
+      const user = mapPirateUser(obj.user ?? data);
+      this.push(
+        { type: 'join', user, timestamp: Date.now() },
+        '[JOIN]',
+        `@${user.username}`
+      );
+      return;
+    }
+
+    if (type === 'follow' || type === 'share') {
+      const user = mapPirateUser(obj.user ?? data);
+      this.push(
+        { type, user, timestamp: Date.now() } as ArenaLiveEvent,
+        type === 'follow' ? '[FOLLOW]' : '[SHARE]',
+        `@${user.username}`
+      );
+      return;
+    }
+
+    if (type === 'liveEnded') {
+      console.warn(
+        `[TIKTOK][DIRECT] LIVE-ended control received for room=${this.roomId}; keeping socket until room goes stale/re-resolves`
+      );
+    }
+  }
+
+  private async startDirectRoom(roomId: string, gen: number): Promise<void> {
+    if (
+      this.intentionalStop ||
+      gen !== this.generation ||
+      !roomId ||
+      this.directRoomActive
+    ) {
+      return;
+    }
+
+    this.stopDirectRoom();
+    const abort = new AbortController();
+    this.directAbort = abort;
+    this.directRoomActive = true;
+    this.roomId = roomId;
+    this.setPhase('connecting', 'Conectando diretamente na sala TikTok ' + roomId);
+
+    console.log(
+      `[TIKTOK][DIRECT] bypassing profile LIVE-status check; room=${roomId}`
+    );
+
+    try {
+      const { fetchTTWID, buildWssUrl, connectWss } =
+        await this.loadDirectInternals();
+      if (abort.signal.aborted || gen !== this.generation) return;
+
+      const userAgent =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/132 Safari/537.36';
+      const ttwid = await fetchTTWID(10_000, userAgent);
+      if (abort.signal.aborted || gen !== this.generation) return;
+
+      const wssUrl = buildWssUrl(
+        'webcast-ws.tiktok.com',
+        roomId,
+        'pt',
+        'BR',
+        true
+      );
+
+      await connectWss(
+        wssUrl,
+        ttwid,
+        roomId,
+        {
+          onEvent: (event) => {
+            if (abort.signal.aborted || gen !== this.generation) return;
+            this.routeDirectEvent(event.type, event.data);
+          },
+          onError: (err) => {
+            if (abort.signal.aborted || gen !== this.generation) return;
+            this.lastError = err.message;
+            console.warn('[TIKTOK][DIRECT] ' + err.message);
+            this.emitStatus();
+          },
+          staleTimeoutMs: 35_000,
+        },
+        abort.signal,
+        {
+          userAgent,
+          acceptLanguage: 'pt-BR,pt;q=0.9',
+        }
+      );
+    } catch (err) {
+      if (!abort.signal.aborted) {
+        this.lastError = err instanceof Error ? err.message : String(err);
+        console.warn('[TIKTOK][DIRECT] failed: ' + this.lastError);
+      }
+    } finally {
+      if (this.directAbort === abort) {
+        this.directAbort = null;
+        this.directRoomActive = false;
+      }
+
+      if (!this.intentionalStop && gen === this.generation) {
+        this.connected = false;
+        this.scheduleRetry(gen, 1_500);
+      }
+    }
+  }
+
+  private stopDirectRoom(): void {
+    const abort = this.directAbort;
+    this.directAbort = null;
+    this.directRoomActive = false;
+    if (abort && !abort.signal.aborted) abort.abort();
   }
 
   private async startAttempt(gen: number): Promise<void> {
@@ -649,9 +886,8 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
         const offline =
           /not currently live|HostNotOnline|offline|not.*live/i.test(msg);
         if (offline) {
-          this.setPhase('waiting_live', msg);
-          console.log(
-            `[TIKTOK][PIRATE] @${this.username} não está LIVE agora; retry ${RETRY_OFFLINE_MS}ms`
+          console.warn(
+            `[TIKTOK][PIRATE] profile endpoint says offline for @${this.username}; room=${this.roomId || '-'}`
           );
         } else {
           this.setPhase('error', msg);
@@ -662,6 +898,13 @@ export class PirateTokConnectorAdapter implements ITikTokConnector {
           client.removeAllListeners();
           this.client = null;
         }
+
+        if (offline && this.roomId) {
+          void this.startDirectRoom(this.roomId, gen);
+          return;
+        }
+
+        if (offline) this.setPhase('waiting_live', msg);
         this.scheduleRetry(gen, offline ? RETRY_OFFLINE_MS : 3_000);
       });
     } catch (err) {
