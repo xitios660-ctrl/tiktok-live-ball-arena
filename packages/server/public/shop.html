@@ -100,6 +100,10 @@
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
     function handle() { return String($('user').value || '').trim().replace(/^@+/, '').toLowerCase(); }
     function msg(text, bad = false) { $('status').textContent = text; $('status').className = 'status' + (bad ? ' danger' : ''); }
+    function operationKey() {
+      try { if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') return globalThis.crypto.randomUUID(); } catch (_) {}
+      return 'purchase-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    }
     async function api(url, options) {
       const response = await fetch(url, options);
       const json = await response.json().catch(() => ({ ok:false, error:'Resposta inválida' }));
@@ -147,7 +151,7 @@
       const username = handle();
       if (!username) return msg('Informe o @username do TikTok antes de comprar.', true);
       try {
-        const data = await api('/api/shop/purchase', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ username, slug, operationKey:crypto.randomUUID() }) });
+        const data = await api('/api/shop/purchase', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ username, slug, operationKey:operationKey() }) });
         render(data);
         msg(slug === 'vida-tripla' ? 'Compra confirmada: será consumida na próxima entrada.' : 'Compra confirmada. No jogo, use: !usar ' + slug);
       } catch (error) { msg(error.message, true); }
