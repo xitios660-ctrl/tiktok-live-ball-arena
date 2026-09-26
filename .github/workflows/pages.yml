@@ -32,7 +32,7 @@ jobs:
       - name: Build client
         env:
           VITE_BASE_PATH: /tiktok-live-ball-arena/
-          VITE_BACKEND_URL: https://tiktok-live-ball-arena.onrender.com
+          VITE_BACKEND_URL: https://tiktok-live-ball-arena-xedq.onrender.com
         run: npm run build -w @arena/client
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
