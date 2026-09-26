@@ -1248,7 +1248,7 @@ export class ArenaScene extends Phaser.Scene {
     view.strengthHud.setVisible(true);
     view.strengthHud.setY(strY);
     view.strengthMark.setText(
-      b.isBoss ? `👑 BOSS +${b.bossRewardKills ?? 10}☠` : `💪${score}`
+      b.isBoss ? `👑 BOSS +${b.bossRewardStrength ?? 15} FORÇA` : `💪${score}`
     );
     view.strengthMark.setColor(b.isBoss ? THEME_HEX.gold : accentHex);
     const eq = b.equippedItem;
@@ -1324,7 +1324,7 @@ export class ArenaScene extends Phaser.Scene {
     view.buffIcon.setY(b.radius + 46);
 
     view.label.setText(
-      b.isBoss ? '👑 BOSS · +10☠' : this.truncate(b.label, 14)
+      b.isBoss ? `👑 BOSS · +${b.bossRewardStrength ?? 15} FORÇA` : this.truncate(b.label, 14)
     );
     view.label.setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
     view.label.setY(b.radius + 18);

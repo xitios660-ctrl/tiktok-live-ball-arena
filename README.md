@@ -78,12 +78,12 @@ docs/             OBS.md + integração TikTok
 ## Respawn & Vingança (Etapa 8–9)
 
 - Morto: comente de novo para voltar (join não respawna)
-- Stats da rodada preservados; HP 100 + 2s proteção
+- Stats da rodada preservados; HP 200 + 2s proteção
 - Vingança: 🎯 no killer 10s; kill especial no feed (sem kill extra)
 
 ## Combate (Etapa 5)
 
-- HP 100; dano mútuo em colisão (velocidade × massa), clamp 2–28
+- HP base 200; dano mútuo em colisão combina velocidade/massa com a força exibida (50 força = 50 dano por golpe; 4 golpes eliminam 200 HP)
 - Morte remove a bola; kill feed: `@attacker eliminou @victim`
 - Admin: botões Dano / Kill em `/admin`
 
@@ -92,13 +92,20 @@ docs/             OBS.md + integração TikTok
 - Server autoritativo; client só renderiza `game:snapshot`
 - **30 Hz** (`PHYSICS_TICK_HZ`)
 - Colisão parede/bola: velocidade × **1.015** (aceleração progressiva)
-- Comentário ou join (bots) spawna bola; DEMO auto-inicia a rodada
+- Comentário, like ou join (bots) spawna a própria bola; DEMO auto-inicia a rodada
+- Em production, entram exatamente 3 bots a cada 30s; bots não recebem presentes nem itens pagos
+
+## Likes individuais e Boss
+
+- Cada evento de like é indexado pelo `userId`/`username` do viewer e acumula apenas na própria bola; likes de viewers diferentes nunca são somados em um único combo.
+- O Boss surge uma vez por rodada como uma bola gigante, com 5.000 HP, fuga ativa e sem dano de colisão. Ele apenas dispara um raio global periódico: 10 dano em cada jogador vivo e lentidão breve.
+- Quem derrota o Boss recebe +15 de força; a recompensa não vira kills pagos na economia.
 
 ## Presentes (hierarquia — beneficia o SENDER)
 
 | Gift | Coins | Ability | Efeito |
 |------|-------|---------|--------|
-| Rosa | 1 | heal_pulse | +2 HP (soft max 150), stack |
+| Rosa | 1 | heal_pulse | +2 HP (soft max 300), stack |
 | Mini Dino | 10 | dino_rage | 10s +25% força / +15% speed / +20% colisão |
 | Rosquinha | 30 | donut_overdrive | +20 HP, escudo 100 (cap 300), 12s buff; break→SUGAR BURST |
 | Capivara | 100 | capybara_titan | 20s titan; restack +20s +25 HP; stomp; Ultra Calma |
@@ -114,7 +121,7 @@ Eventos do modo DEMO são **falsos / simulados**. Não há conexão TikTok até 
 - Loja pública: `/shop` (sem senha), com @ normalizado, saldo, catálogo, compra idempotente e ledger resumido.
 - O mesmo @ é a identidade canônica do saldo; o userId TikTok é mantido apenas para auditoria.
 - Catálogo inicial: consulte a tabela de balanceamento abaixo; itens legados foram desativados por migração idempotente.
-- Compre, entre na arena e comente `!usar <slug>` para equipar. Armas passam a auto-targetar; o vínculo é de 3 minutos fixos e, após expirar, ao morrer, cai e pode ser recolhido por outra bola.
+- Se o comprador já estiver na arena, a arma é equipada automaticamente; caso contrário, entre e comente `!usar <slug>`. Armas passam a auto-targetar; o vínculo é de 3 minutos fixos e, após expirar, ao morrer, cai e pode ser recolhido por outra bola.
 - Produção exige `DATABASE_URL` Postgres. Sem ela, o servidor usa fallback local apenas para desenvolvimento e registra aviso; no Render free esse arquivo é efêmero.
 - Admin protegido: `/admin/economy/summary`, `/admin/economy/player` e `/admin/economy/adjust` (motivo e operationKey obrigatórios).
 
@@ -122,7 +129,7 @@ Eventos do modo DEMO são **falsos / simulados**. Não há conexão TikTok até 
 - A loja `/shop` recebe o **username do TikTok** (com ou sem `@`), não o nome de exibição; a normalização é a mesma do participante.
 - **Vida Tripla** custa 180 kills e fica `pending_entry`: na primeira entrada do comprador em uma nova rodada consome o item e aplica 3x HP base. Não cai, não passa para outro jogador e não altera respawn/multiplicadores posteriores.
 - Armas são vinculadas por 3 minutos; após expirar, a morte do portador cria drop coletável. O coletor torna-se o novo portador e a regra de 3 minutos reinicia conforme o fluxo existente. Após equipar com `!usar <slug>`, o servidor faz auto-target no inimigo mais próximo; munição, recarga, cooldown, dano, explosões e minas são autoritativos.
-- O Boss dispara raio automático a cada 3,2s em alvo próximo dentro do alcance existente: 18 dano, slow de 0,9s com fator 0,45; sem stun-lock.
+- O Boss gigante e evasivo não causa dano de colisão. A cada 3,2s ele dispara um raio global de 10 dano em todos os jogadores vivos, com lentidão breve; derrotá-lo concede +15 de força.
 
 | Item | Preço | Dano | Alcance | Cooldown | Munição / recarga | Área | Função |
 |---|---:|---:|---:|---:|---:|---:|---|

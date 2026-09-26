@@ -1,7 +1,7 @@
 process.env.AUTO_BOT_ENABLED = 'false';
 process.env.CHATGPT_BOSS_ENABLED = 'false';
 
-import { LIKE_COMBO_RESET_MS, type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
+import { DEFAULT_BALL_HP, LIKE_COMBO_RESET_MS, type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
 import { EventDedupe } from './tiktok/eventDedupe';
 import { GameLoop } from './game/GameLoop';
 import {
@@ -515,7 +515,13 @@ const likeGame = new GameLoop('production', 300);
 try {
   likeGame.resetToWaiting();
   likeGame.setRandomEventsEnabled(false);
-
+  const independentA: ArenaUser = { userId: 'independent-a', username: 'independent_a' };
+  const independentB: ArenaUser = { userId: 'independent-b', username: 'independent_b' };
+  // Likes must create/credit each viewer's own character, never the last actor.
+  likeGame.handleLikes(independentA, 50);
+  likeGame.handleLikes(independentB, 50);
+  assert(getBall(likeGame, independentA.userId).hp === DEFAULT_BALL_HP, 'viewer A did not receive personal like reward');
+  assert(getBall(likeGame, independentB.userId).hp === DEFAULT_BALL_HP, 'viewer B did not receive personal like reward');
   const user: ArenaUser = {
     userId: 'likes-user',
     username: 'likes_user',
@@ -523,7 +529,7 @@ try {
   };
   likeGame.handleLiveEvent(commentEvent(user));
 
-  const damage = likeGame.adminDamage(user.userId, 80, 'admin');
+  const damage = likeGame.adminDamage(user.userId, DEFAULT_BALL_HP - 20, 'admin');
   assert(damage.length > 0, 'could not prepare low HP for like test');
   assert(getBall(likeGame, user.userId).hp === 20, 'like test damage setup mismatch');
 
@@ -549,18 +555,18 @@ try {
 
   likeGame.handleLikes(user, 300);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === b.maxHp, '500 likes must add 40 HP, capped at normal max HP');
+  assert(b.hp === 130, '500 likes must add 40 HP from a 200 HP base');
   assert((b.hitPower ?? 0) === 2, '500 likes must add +2 strength');
   assert((b.titanStacks ?? 0) === 0, '500 likes must not grant Capybara');
 
   likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === b.maxHp, '600 likes must add 50 HP, capped at max');
+  assert(b.hp === 180, '600 likes must add 50 HP');
   assert((b.hitPower ?? 0) === 5, '600 likes must add +3 strength');
 
   likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === b.maxHp, '700 likes must add 50 HP, capped at max');
+  assert(b.hp === b.maxHp, '700 likes must cap at 200 HP');
   assert((b.hitPower ?? 0) === 9, '700 likes must add +4 additional strength');
 
   likeGame.handleLikes(user, 100);
@@ -606,7 +612,7 @@ try {
     'fresh 50-like combo should heal only, not add strength');
   const other = { userId: 'other-viewer', username: 'other_viewer' };
   likeGame.handleLiveEvent(commentEvent(other));
-  likeGame.adminDamage(other.userId, 50, 'admin');
+  likeGame.adminDamage(other.userId, DEFAULT_BALL_HP - 50, 'admin');
   likeGame.handleLikes(user, 1);
   assert(getBall(likeGame, other.userId).hp === 50, 'likes healed another viewer');
   likeGame.forceNextRound();
@@ -635,7 +641,7 @@ try {
 
   giftGame.handleLiveEvent(giftEvent(user, 'rosa', 'Rosa', 3, 1));
   let b = getBall(giftGame, user.userId);
-  assert(b.hp === 76, 'Rosa x3 should heal +6 HP');
+  assert(b.hp === 176, 'Rosa x3 should heal +6 HP from a 200 HP base');
 
   giftGame.handleLiveEvent(giftEvent(user, 'mini_dino', 'Mini Dino', 1, 10));
   b = getBall(giftGame, user.userId);
@@ -644,7 +650,7 @@ try {
 
   giftGame.handleLiveEvent(giftEvent(user, 'rosquinha', 'Rosquinha', 1, 30));
   b = getBall(giftGame, user.userId);
-  assert(b.hp === 96, 'Rosquinha did not heal +20 HP');
+  assert(b.hp === 196, 'Rosquinha did not heal +20 HP');
   assert((b.shieldHp ?? 0) === 100, 'Rosquinha did not grant 100 shield');
   assert((b.donutStacks ?? 0) === 1, 'Rosquinha did not add donut stack');
   assert(

@@ -150,10 +150,10 @@ export function createBottomCtaStrip(
   bg.lineStyle(2, THEME.gold, 0.65);
   bg.strokeRoundedRect(-495, -90, 990, 124, 16);
   const label = scene.add.text(0, -28, [
-    '💬 COMENTE PARA ENTRAR OU RENASCER',
-    '❤️ 50: +10 vida • 100: +20 vida / +1 força • 150: +10 vida • 200: +40 vida / +2 força',
-    '500: vida cheia / +10 força / 🦫 • 1000: vida cheia / +15 força / 🦫×3 até o fim',
-    'Metas intermediárias de 50: +10 vida • Likes individuais acumulam na rodada',
+    '💬 COMENTE PARA ENTRAR OU RENASCER · 200 HP BASE',
+    '❤️ 50: +10 vida • 100: +20 vida • 200: +40 vida',
+    '500: +2 força • 600: +3 • 700: +4 • 800–1000: 🦫 até x3',
+    'Likes são individuais • BOSS gigante foge, solta raios globais e vale +15 força',
   ].join('\n'), {
     fontFamily: FONT, fontSize: '23px', color: THEME_HEX.light,
     align: 'center', lineSpacing: 5, wordWrap: { width: 950 },

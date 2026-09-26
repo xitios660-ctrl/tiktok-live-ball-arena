@@ -709,7 +709,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
     view.name
       .setPosition(0, r + 14)
-      .setText(b.isBoss ? '👑 BOSS · +10☠' : this.truncate(b.label, 14))
+      .setText(b.isBoss ? `👑 BOSS · +${b.bossRewardStrength ?? 15} FORÇA` : this.truncate(b.label, 14))
       .setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
     view.initials
       .setFontSize(Math.max(14, Math.floor(r * 0.68)))
@@ -719,7 +719,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setPosition(0, -r - 48)
       .setText(
         b.isBoss
-          ? '👑 BOSS · +' + (b.bossRewardKills ?? 10) + '☠'
+          ? '👑 BOSS · +' + (b.bossRewardStrength ?? 15) + ' FORÇA'
           : '💪' + displayStrengthScore(b.kills ?? 0, b.hitPower ?? 0)
       )
       .setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.gold);

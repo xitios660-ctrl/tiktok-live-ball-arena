@@ -213,3 +213,13 @@ Pickups no chão (raio/ima/gelo/foguete/espelho) + overlay neon.
 - Phone landscape now reuses the same PremiumTop5 component as the main overlay.
 - Phone guide lists Rosa, Dino, Rosquinha, Capivara, Galáxia, Raio, Ímã, Gelo, Foguete, Espelho, Cura and comment/respawn.
 - Server selftest updated to verify idle like-combo reset.
+
+## 2026-09-26 — Likes individuais, Boss evasivo e compra em tempo real
+
+- Vida base atualizada para 200 HP; o score de força agora é dano mínimo de colisão, portanto 50 de força causa 50 por golpe e quatro golpes eliminam 200 HP.
+- Likes usam a identidade individual do viewer (`userId`/username), criam a própria bola quando necessário e não são atribuídos ao último participante; bots não recebem likes nem poderes pagos.
+- Boss ajustado para 5.000 HP, tamanho gigante, fuga ativa e zero dano de colisão. O ataque permitido é apenas o raio global periódico de 10 dano em todos os jogadores vivos.
+- Derrotar o Boss concede +15 de força, sem transformar o prêmio em kills da economia.
+- Spawner automático fixado em exatamente 3 bots por ciclo de 30 segundos, com soft cap.
+- Compra de arma com o jogador já online agora equipa o item imediatamente; entrada posterior continua suportando `!usar <slug>`.
+- Selftests ampliados para viewers independentes, compra/equipamento durante partida, raio global do Boss e dano direto de força.

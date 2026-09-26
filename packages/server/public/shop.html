@@ -53,7 +53,7 @@
     </div>
 
     <h1>Loja de Kills</h1>
-    <p class="sub">Compre Vida Tripla e armas usando os kills acumulados. A Vida Tripla entra somente na próxima entrada da rodada e começa com 3x a vida base. As armas ficam vinculadas por 3 minutos; depois podem cair quando o portador morrer e ser coletadas por outro jogador.</p>
+    <p class="sub">Compre Vida Tripla e armas usando os kills acumulados. A Vida Tripla entra somente na próxima entrada da rodada e começa com 3x a vida base. Se você já estiver na partida, a arma comprada é equipada automaticamente; caso contrário, entre e use <b>!usar &lt;slug&gt;</b>. O vínculo dura 3 minutos; depois a arma pode cair quando o portador morrer e ser coletada por outro jogador.</p>
 
     <section class="card">
       <label class="field-label" for="user">@username do TikTok</label>
@@ -161,7 +161,7 @@
       try {
         const data = await api('/api/shop/purchase', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ username, slug, operationKey:operationKey() }) });
         render(data);
-        msg(slug === 'vida-tripla' ? 'Compra confirmada: será consumida na próxima entrada.' : 'Compra confirmada. No jogo, use: !usar ' + slug);
+        msg(slug === 'vida-tripla' ? 'Compra confirmada: será consumida na próxima entrada.' : 'Compra confirmada. Se você já está na arena, foi equipada automaticamente; caso contrário, use: !usar ' + slug);
       } catch (error) { msg(error.message, true); }
     }
     loadCatalog().catch((error) => msg(error.message, true));

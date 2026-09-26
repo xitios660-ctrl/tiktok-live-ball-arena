@@ -4,10 +4,12 @@ import type { BallBody, PhysicsWorld } from './PhysicsWorld';
 export const CHATGPT_BOSS_USER_ID = 'boss-chatgpt';
 export const CHATGPT_BOSS_USERNAME = 'boss';
 export const CHATGPT_BOSS_NAME = 'BOSS';
-export const CHATGPT_BOSS_REWARD_KILLS = 10;
+export const CHATGPT_BOSS_REWARD_STRENGTH = 15;
+/** @deprecated the Boss now awards strength, not bonus kills. */
+export const CHATGPT_BOSS_REWARD_KILLS = 0;
 
-const BOSS_RADIUS = 84;
-const BOSS_HP = 650;
+const BOSS_RADIUS = 150;
+const BOSS_HP = 5_000;
 const BOSS_BASE_STRENGTH = 1;
 const BOSS_MASS_MULT = 1.1;
 const LOCAL_DECISION_MS = 750;

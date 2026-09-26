@@ -3,6 +3,7 @@ import {
   RESULTS_DURATION_SEC,
   PHYSICS_TICK_HZ,
   DEFAULT_BALL_HP,
+  BOSS_LIGHTNING_DAMAGE,
   REVENGE_MARK_MS,
   KING_ANNOUNCE_COOLDOWN_MS,
   compareRanking,
@@ -42,7 +43,7 @@ import { AutoBotSpawner } from './AutoBotSpawner';
 import {
   ChatGPTBossController,
   CHATGPT_BOSS_NAME,
-  CHATGPT_BOSS_REWARD_KILLS,
+  CHATGPT_BOSS_REWARD_STRENGTH,
   CHATGPT_BOSS_USER_ID,
   CHATGPT_BOSS_USERNAME,
 } from './ChatGPTBoss';
@@ -182,8 +183,8 @@ export class GameLoop {
       ...b,
       isKing: !!kingUserId && b.userId === kingUserId,
       isBoss: b.userId === CHATGPT_BOSS_USER_ID,
-      bossRewardKills:
-        b.userId === CHATGPT_BOSS_USER_ID ? CHATGPT_BOSS_REWARD_KILLS : undefined,
+      bossRewardStrength:
+        b.userId === CHATGPT_BOSS_USER_ID ? CHATGPT_BOSS_REWARD_STRENGTH : undefined,
       equippedItem: this.equipped.get(b.userId)
         ? (() => { const i = this.equipped.get(b.userId)!; const w = this.weaponStates.get(i.id); const c = this.catalogCache.get(i.slug); return { slug: i.slug, icon: (c?.icon || (i as any).icon || '🎯'), name: i.name, boundUntil: i.boundUntil, ammo: w?.ammo, reloadAt: w?.reloadAt, category: c?.category }; })()
         : undefined,
@@ -413,6 +414,30 @@ export class GameLoop {
     }
   }
 
+  /** Equip a newly purchased bound item immediately when its owner is online. */
+  async syncPurchasedItem(username: string, item: InventoryItem): Promise<void> {
+    if (!this.economy || item.status !== 'bound') return;
+    const wanted = username.trim().toLowerCase();
+    const body = this.physics.getAll().find((b) => b.username.trim().toLowerCase() === wanted);
+    if (!body) return;
+    const catalog = await this.economy.getCatalogItem(item.slug);
+    if (!catalog || catalog.category !== 'weapon') return;
+    this.catalogCache.set(item.slug, catalog);
+    this.equipped.set(body.userId, item);
+    if (!this.weaponStates.has(item.id)) {
+      this.weaponStates.set(item.id, { ammo: catalog.ammo, reloadAt: 0, lastUseAt: 0 });
+    }
+    this.pushCombat({
+      type: 'announce',
+      kind: 'pickup',
+      message: `${catalog.icon} @${body.username} equipou ${catalog.name} automaticamente na arena!`,
+      userId: body.userId,
+      username: body.username,
+      timestamp: Date.now(),
+    });
+    this.emitSnapshot();
+  }
+
   private async useStoreItem(user: ArenaUser, comment: string): Promise<void> {
     if (!this.economy || this.itemUseLocks.has(user.userId)) return;
     this.itemUseLocks.add(user.userId);
@@ -457,23 +482,33 @@ export class GameLoop {
   }
 
   handleLikes(userOrCount: ArenaUser | number, maybeCount?: number): void {
-    if (this.state.phase !== 'running') return;
+    if (this.state.phase !== 'running' && this.state.phase !== 'waiting') return;
 
     const user = typeof userOrCount === 'number' ? null : userOrCount;
     const count = typeof userOrCount === 'number' ? userOrCount : maybeCount ?? 1;
     const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
-    if (n <= 0 || !user || user.userId === CHATGPT_BOSS_USER_ID) return;
+    if (n <= 0 || !user || user.userId === CHATGPT_BOSS_USER_ID || isBotUser(user)) return;
 
-    // Rewards belong only to the player's active character.
-    const ball = this.physics.getBall(user.userId);
-    const rec = this.players.get(user.userId);
+    // Likes are personal events. If a viewer has not commented yet, create
+    // that viewer's own character instead of crediting whoever acted last.
+    let ball = this.physics.getBall(user.userId);
+    let rec = this.players.get(user.userId);
+    if (!ball || !rec) {
+      this.spawnNewOrNudge(user);
+      ball = this.physics.getBall(user.userId);
+      rec = this.players.get(user.userId);
+    }
     if (!ball || !rec) {
       console.log(`[LIKE] @${user.username} +${n} ignored=no-active-character`);
       return;
     }
 
+    const likeKey =
+      user.userId && !['unknown', 'viewer'].includes(user.userId.toLowerCase())
+        ? user.userId
+        : user.username.trim().toLowerCase();
     const now = Date.now();
-    const previous = this.personalLikeCombos.get(user.userId);
+    const previous = this.personalLikeCombos.get(likeKey);
     const comboReset =
       !previous || now - previous.lastLikeAt >= LIKE_COMBO_RESET_MS;
     const before = comboReset ? 0 : previous.count;
@@ -485,7 +520,7 @@ export class GameLoop {
       );
     }
 
-    this.personalLikeCombos.set(user.userId, {
+    this.personalLikeCombos.set(likeKey, {
       count: total,
       lastLikeAt: now,
     });
@@ -920,10 +955,10 @@ export class GameLoop {
       this.pushCombat({
         type: 'announce',
         kind: 'boss_spawn',
-        message: '🤖 CHEFE CHATGPT ENTROU NA ARENA — vale +' + CHATGPT_BOSS_REWARD_KILLS + '☠!',
+        message: '🤖 CHEFE CHATGPT ENTROU NA ARENA — gigante, evasivo e vale +' + CHATGPT_BOSS_REWARD_STRENGTH + ' FORÇA!',
         userId: CHATGPT_BOSS_USER_ID,
         username: CHATGPT_BOSS_NAME,
-        value: CHATGPT_BOSS_REWARD_KILLS,
+        value: CHATGPT_BOSS_REWARD_STRENGTH,
         timestamp: Date.now(),
       });
       this.state = { ...this.state, playerCount: this.physics.count };
@@ -987,12 +1022,34 @@ export class GameLoop {
   private processBossLightning(): void {
     const now = Date.now();
     if (now < this.bossNextZapAt || !this.physics.getBall(CHATGPT_BOSS_USER_ID)) return;
-    const zap = this.physics.applyLightningZap(CHATGPT_BOSS_USER_ID);
+    const boss = this.physics.getBall(CHATGPT_BOSS_USER_ID);
+    const damages = this.physics.applyBossLightning(CHATGPT_BOSS_USER_ID, BOSS_LIGHTNING_DAMAGE);
     this.bossNextZapAt = now + 3200;
-    if (!zap.targetId) return;
-    if (zap.application) this.processDamages([zap.application]);
-    this.pushCombat({ type:'ability_fx', ability:'lightning_zap', userId:CHATGPT_BOSS_USER_ID, x:zap.x, y:zap.y, targetId:zap.targetId, targetX:zap.targetX, targetY:zap.targetY, value:zap.damage, timestamp:now });
-    this.pushCombat({ type:'announce', kind:'pickup', message:`⚡ BOSS disparou um raio! ${zap.damage} dano e lentidão por 0,9s.`, userId:CHATGPT_BOSS_USER_ID, username:'BOSS', targetId:zap.targetId, value:zap.damage, timestamp:now });
+    if (!damages.length || !boss) return;
+    this.processDamages(damages);
+    for (const damage of damages) {
+      this.pushCombat({
+        type: 'ability_fx',
+        ability: 'lightning_zap',
+        userId: CHATGPT_BOSS_USER_ID,
+        x: boss.x,
+        y: boss.y,
+        targetId: damage.victimId,
+        targetX: damage.x,
+        targetY: damage.y,
+        value: BOSS_LIGHTNING_DAMAGE,
+        timestamp: now,
+      });
+    }
+    this.pushCombat({
+      type: 'announce',
+      kind: 'pickup',
+      message: `⚡ BOSS soltou um raio global! ${BOSS_LIGHTNING_DAMAGE} dano em todos os jogadores.`,
+      userId: CHATGPT_BOSS_USER_ID,
+      username: 'BOSS',
+      value: BOSS_LIGHTNING_DAMAGE,
+      timestamp: now,
+    });
   }
 
   private processAutoWeapons(): void {
@@ -1196,12 +1253,20 @@ export class GameLoop {
 
     if (attackerId && attackerId !== 'admin') {
       const atk = this.ensurePlayerRecord(attackerId, attackerName || '???');
-      const killReward = victimIsBoss ? CHATGPT_BOSS_REWARD_KILLS : 1;
+      const killReward = victimIsBoss ? 0 : 1;
       atk.kills += killReward;
-      void this.economy?.recordKill(atk.username, atk.userId, `kill:${this.state.roundId}:${Date.now()}:${attackerId}:${d.victimId}`, killReward);
+      if (killReward > 0) {
+        void this.economy?.recordKill(atk.username, atk.userId, `kill:${this.state.roundId}:${Date.now()}:${attackerId}:${d.victimId}`, killReward);
+      }
+      if (victimIsBoss) {
+        // The Boss is a survival objective: defeating it gives strength,
+        // not a pile of artificial kills or paid economy credit.
+        atk.hitPower += CHATGPT_BOSS_REWARD_STRENGTH;
+      }
       attackerName = atk.nickname || atk.username;
       // Kill → strength (round-permanent); live ball picks it up immediately
       this.physics.setKills(attackerId, atk.kills);
+      this.physics.setHitPower(attackerId, atk.hitPower);
       if (
         atk.kills > 0 &&
         atk.kills % KILL_STRENGTH_ANNOUNCE_EVERY === 0
@@ -1248,8 +1313,8 @@ export class GameLoop {
       message =
         '🏆 @' + attackerName +
         ' DERROTOU O BOSS E GANHOU +' +
-        CHATGPT_BOSS_REWARD_KILLS +
-        '☠!';
+        CHATGPT_BOSS_REWARD_STRENGTH +
+        ' DE FORÇA!';
     } else if (isRevenge && attackerName) {
       message = `VINGANÇA! @${attackerName} se vingou de @${d.victimName}`;
     } else if (attackerName) {
@@ -1283,7 +1348,7 @@ export class GameLoop {
         username: attackerName || undefined,
         targetId: CHATGPT_BOSS_USER_ID,
         targetName: CHATGPT_BOSS_NAME,
-        value: CHATGPT_BOSS_REWARD_KILLS,
+        value: CHATGPT_BOSS_REWARD_STRENGTH,
         timestamp: Date.now(),
       });
     } else {

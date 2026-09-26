@@ -75,8 +75,12 @@ function pickAvatar(u: Record<string, unknown> | undefined): string | undefined 
 }
 
 function toUser(u: Record<string, unknown> | undefined): ArenaUser {
-  const userId = String(u?.userId || u?.id || u?.uniqueId || 'unknown');
-  const username = String(u?.uniqueId || u?.nickname || userId);
+  const userId = String(
+    u?.userId || u?.user_id || u?.id || u?.uniqueId || u?.unique_id || u?.secUid || u?.sec_uid || 'unknown'
+  );
+  const username = String(
+    u?.uniqueId || u?.unique_id || u?.username || u?.nickname || userId
+  );
   return {
     userId,
     username,
@@ -1053,7 +1057,7 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
     // Connector versions have used nested data.user, nested data.data.user and
     // top-level user fields. Accept all of them so COMMENT and LIKE resolve to
     // the exact same player id in production.
-    const user = toUser(nestedUser || nestedData || data);
+    const user = toUser({ ...data, ...(nestedData || {}), ...(nestedUser || {}) });
 
     const rawLikeCount = Math.max(
       1,

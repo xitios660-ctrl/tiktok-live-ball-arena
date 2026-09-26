@@ -13,6 +13,7 @@ import {
   DAMAGE_IMPACT_THRESHOLD,
   SPAWN_PROTECTION_MS,
   combatStrengthMult,
+  displayStrengthScore,
   killSizeMult,
   titanSizeMult,
   titanMassMult,
@@ -34,6 +35,7 @@ import {
   LIGHTNING_SLOW_FACTOR,
   LIGHTNING_RANGE,
   LIGHTNING_DAMAGE,
+  BOSS_LIGHTNING_DAMAGE,
   MAGNET_PULSE_RADIUS,
   MAGNET_PULSE_PULL,
   MAGNET_PULSE_VISUAL_MS,
@@ -263,11 +265,15 @@ function calcDamage(
   attackerMass: number,
   victimMass: number,
   strength: number,
-  collisionMult: number
+  collisionMult: number,
+  forceScore: number,
 ): number {
   const total = attackerMass + victimMass || 1;
   const share = attackerMass / total;
-  const raw = impact * DAMAGE_SPEED_FACTOR * share * strength * collisionMult;
+  const kinetic = impact * DAMAGE_SPEED_FACTOR * share * strength;
+  // The visible force score is also the guaranteed damage floor: 50 force
+  // means 50 damage per normal hit, so 4 hits defeat 200 base HP.
+  const raw = Math.max(kinetic, Math.max(0, forceScore)) * collisionMult;
   return clamp(Math.round(raw), DAMAGE_MIN, DAMAGE_MAX);
 }
 
@@ -964,6 +970,23 @@ export class PhysicsWorld {
     };
   }
 
+  /** Boss-only global lightning pulse: every living, unprotected player is hit. */
+  applyBossLightning(casterId: string, damage = BOSS_LIGHTNING_DAMAGE): DamageApplication[] {
+    const src = this.balls.get(casterId);
+    if (!src) return [];
+    const now = Date.now();
+    const out: DamageApplication[] = [];
+    for (const target of this.balls.values()) {
+      if (target.userId === casterId || isProtected(target, now)) continue;
+      target.vx *= LIGHTNING_SLOW_FACTOR;
+      target.vy *= LIGHTNING_SLOW_FACTOR;
+      target.slowUntil = Math.max(target.slowUntil, now + LIGHTNING_SLOW_MS);
+      target.hitFlashTicks = 10;
+      out.push(this.dealDamage(target, damage, src, now));
+    }
+    return out;
+  }
+
   /** Strong short pull of nearby balls toward caster. */
   applyMagnetPulse(casterId: string): { count: number; x: number; y: number } {
     const src = this.balls.get(casterId);
@@ -1320,7 +1343,8 @@ export class PhysicsWorld {
             b.mass * activeStrength(b, now),
             a.mass,
             activeStrength(b, now),
-            activeCollisionDmgMult(b, now)
+            activeCollisionDmgMult(b, now),
+            displayStrengthScore(b.kills, b.hitPower),
           );
       const dmgToB = bossA
         ? 0
@@ -1329,7 +1353,8 @@ export class PhysicsWorld {
             a.mass * activeStrength(a, now),
             b.mass,
             activeStrength(a, now),
-            activeCollisionDmgMult(a, now)
+            activeCollisionDmgMult(a, now),
+            displayStrengthScore(a.kills, a.hitPower),
           );
 
       const appA = this.dealDamage(a, dmgToA, b, now);

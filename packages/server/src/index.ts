@@ -89,7 +89,9 @@ async function main() {
   game.onCombat((ev) => io.emit(SOCKET_EVENTS.COMBAT_EVENT, ev));
 
   app.use(healthRouter({ game, connector, mode: MODE }));
-  app.use(shopApiRouter(economy));
+  app.use(shopApiRouter(economy, {
+    onPurchase: (username, item) => game.syncPurchasedItem(username, item),
+  }));
   app.use(adminApiRouter({ game, getDemo, mode: MODE, connector, economy }));
 
   const publicDir = path.join(__dirname, '../public');

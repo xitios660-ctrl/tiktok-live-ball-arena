@@ -173,7 +173,9 @@ export interface BallState {
   donutStacks?: number;
   /** Special server-controlled boss NPC. */
   isBoss?: boolean;
-  /** Kill-points awarded to the player who defeats this boss. */
+  /** Strength points awarded to the player who defeats this boss. */
+  bossRewardStrength?: number;
+  /** @deprecated kept for older overlay payloads; Boss reward is now strength. */
   bossRewardKills?: number;
   equippedItem?: { slug: string; icon: string; name: string; boundUntil: number; ammo?: number; reloadAt?: number; category?: 'weapon' | 'consumable' };
 }
@@ -386,15 +388,16 @@ export const PHYSICS_TICK_HZ = 30;
 export const SPEED_BOOST_ON_COLLISION = 1.015;
 
 export const DEFAULT_BALL_RADIUS = 36;
-export const DEFAULT_BALL_HP = 100;
-export const MAX_BALL_HP = 150;
+export const DEFAULT_BALL_HP = 200;
+export const MAX_BALL_HP = 300;
 export const MAX_BALL_SPEED = 900;
 export const MIN_SPAWN_SPEED = 80;
 export const MAX_SPAWN_SPEED = 160;
 
 export const DAMAGE_SPEED_FACTOR = 0.085;
 export const DAMAGE_MIN = 2;
-export const DAMAGE_MAX = 36;
+/** Direct strength damage may reach the full 200 HP base across four hits. */
+export const DAMAGE_MAX = DEFAULT_BALL_HP;
 export const DAMAGE_IMPACT_THRESHOLD = 40;
 
 export const SPAWN_PROTECTION_MS = 2000;
@@ -403,7 +406,7 @@ export const REVENGE_MARK_MS = 10000;
 export const KING_ANNOUNCE_COOLDOWN_MS = 8000;
 
 /** —— Gift ability formulas / caps (server + docs) —— */
-export const GIFT_SOFT_MAX_HP = 150;
+export const GIFT_SOFT_MAX_HP = 300;
 export const ROSA_HEAL = 2;
 
 export const DINO_DURATION_MS = 10_000;
@@ -504,7 +507,9 @@ export const MILD_ATTRACTION_MAX_ACCEL = 90; // px/s² hard cap per ball per tic
 export const LIGHTNING_SLOW_MS = 2_200;
 export const LIGHTNING_SLOW_FACTOR = 0.35; // velocity mult on hit
 export const LIGHTNING_RANGE = 520;
-export const LIGHTNING_DAMAGE = 8;
+export const LIGHTNING_DAMAGE = 10;
+/** Boss lightning is a global pulse: every living, unprotected player takes this damage. */
+export const BOSS_LIGHTNING_DAMAGE = 10;
 
 export const MAGNET_PULSE_RADIUS = 480;
 export const MAGNET_PULSE_PULL = 320; // impulse toward caster

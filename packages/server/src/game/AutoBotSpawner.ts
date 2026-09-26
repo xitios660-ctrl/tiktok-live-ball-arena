@@ -41,7 +41,8 @@ export class AutoBotSpawner {
     this.enabled = envBool('AUTO_BOT_ENABLED', true);
     this.intervalMs = envInt('AUTO_BOT_INTERVAL_MS', 30_000);
     this.maxPlayers = envInt('AUTO_BOT_MAX_PLAYERS', 40);
-    this.batchSize = Math.max(2, envInt('AUTO_BOT_BATCH_SIZE', 2));
+    // The live rule is intentionally fixed: three synthetic players per 30s cycle.
+    this.batchSize = Math.max(3, envInt('AUTO_BOT_BATCH_SIZE', 3));
   }
 
   start(): void {
