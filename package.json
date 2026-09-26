@@ -10,7 +10,8 @@
   ],
   "scripts": {
     "dev": "npm run build -w @arena/shared && concurrently -n server,client -c blue,magenta \"npm run dev -w @arena/server\" \"npm run dev -w @arena/client\"",
-    "build": "npm run build -w @arena/shared && npm run build -w @arena/server && npm run selftest -w @arena/server && npm run build -w @arena/client",
+    "build": "npm run build -w @arena/shared && npm run build -w @arena/server && npm run build -w @arena/client",
+    "test": "npm run selftest -w @arena/server",
     "start": "npm run start -w @arena/server",
     "dev:server": "npm run build -w @arena/shared && npm run dev -w @arena/server",
     "dev:client": "npm run dev -w @arena/client"
