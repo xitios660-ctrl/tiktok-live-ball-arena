@@ -12,7 +12,7 @@ let socket: Socket | null = null;
 
 export function connectSocket(game: Phaser.Game): Socket {
   const params = new URLSearchParams(location.search);
-  const url = params.get('ws') || undefined;
+  const url = params.get('ws') || import.meta.env.VITE_BACKEND_URL || undefined;
   socket = io(url, { transports: ['websocket', 'polling'] });
 
   socket.on('connect', () => {
