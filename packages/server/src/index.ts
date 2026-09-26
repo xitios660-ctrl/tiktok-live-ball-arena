@@ -135,7 +135,7 @@ a{color:#fe2c55}</style></head>
   // Socket.IO requires the same access cookie as the protected pages.
   io.use((socket, next) => {
     const pwd = getAccessPassword();
-    if (!pwd || hasAccessFromCookieHeader(socket.handshake.headers.cookie || '')) {
+    if (!pwd || process.env.PUBLIC_OVERLAY === 'true' || hasAccessFromCookieHeader(socket.handshake.headers.cookie || '')) {
       next();
       return;
     }

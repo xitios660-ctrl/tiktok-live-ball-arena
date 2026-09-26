@@ -63,6 +63,7 @@ function isExempt(req: Request): boolean {
   if (p === '/health') return true;
   if (p === '/access' || p === '/api/auth/access') return true;
   if (p === '/shop' || p === '/loja' || p.startsWith('/api/shop')) return true;
+  if (process.env.PUBLIC_OVERLAY === 'true' && (p === '/overlay' || p.startsWith('/assets/'))) return true;
   if (p.startsWith('/socket.io')) return true;
   // Gate page brand art (bg + logo) must load before unlock
   if (p.startsWith('/assets/ball-arena/')) return true;
