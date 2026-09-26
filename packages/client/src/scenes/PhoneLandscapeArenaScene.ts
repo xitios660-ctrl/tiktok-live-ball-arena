@@ -16,6 +16,8 @@ import { audio } from '../audio/AudioManager';
 import { getOverlayOptions } from '../overlayConfig';
 import { LANDSCAPE_HEIGHT, makeLandscapeMapper } from '../phoneLandscape';
 import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT } from '../theme';
+import { ensureGlossTexture, skinFromBall } from '../fx/GlossBall';
+import { playAbilityFx } from '../fx/AbilityFx';
 import {
   createPremiumTop5,
   updatePremiumTop5,
@@ -27,6 +29,8 @@ interface LandscapeBallView {
   aura: Phaser.GameObjects.Arc;
   body: Phaser.GameObjects.Arc;
   ring: Phaser.GameObjects.Arc;
+  cinematicSkin: Phaser.GameObjects.Image;
+  skinKey: string;
   avatar?: Phaser.GameObjects.Image;
   avatarGlow?: Phaser.GameObjects.Arc;
   avatarRing?: Phaser.GameObjects.Graphics;
@@ -372,6 +376,27 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     }
 
     if (event.type === 'ability_fx') {
+      const mapper = makeLandscapeMapper(this.cameras.main.width);
+      const origin = mapper.map(event.x, event.y);
+      const target = event.targetX == null || event.targetY == null
+        ? undefined
+        : mapper.map(event.targetX, event.targetY);
+      if (
+        event.ability === 'weapon_shot' ||
+        event.ability === 'weapon_explosion' ||
+        event.ability === 'mine_trigger' ||
+        event.ability === 'lightning_zap'
+      ) {
+        playAbilityFx(this, {
+          ...event,
+          x: origin.x,
+          y: origin.y,
+          targetX: target?.x,
+          targetY: target?.y,
+          value: event.value == null ? event.value : event.value * mapper.scale,
+        }, 0.65);
+        return;
+      }
       const emoji =
         event.ability === 'heal_pulse' || event.ability === 'heal_orb'
           ? '💚'
@@ -566,6 +591,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     ring.setStrokeStyle(4, THEME.light, 0.62);
     const body = this.add.circle(0, 0, b.radius, b.color, 1);
     body.setStrokeStyle(3, THEME.light, 0.9);
+    const skinKey = ensureGlossTexture(this, b.color, skinFromBall(b));
+    const cinematicSkin = this.add.image(0, 0, skinKey).setDisplaySize(b.radius * 2, b.radius * 2);
 
     const shine = this.add.ellipse(-b.radius * 0.28, -b.radius * 0.3, b.radius * 0.7, b.radius * 0.38, 0xffffff, 0.2);
     const initials = this.add
@@ -621,7 +648,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .text(0, b.radius + 43, '', { fontSize: '18px' })
       .setOrigin(0.5, 0);
 
-    root.add([aura, ring, body, shine, initials, crown, hpBg, hpFg, name, strength, buffs]);
+    root.add([aura, ring, body, cinematicSkin, shine, initials, crown, hpBg, hpFg, name, strength, buffs]);
     root.setScale(0.15);
     this.tweens.add({ targets: root, scale: 1, duration: 260, ease: 'Back.Out' });
 
@@ -630,6 +657,8 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       aura,
       body,
       ring,
+      cinematicSkin,
+      skinKey,
       initials,
       crown,
       hpBg,
@@ -656,6 +685,13 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     view.body.setRadius(r);
     view.ring.setRadius(r + 4);
     view.aura.setRadius(r + 16);
+    const skinKey = ensureGlossTexture(this, b.color, skinFromBall(b));
+    if (skinKey !== view.skinKey) {
+      view.cinematicSkin.setTexture(skinKey);
+      view.skinKey = skinKey;
+    }
+    view.cinematicSkin.setDisplaySize(r * 2, r * 2);
+    view.cinematicSkin.setAlpha(b.isBoss ? 1 : view.avatar ? 0.2 : 1);
     if (view.avatar) {
       const avSize = r * 1.98;
       view.avatar.setDisplaySize(avSize, avSize);

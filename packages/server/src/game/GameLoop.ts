@@ -443,6 +443,8 @@ export class GameLoop {
           const damages = catalog.area > 0 ? this.physics.applyAreaDamage(user.userId, catalog.damage, catalog.range, catalog.area) : (() => { const d = this.physics.applyRangedDamage(user.userId, catalog.damage, catalog.range); return d ? [d] : []; })();
           if (!damages.length) { this.pushCombat({ type:'announce', kind:'pickup', message:`${catalog.icon} @${user.username} não encontrou alvo no alcance.`, userId:user.userId, username:user.username, timestamp:now }); return; }
           this.processDamages(damages);
+          const first = damages[0];
+          this.pushCombat({ type:'ability_fx', ability:catalog.area > 0 ? 'weapon_explosion' : 'weapon_shot', userId:user.userId, x:body.x, y:body.y, targetId:first.victimId, targetX:first.x, targetY:first.y, value:catalog.area || catalog.damage, timestamp:now });
           this.pushCombat({ type:'announce', kind:'pickup', message:`${catalog.icon} @${user.username} usou ${catalog.name} · ${catalog.damage} dano · munição ${state.ammo-1}/${catalog.ammo}.`, userId:user.userId, username:user.username, value:catalog.damage, timestamp:now });
         }
         state.ammo -= 1; state.lastUseAt = now; state.reloadAt = state.ammo === 0 ? now + catalog.reloadMs : 0; this.weaponStates.set(item.id, state); this.itemCooldowns.set(cooldownKey, now + catalog.cooldownMs);
@@ -977,6 +979,7 @@ export class GameLoop {
       this.landMines.delete(id);
       const damages = this.physics.applyAreaAt(mine.ownerId, mine.x, mine.y, mine.damage, mine.area);
       if (damages.length) this.processDamages(damages);
+      this.pushCombat({ type:'ability_fx', ability:'mine_trigger', userId:mine.ownerId, x:mine.x, y:mine.y, value:mine.area, targetId:trigger.userId, targetX:trigger.x, targetY:trigger.y, timestamp:Date.now() });
       this.pushCombat({ type:'announce', kind:'pickup', message:`💣 Mina de @${mine.ownerId} detonou perto de @${trigger.username}!`, userId:mine.ownerId, username:mine.ownerId, value:mine.damage, timestamp:Date.now() });
     }
   }

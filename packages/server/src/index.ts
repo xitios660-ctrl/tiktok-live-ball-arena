@@ -103,6 +103,9 @@ async function main() {
   app.get('/shop', (_req, res) => {
     res.sendFile(path.join(publicDir, 'shop.html'));
   });
+  app.get('/loja', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'shop.html'));
+  });
 
   const clientDist = path.resolve(__dirname, '../../client/dist');
   const serveOverlay = (_req: express.Request, res: express.Response) => {

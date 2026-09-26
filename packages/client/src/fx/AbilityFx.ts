@@ -62,11 +62,20 @@ export function playAbilityFx(
 function spawnWeaponShot(scene: Phaser.Scene, x: number, y: number, tx: number, ty: number, budget: FxBudget): void {
   const line = scene.add.line(0, 0, x, y, tx, ty, THEME.gold, 0.9).setLineWidth(Math.max(2, 4 * budget)).setDepth(72);
   scene.tweens.add({ targets: line, alpha: 0, duration: 130, onComplete: () => line.destroy() });
+  const muzzle = scene.add.circle(x, y, Math.max(6, 12 * budget), THEME.cream, 0.9).setDepth(73);
+  scene.tweens.add({ targets: muzzle, scale: 2.1, alpha: 0, duration: 120, onComplete: () => muzzle.destroy() });
+  const projectile = scene.add.circle(x, y, Math.max(3, 5 * budget), THEME.gold, 1).setDepth(74);
+  scene.tweens.add({ targets: projectile, x: tx, y: ty, duration: 115, ease: 'Cubic.easeIn', onComplete: () => projectile.destroy() });
   spawnSparks(scene, tx, ty, THEME.gold, 4, budget);
 }
 function spawnWeaponExplosion(scene: Phaser.Scene, x: number, y: number, radius: number, budget: FxBudget): void {
-  const ring = scene.add.circle(x, y, Math.max(18, radius * .35), THEME.emberOrange, .16).setStrokeStyle(4, THEME.gold, .9).setDepth(72);
-  scene.tweens.add({ targets: ring, scale: 2.2, alpha: 0, duration: 360, onComplete: () => ring.destroy() });
+  const r = Math.max(18, radius * .35);
+  const flash = scene.add.circle(x, y, r * .5, THEME.cream, .9).setDepth(74);
+  scene.tweens.add({ targets: flash, scale: 2.8, alpha: 0, duration: 150, onComplete: () => flash.destroy() });
+  for (let i = 0; i < 2; i++) {
+    const ring = scene.add.circle(x, y, r * (0.7 + i * .22), THEME.emberOrange, .16).setStrokeStyle(4 - i, i ? THEME.emberOrange : THEME.gold, .9).setDepth(72);
+    scene.tweens.add({ targets: ring, scale: 2.2 + i * .32, alpha: 0, duration: 360 + i * 90, onComplete: () => ring.destroy() });
+  }
   spawnSparks(scene, x, y, THEME.emberOrange, 10, budget);
 }
 

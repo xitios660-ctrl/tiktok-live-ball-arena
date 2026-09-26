@@ -1,1 +1,158 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Ball Arena — Loja</title><style>:root{--bg:#0b0b0f;--card:#1e1a16;--line:#44352b;--cream:#f2ebd7;--gold:#ffd166;--red:#ff4e45;--cyan:#22d3ee;--muted:#aaa09a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0,#38151a,#0b0b0f 48%);color:var(--cream);font:15px Inter,system-ui,sans-serif;min-height:100vh}.wrap{max-width:680px;margin:auto;padding:18px 14px 40px}.hero{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.brand{font-weight:900;letter-spacing:.08em}.brand b{color:var(--gold)}h1{font-size:clamp(1.7rem,7vw,2.5rem);margin:10px 0 4px}.sub{color:var(--muted);line-height:1.45;margin:0 0 18px}.card{background:#1e1a16dd;border:1px solid var(--line);border-radius:18px;padding:15px;margin:12px 0;box-shadow:0 12px 30px #0005}.row{display:flex;gap:9px;flex-wrap:wrap}.input{width:100%;background:#0b0b0f;border:1px solid #5a4638;color:var(--cream);border-radius:12px;padding:13px 14px;font-size:16px}.btn{border:0;border-radius:11px;padding:12px 15px;min-height:44px;background:#3a2c25;color:var(--cream);font-weight:800}.btn.primary{background:linear-gradient(135deg,var(--red),#a92520);color:#fff}.btn.buy{background:#274a50;color:#d8fbff;width:100%}.balance{display:flex;align-items:center;justify-content:space-between;gap:10px}.balance strong{font-size:2rem;color:var(--gold)}.muted{color:var(--muted);font-size:.86rem}.catalog{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.item{border:1px solid #4a392d;border-radius:14px;padding:13px;background:#100f12}.item h3{margin:0 0 5px}.price{color:var(--gold);font-weight:900;margin:8px 0}.status{min-height:24px;margin-top:10px;color:var(--cyan)}.pill{display:inline-block;padding:5px 9px;border-radius:99px;background:#2d4a32;color:#b7f2bd;font-size:.78rem;margin:3px}.danger{color:#ffaaa4}.ledger{max-height:260px;overflow:auto;font-size:.82rem}.ledger div{padding:8px 0;border-bottom:1px solid #3a2e27;display:flex;justify-content:space-between;gap:8px}.foot{color:#837a73;font-size:.76rem;line-height:1.45}a{color:var(--cyan)}@media(max-width:420px){.catalog{grid-template-columns:1fr}.hero{align-items:flex-start}}</style></head><body><main class="wrap"><div class="hero"><div class="brand">BALL <b>ARENA</b></div></div><h1>Loja de Kills</h1><p class="sub">Informe o username do TikTok usado na arena (o identificador após @, não o nome de exibição; exemplo: @ball_arena_ ou ball_arena_). Os kills são saldo acumulado. Armas ficam vinculadas por 3 minutos fixos; após expirar, caem quando o portador morre e podem ser coletadas. Vida Tripla é um consumível de próxima entrada: começa com 3x HP, consome ao entrar, não cai e não afeta respawns.</p><section class="card"><div class="row"><input id="user" class="input" autocomplete="off" placeholder="username do TikTok (ex.: ball_arena_)" aria-label="Username do TikTok, com ou sem @"><button class="btn primary" onclick="loadPlayer()">Consultar saldo</button></div><div id="status" class="status" role="status"></div></section><section class="card"><div class="balance"><div><div class="muted">Saldo disponível</div><strong id="balance">0</strong><div class="muted">kills acumulados: <span id="kills">0</span> · gastos: <span id="spent">0</span></div></div><div>☠️</div></div></section><section class="card"><h2>Catálogo</h2><div id="catalog" class="catalog">Carregando…</div></section><section class="card"><h2>Meus itens</h2><div id="inventory" class="muted">Consulte seu saldo para ver os itens.</div></section><section class="card"><h2>Ledger</h2><div id="ledger" class="ledger muted">—</div></section><p class="foot">Limitação importante: informar apenas o @ não prova titularidade. A loja não mostra dados de outros usuários e usa validação de saldo, chave idempotente e rate limit, mas alguém que souber seu @ pode tentar comprar em seu nome. Não compartilhe links de operação.</p></main><script>let catalog=[];const $=id=>document.getElementById(id);function handle(){return String($('user').value||'').trim().replace(/^@+/,'').toLowerCase()}function msg(s,bad=false){$('status').textContent=s;$('status').className='status '+(bad?'danger':'')}async function api(url,opt){const r=await fetch(url,opt);const j=await r.json().catch(()=>({ok:false,error:'Resposta inválida'}));if(!r.ok)throw Error(j.error||'Falha');return j}async function loadCatalog(){const j=await api('/api/shop/catalog');catalog=j.catalog||[];$('catalog').innerHTML=catalog.map(i=>`<article class="item"><h3>${i.icon} ${i.name}</h3><div class="muted">${i.description}</div><div class="muted">${i.category==='weapon'?`Dano ${i.damage} · alcance ${i.range}px · cooldown ${(i.cooldownMs/1000).toFixed(1)}s · munição ${i.ammo} · recarga ${(i.reloadMs/1000).toFixed(1)}s · área ${i.area||0}px`: 'Consumível de próxima entrada'}</div><div class="muted">Função: ${i.tactical||'—'}</div><div class="price">${i.price} kills</div><button class="btn buy" onclick="buy('${i.slug}')">Comprar</button></article>`).join('')}function render(j){const p=j.player||{kills:0,spent:0,available:0};$('balance').textContent=p.available;$('kills').textContent=p.kills;$('spent').textContent=p.spent;const inv=j.inventory||[];$('inventory').innerHTML=inv.length?inv.map(i=>`<span class="pill">${i.name} · ${i.status==='bound'?'vinculado até '+new Date(i.boundUntil).toLocaleTimeString():i.status==='pending_entry'?'armada para próxima entrada':i.status==='consumed'?'consumida':'no chão'}</span>`).join(''):'Nenhum item ainda';const l=j.ledger||[];$('ledger').innerHTML=l.length?l.map(x=>`<div><span>${x.reason}</span><b>${x.amount>0?'+':''}${x.amount}</b></div>`).join(''):'Sem movimentações'}async function loadPlayer(){const u=handle();if(!u)return msg('Informe o username do TikTok.',true);try{const j=await api('/api/shop/player?username='+encodeURIComponent(u));render(j);msg('Saldo atualizado.')}catch(e){msg(e.message,true)}}async function buy(slug){const u=handle();if(!u)return msg('Informe o username do TikTok antes de comprar.',true);const key=crypto.randomUUID();try{const j=await api('/api/shop/purchase',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u,slug,operationKey:key})});render(j);msg(slug==='vida-tripla'?'Compra confirmada. Será consumida na próxima entrada de uma rodada.':'Compra confirmada. Use no jogo: !usar '+slug)}catch(e){msg(e.message,true)}}loadCatalog().catch(e=>msg(e.message,true));</script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ball Arena — Loja de Kills</title>
+  <style>
+    :root { --bg:#0b0b0f; --card:#1e1a16; --line:#44352b; --cream:#f2ebd7; --gold:#ffd166; --red:#ff4e45; --cyan:#22d3ee; --muted:#aaa09a; --green:#b7f2bd; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 20% 0,#38151a,#0b0b0f 48%); color:var(--cream); font:15px Inter,system-ui,sans-serif; }
+    .wrap { max-width:760px; margin:auto; padding:18px 14px 40px; }
+    .hero { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .brand { font-weight:900; letter-spacing:.08em; }
+    .brand b { color:var(--gold); }
+    .links { color:var(--muted); font-size:.78rem; text-align:right; line-height:1.45; }
+    h1 { margin:10px 0 4px; font-size:clamp(1.7rem,7vw,2.5rem); }
+    h2 { margin:0 0 12px; font-size:1.2rem; }
+    .sub { color:var(--muted); line-height:1.5; margin:0 0 18px; }
+    .card { background:#1e1a16dd; border:1px solid var(--line); border-radius:18px; padding:15px; margin:12px 0; box-shadow:0 12px 30px #0005; }
+    .row { display:flex; gap:9px; flex-wrap:wrap; }
+    .field-label { display:block; margin-bottom:7px; font-weight:800; color:var(--cream); }
+    .hint { display:block; margin-top:7px; color:var(--muted); font-size:.82rem; line-height:1.4; }
+    .input { width:100%; background:#0b0b0f; border:1px solid #5a4638; color:var(--cream); border-radius:12px; padding:13px 14px; font-size:16px; }
+    .input:focus { outline:2px solid #22d3ee88; outline-offset:1px; }
+    .btn { border:0; border-radius:11px; padding:12px 15px; min-height:44px; background:#3a2c25; color:var(--cream); font-weight:800; cursor:pointer; }
+    .btn.primary { background:linear-gradient(135deg,var(--red),#a92520); color:#fff; }
+    .btn.buy { width:100%; background:#274a50; color:#d8fbff; }
+    .status { min-height:24px; margin-top:10px; color:var(--cyan); line-height:1.4; }
+    .danger { color:#ffaaa4; }
+    .balance { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .balance strong { font-size:2rem; color:var(--gold); }
+    .muted { color:var(--muted); font-size:.86rem; }
+    .catalog { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+    .item { border:1px solid #4a392d; border-radius:14px; padding:13px; background:#100f12; }
+    .item h3 { margin:0 0 5px; font-size:1.04rem; }
+    .item p { margin:6px 0; line-height:1.4; }
+    .stats { color:#c9f7ff; font-size:.82rem; line-height:1.5; }
+    .tactical { min-height:38px; color:var(--muted); font-size:.82rem; line-height:1.4; }
+    .price { color:var(--gold); font-weight:900; margin:8px 0; }
+    .pill { display:inline-block; padding:5px 9px; border-radius:99px; background:#2d4a32; color:var(--green); font-size:.78rem; margin:3px; }
+    .ledger { max-height:260px; overflow:auto; font-size:.82rem; }
+    .ledger div { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid #3a2e27; }
+    .foot { color:#837a73; font-size:.76rem; line-height:1.45; }
+    a { color:var(--cyan); }
+    @media (max-width:420px) { .catalog { grid-template-columns:1fr; } .hero { align-items:flex-start; } .links { max-width:180px; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="hero">
+      <div class="brand">BALL <b>ARENA</b></div>
+      <div class="links">Loja direta: <strong>/shop</strong> ou <strong>/loja</strong></div>
+    </div>
+
+    <h1>Loja de Kills</h1>
+    <p class="sub">Compre Vida Tripla e armas usando os kills acumulados. A Vida Tripla entra somente na próxima entrada da rodada e começa com 3x a vida base. As armas ficam vinculadas por 3 minutos; depois podem cair quando o portador morrer e ser coletadas por outro jogador.</p>
+
+    <section class="card">
+      <label class="field-label" for="user">@username do TikTok</label>
+      <div class="row">
+        <input id="user" class="input" autocomplete="off" placeholder="Ex.: @ball_arena_ ou ball_arena_" aria-describedby="user-help">
+        <button class="btn primary" onclick="loadPlayer()">Consultar saldo</button>
+      </div>
+      <small id="user-help" class="hint">Digite o identificador após o @ que aparece no TikTok. Não use o nome de exibição/apelido; a loja normaliza o @ automaticamente.</small>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <div class="balance">
+        <div>
+          <div class="muted">Saldo disponível</div>
+          <strong id="balance">0</strong>
+          <div class="muted">kills acumulados: <span id="kills">0</span> · gastos: <span id="spent">0</span></div>
+        </div>
+        <div aria-hidden="true">☠️</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Catálogo</h2>
+      <div id="catalog" class="catalog">Carregando…</div>
+    </section>
+
+    <section class="card">
+      <h2>Meus itens</h2>
+      <div id="inventory" class="muted">Consulte seu saldo para ver os itens.</div>
+    </section>
+
+    <section class="card">
+      <h2>Ledger</h2>
+      <div id="ledger" class="ledger muted">—</div>
+    </section>
+
+    <p class="foot">A loja usa o username do TikTok apenas como identificador e não comprova titularidade. Não compartilhe links de operação. As armas automáticas disparam em alvos próximos durante a rodada; a cadência mostrada é o intervalo entre tiros e não há tempo extra de recarga.</p>
+  </main>
+
+  <script>
+    let catalog = [];
+    const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    function handle() { return String($('user').value || '').trim().replace(/^@+/, '').toLowerCase(); }
+    function msg(text, bad = false) { $('status').textContent = text; $('status').className = 'status' + (bad ? ' danger' : ''); }
+    async function api(url, options) {
+      const response = await fetch(url, options);
+      const json = await response.json().catch(() => ({ ok:false, error:'Resposta inválida' }));
+      if (!response.ok) throw Error(json.error || 'Falha na operação');
+      return json;
+    }
+    function weaponStats(item) {
+      if (item.category !== 'weapon') return 'Consumível de próxima entrada';
+      const reload = Number(item.reloadMs || 0) === 0 ? 'sem recarga' : `recarga ${(item.reloadMs / 1000).toFixed(1)}s`;
+      return `Dano ${item.damage} · alcance ${item.range}px · intervalo ${(item.cooldownMs / 1000).toFixed(1)}s · munição ${item.ammo} · ${reload} · área ${item.area || 0}px`;
+    }
+    async function loadCatalog() {
+      const data = await api('/api/shop/catalog');
+      catalog = data.catalog || [];
+      $('catalog').innerHTML = catalog.map((item) => `
+        <article class="item">
+          <h3>${esc(item.icon)} ${esc(item.name)}</h3>
+          <p>${esc(item.description)}</p>
+          <div class="stats">${esc(weaponStats(item))}</div>
+          <p class="tactical"><b>O que faz:</b> ${esc(item.tactical || '—')}</p>
+          <div class="price">${esc(item.price)} kills</div>
+          <button class="btn buy" onclick="buy(${JSON.stringify(item.slug)})">Comprar</button>
+        </article>`).join('');
+    }
+    function render(data) {
+      const player = data.player || { kills:0, spent:0, available:0 };
+      $('balance').textContent = player.available;
+      $('kills').textContent = player.kills;
+      $('spent').textContent = player.spent;
+      const inventory = data.inventory || [];
+      $('inventory').innerHTML = inventory.length ? inventory.map((item) => {
+        const status = item.status === 'bound' ? `vinculado até ${new Date(item.boundUntil).toLocaleTimeString()}` : item.status === 'pending_entry' ? 'armada para a próxima entrada' : item.status === 'consumed' ? 'consumida' : 'no chão';
+        return `<span class="pill">${esc(item.name)} · ${esc(status)}</span>`;
+      }).join('') : 'Nenhum item ainda';
+      const ledger = data.ledger || [];
+      $('ledger').innerHTML = ledger.length ? ledger.map((row) => `<div><span>${esc(row.reason)}</span><b>${row.amount > 0 ? '+' : ''}${esc(row.amount)}</b></div>`).join('') : 'Sem movimentações';
+    }
+    async function loadPlayer() {
+      const username = handle();
+      if (!username) return msg('Informe o @username do TikTok.', true);
+      try { render(await api('/api/shop/player?username=' + encodeURIComponent(username))); msg('Saldo atualizado para @' + username + '.'); }
+      catch (error) { msg(error.message, true); }
+    }
+    async function buy(slug) {
+      const username = handle();
+      if (!username) return msg('Informe o @username do TikTok antes de comprar.', true);
+      try {
+        const data = await api('/api/shop/purchase', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ username, slug, operationKey:crypto.randomUUID() }) });
+        render(data);
+        msg(slug === 'vida-tripla' ? 'Compra confirmada: será consumida na próxima entrada.' : 'Compra confirmada. No jogo, use: !usar ' + slug);
+      } catch (error) { msg(error.message, true); }
+    }
+    loadCatalog().catch((error) => msg(error.message, true));
+  </script>
+</body>
+</html>
