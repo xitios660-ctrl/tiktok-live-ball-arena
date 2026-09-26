@@ -125,8 +125,15 @@
           <div class="stats">${esc(weaponStats(item))}</div>
           <p class="tactical"><b>O que faz:</b> ${esc(item.tactical || '—')}</p>
           <div class="price">${esc(item.price)} kills</div>
-          <button class="btn buy" onclick="buy(${JSON.stringify(item.slug)})">Comprar</button>
+          <button type="button" class="btn buy" data-buy-slug="${esc(item.slug)}">Comprar</button>
         </article>`).join('');
+      document.querySelectorAll('[data-buy-slug]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          buy(button.getAttribute('data-buy-slug') || '');
+        }, { passive: false });
+      });
     }
     function render(data) {
       const player = data.player || { kills:0, spent:0, available:0 };
@@ -150,6 +157,7 @@
     async function buy(slug) {
       const username = handle();
       if (!username) return msg('Informe o @username do TikTok antes de comprar.', true);
+      msg('Processando compra…');
       try {
         const data = await api('/api/shop/purchase', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ username, slug, operationKey:operationKey() }) });
         render(data);
