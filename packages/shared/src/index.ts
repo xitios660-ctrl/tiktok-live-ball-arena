@@ -175,7 +175,7 @@ export interface BallState {
   isBoss?: boolean;
   /** Kill-points awarded to the player who defeats this boss. */
   bossRewardKills?: number;
-  equippedItem?: { slug: string; icon: string; name: string; boundUntil: number };
+  equippedItem?: { slug: string; icon: string; name: string; boundUntil: number; ammo?: number; reloadAt?: number; category?: 'weapon' | 'consumable' };
 }
 
 export interface PlayerStats {
@@ -355,6 +355,9 @@ export interface AnnounceEvent {
 export type AbilityFxKind =
   | AbilityKey
   | 'reflect_hit'
+  | 'weapon_shot'
+  | 'weapon_explosion'
+  | 'mine_trigger'
   | 'heal_orb';
 
 export interface AbilityFxEvent {

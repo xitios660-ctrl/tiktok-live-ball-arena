@@ -40,6 +40,13 @@ export function playAbilityFx(
     case 'reflect_hit':
       spawnReflectHit(scene, event.x, event.y, event.targetX, event.targetY, budget);
       break;
+    case 'weapon_shot':
+      spawnWeaponShot(scene, event.x, event.y, event.targetX ?? event.x, event.targetY ?? event.y, budget);
+      break;
+    case 'weapon_explosion':
+    case 'mine_trigger':
+      spawnWeaponExplosion(scene, event.x, event.y, event.value ?? 60, budget);
+      break;
     case 'heal_pulse':
       spawnSparks(scene, event.x, event.y, THEME.coral, 6, budget);
       break;
@@ -50,6 +57,17 @@ export function playAbilityFx(
       if (budget > 0.4) spawnSparks(scene, event.x, event.y, THEME.electricCyan, 6, budget);
       break;
   }
+}
+
+function spawnWeaponShot(scene: Phaser.Scene, x: number, y: number, tx: number, ty: number, budget: FxBudget): void {
+  const line = scene.add.line(0, 0, x, y, tx, ty, THEME.gold, 0.9).setLineWidth(Math.max(2, 4 * budget)).setDepth(72);
+  scene.tweens.add({ targets: line, alpha: 0, duration: 130, onComplete: () => line.destroy() });
+  spawnSparks(scene, tx, ty, THEME.gold, 4, budget);
+}
+function spawnWeaponExplosion(scene: Phaser.Scene, x: number, y: number, radius: number, budget: FxBudget): void {
+  const ring = scene.add.circle(x, y, Math.max(18, radius * .35), THEME.emberOrange, .16).setStrokeStyle(4, THEME.gold, .9).setDepth(72);
+  scene.tweens.add({ targets: ring, scale: 2.2, alpha: 0, duration: 360, onComplete: () => ring.destroy() });
+  spawnSparks(scene, x, y, THEME.emberOrange, 10, budget);
 }
 
 /** Soft green heal flash for floor Cura pickup */

@@ -16,11 +16,13 @@ export type GlossSkin =
   | 'ember'
   | 'cyan'
   | 'violet'
-  | 'gold';
+  | 'gold'
+  | 'boss';
 
 const TEX_SIZE = 128;
 
 export function skinFromBall(b: BallState): GlossSkin {
+  if (b.isBoss) return 'boss';
   const buffs = b.buffs || [];
   if (buffs.includes('galaxy_god') || b.isGalaxy) return 'galaxy';
   if (buffs.includes('donut_overdrive')) return 'donut';
@@ -133,6 +135,19 @@ function paintSkinAccent(
   ctx.clip();
 
   switch (skin) {
+    case 'boss': {
+      const aura = ctx.createRadialGradient(cx, cy, r * .18, cx, cy, r);
+      aura.addColorStop(0, 'rgba(255,78,69,.40)'); aura.addColorStop(1, 'rgba(28,5,12,.10)');
+      ctx.fillStyle = aura; ctx.fillRect(cx-r, cy-r, r*2, r*2);
+      ctx.strokeStyle = 'rgba(255,209,102,.95)'; ctx.lineWidth = Math.max(3, r*.07);
+      ctx.beginPath(); ctx.moveTo(cx-r*.48,cy-r*.68); ctx.lineTo(cx-r*.12,cy-r*.15); ctx.lineTo(cx-r*.32,cy+.35*r); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,235,170,.98)'; ctx.beginPath(); ctx.ellipse(cx-r*.25,cy-r*.12,r*.15,r*.10,0,0,Math.PI*2); ctx.ellipse(cx+r*.25,cy-r*.12,r*.15,r*.10,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(25,4,10,.95)'; ctx.beginPath(); ctx.arc(cx-r*.25,cy-r*.12,r*.055,0,Math.PI*2); ctx.arc(cx+r*.25,cy-r*.12,r*.055,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(25,4,10,.95)'; ctx.lineWidth = Math.max(3,r*.05); ctx.beginPath(); ctx.moveTo(cx-r*.4,cy-r*.3);ctx.lineTo(cx-r*.12,cy-r*.22);ctx.moveTo(cx+r*.12,cy-r*.22);ctx.lineTo(cx+r*.4,cy-r*.3);ctx.stroke();
+      ctx.fillStyle = 'rgba(25,4,10,.9)'; ctx.beginPath(); ctx.arc(cx,cy+r*.28,r*.28,0,Math.PI);ctx.fill();
+      ctx.fillStyle = 'rgba(242,235,215,.95)'; ctx.beginPath(); ctx.moveTo(cx-r*.18,cy+r*.25);ctx.lineTo(cx-r*.12,cy+r*.47);ctx.lineTo(cx-r*.04,cy+r*.25);ctx.moveTo(cx+r*.04,cy+r*.25);ctx.lineTo(cx+r*.12,cy+r*.47);ctx.lineTo(cx+r*.18,cy+r*.25);ctx.fill();
+      break;
+    }
     case 'galaxy': {
       for (let i = 0; i < 28; i++) {
         const a = (i / 28) * Math.PI * 2 + i * 0.4;

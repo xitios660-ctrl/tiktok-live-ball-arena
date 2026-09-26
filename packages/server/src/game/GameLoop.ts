@@ -37,7 +37,7 @@ import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
 import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
 import { GlobalArenaEvents } from './GlobalArenaEvents';
 import { PickupSystem, pickupAbilityFromGiftId } from './PickupSystem';
-import type { EconomyStore, InventoryItem } from '../economy/EconomyStore';
+import type { EconomyStore, InventoryItem, CatalogItem } from '../economy/EconomyStore';
 import { AutoBotSpawner } from './AutoBotSpawner';
 import {
   ChatGPTBossController,
@@ -74,6 +74,8 @@ interface PlayerRecord {
   /** A killed B count within this round: key = victimId */
   killsAgainst: Map<string, number>;
 }
+interface WeaponState { ammo: number; reloadAt: number; lastUseAt: number; }
+interface LandMineState { id: string; ownerId: string; x: number; y: number; damage: number; area: number; }
 
 /**
  * Authoritative game loop — physics, HP, death, respawn-by-comment, revenge.
@@ -112,6 +114,11 @@ export class GameLoop {
   private equipped = new Map<string, InventoryItem>();
   private shopDrops = new Map<string, ShopDropState>();
   private itemCooldowns = new Map<string, number>();
+  private weaponStates = new Map<string, WeaponState>();
+  private landMines = new Map<string, LandMineState>();
+  private itemUseLocks = new Set<string>();
+  private catalogCache = new Map<string, CatalogItem>();
+  private bossNextZapAt = 0;
   /** attackerId:victimId → last hitPower grant ms */
   private hitPowerCooldown = new Map<string, number>();
   /**
@@ -178,7 +185,7 @@ export class GameLoop {
       bossRewardKills:
         b.userId === CHATGPT_BOSS_USER_ID ? CHATGPT_BOSS_REWARD_KILLS : undefined,
       equippedItem: this.equipped.get(b.userId)
-        ? (() => { const i = this.equipped.get(b.userId)!; return { slug: i.slug, icon: (i as any).icon || '🎯', name: i.name, boundUntil: i.boundUntil }; })()
+        ? (() => { const i = this.equipped.get(b.userId)!; const w = this.weaponStates.get(i.id); const c = this.catalogCache.get(i.slug); return { slug: i.slug, icon: (c?.icon || (i as any).icon || '🎯'), name: i.name, boundUntil: i.boundUntil, ammo: w?.ammo, reloadAt: w?.reloadAt, category: c?.category }; })()
         : undefined,
     }));
     return {
@@ -307,6 +314,9 @@ export class GameLoop {
     this.equipped.clear();
     this.shopDrops.clear();
     this.itemCooldowns.clear();
+    this.weaponStates.clear(); this.landMines.clear(); this.itemUseLocks.clear();
+    this.catalogCache.clear();
+    this.bossNextZapAt = 0;
     this.globalEvents.resetRound();
     this.pickups.onRoundStart();
     this.tick = 0;
@@ -356,6 +366,9 @@ export class GameLoop {
     this.equipped.clear();
     this.shopDrops.clear();
     this.itemCooldowns.clear();
+    this.weaponStates.clear(); this.landMines.clear(); this.itemUseLocks.clear();
+    this.catalogCache.clear();
+    this.bossNextZapAt = 0;
     this.recentCombat = [];
     this.boss.resetRound();
     this.tick = 0;
@@ -401,28 +414,44 @@ export class GameLoop {
   }
 
   private async useStoreItem(user: ArenaUser, comment: string): Promise<void> {
-    if (!this.economy) return;
-    const requested = comment.replace(/^\s*!?(usar|use|equipar)\s+/i, '').trim().toLowerCase();
-    const inventory = await this.economy.inventory(user.username);
-    const item = inventory.find(i => i.status === 'bound' && (i.slug === requested || i.name.toLowerCase() === requested || i.slug.includes(requested)));
-    if (!item) { this.pushCombat({ type:'announce', kind:'pickup', message:`@${user.username} não tem esse item equipado.`, userId:user.userId, username:user.username, timestamp:Date.now() }); return; }
-    const cooldown = item.slug === 'marksman-rifle' ? 2500 : item.slug === 'dash-charge' ? 8000 : 0;
-    const cooldownKey = `${user.userId}:${item.id}`;
-    const remaining = (this.itemCooldowns.get(cooldownKey) || 0) - Date.now();
-    if (remaining > 0) { this.pushCombat({ type:'announce', kind:'pickup', message:`⏳ @${user.username}, aguarde ${Math.ceil(remaining / 1000)}s para usar novamente.`, userId:user.userId, username:user.username, timestamp:Date.now() }); return; }
-    this.itemCooldowns.set(cooldownKey, Date.now() + cooldown);
-    this.equipped.set(user.userId, item);
-    if (item.slug === 'marksman-rifle') {
-      const damage = this.physics.applyRangedDamage(user.userId, 5, 720);
-      if (damage) this.processDamages([damage]);
-      this.pushCombat({ type:'announce', kind:'pickup', message:`🎯 @${user.username} disparou Rifle de Precisão (5 dano)!`, userId:user.userId, username:user.username, value:5, timestamp:Date.now() });
-    } else if (item.slug === 'dash-charge') {
-      this.physics.setTimedBuff(user.userId, 'dash', Date.now()+2500);
-      this.pushCombat({ type:'announce', kind:'pickup', message:`🚀 @${user.username} usou Carga Foguete!`, userId:user.userId, username:user.username, timestamp:Date.now() });
-    } else {
-      this.pushCombat({ type:'announce', kind:'pickup', message:`🛡️ @${user.username} equipou ${item.name}!`, userId:user.userId, username:user.username, timestamp:Date.now() });
-    }
-    this.emitSnapshot();
+    if (!this.economy || this.itemUseLocks.has(user.userId)) return;
+    this.itemUseLocks.add(user.userId);
+    try {
+      const requested = comment.replace(/^\s*!?(usar|use|equipar)\s+/i, '').trim().toLowerCase();
+      const inventory = await this.economy.inventory(user.username);
+      const pendingLife = inventory.find(i => i.status === 'pending_entry' && (i.slug === requested || requested.includes('vida')));
+      if (pendingLife) { this.pushCombat({ type:'announce', kind:'pickup', message:`❤️‍🔥 @${user.username}: Vida Tripla já está armada para sua próxima entrada; não pode ser usada no meio da rodada.`, userId:user.userId, username:user.username, timestamp:Date.now() }); return; }
+      const item = inventory.find(i => i.status === 'bound' && (i.slug === requested || i.name.toLowerCase() === requested || i.slug.includes(requested)));
+      if (!item) { this.pushCombat({ type:'announce', kind:'pickup', message:`@${user.username} não tem esse item vinculado.`, userId:user.userId, username:user.username, timestamp:Date.now() }); return; }
+      const catalog = await this.economy.getCatalogItem(item.slug);
+      if (!catalog) return;
+      this.catalogCache.set(item.slug, catalog);
+      const now = Date.now();
+      const cooldownKey = `${user.userId}:${item.id}`;
+      const remaining = (this.itemCooldowns.get(cooldownKey) || 0) - now;
+      if (remaining > 0) { this.pushCombat({ type:'announce', kind:'pickup', message:`⏳ @${user.username}, aguarde ${Math.ceil(remaining / 1000)}s.`, userId:user.userId, username:user.username, timestamp:now }); return; }
+      this.equipped.set(user.userId, item);
+      if (catalog.category === 'weapon') {
+        const state = this.weaponStates.get(item.id) || { ammo: catalog.ammo, reloadAt: 0, lastUseAt: 0 };
+        if (state.ammo <= 0) { if (state.reloadAt > now) { this.pushCombat({ type:'announce', kind:'pickup', message:`🔄 ${catalog.name} recarregando (${Math.ceil((state.reloadAt-now)/1000)}s).`, userId:user.userId, username:user.username, timestamp:now }); return; } state.ammo = catalog.ammo; }
+        const body = this.physics.getBall(user.userId); if (!body) return;
+        if (catalog.slug === 'mina-terrestre') {
+          const mine: LandMineState = { id: randomUUID(), ownerId: user.userId, x: body.x, y: body.y, damage: catalog.damage, area: catalog.area };
+          this.landMines.set(mine.id, mine);
+          this.pushCombat({ type:'announce', kind:'pickup', message:`💣 @${user.username} plantou Mina Terrestre (${state.ammo-1} munição).`, userId:user.userId, username:user.username, timestamp:now });
+        } else {
+          const damages = catalog.area > 0 ? this.physics.applyAreaDamage(user.userId, catalog.damage, catalog.range, catalog.area) : (() => { const d = this.physics.applyRangedDamage(user.userId, catalog.damage, catalog.range); return d ? [d] : []; })();
+          if (!damages.length) { this.pushCombat({ type:'announce', kind:'pickup', message:`${catalog.icon} @${user.username} não encontrou alvo no alcance.`, userId:user.userId, username:user.username, timestamp:now }); return; }
+          this.processDamages(damages);
+          this.pushCombat({ type:'announce', kind:'pickup', message:`${catalog.icon} @${user.username} usou ${catalog.name} · ${catalog.damage} dano · munição ${state.ammo-1}/${catalog.ammo}.`, userId:user.userId, username:user.username, value:catalog.damage, timestamp:now });
+        }
+        state.ammo -= 1; state.lastUseAt = now; state.reloadAt = state.ammo === 0 ? now + catalog.reloadMs : 0; this.weaponStates.set(item.id, state); this.itemCooldowns.set(cooldownKey, now + catalog.cooldownMs);
+      } else if (catalog.slug === 'dash-charge') {
+        this.physics.setTimedBuff(user.userId, 'dash', now + 2500); this.itemCooldowns.set(cooldownKey, now + catalog.cooldownMs);
+        this.pushCombat({ type:'announce', kind:'pickup', message:`🚀 @${user.username} usou Carga Foguete!`, userId:user.userId, username:user.username, timestamp:now });
+      }
+      this.emitSnapshot();
+    } finally { this.itemUseLocks.delete(user.userId); }
   }
 
   handleLikes(userOrCount: ArenaUser | number, maybeCount?: number): void {
@@ -709,6 +738,7 @@ export class GameLoop {
     }
     if (this.state.phase === 'ended' || this.state.phase === 'results') return;
 
+    const firstEntry = !this.physics.hasUser(user.userId);
     this.physics.spawnOrNudge(user);
     this.ensurePlayerRecord(user.userId, user.username, user.nickname);
     this.lastSpawnedUserId = user.userId;
@@ -723,9 +753,19 @@ export class GameLoop {
     this.emitRound();
     // Comment → character must be visible immediately, not only after the next physics tick.
     this.emitSnapshot();
+    if (firstEntry) void this.applyNextEntryConsumable(user);
     console.log(
       `[SPAWN] @${user.username} id=${user.userId} avatar=${user.avatarUrl ? 'yes' : 'no'} players=${this.physics.count}`
     );
+  }
+
+  private async applyNextEntryConsumable(user: ArenaUser): Promise<void> {
+    if (!this.economy) return;
+    const consumed = await this.economy.consumeNextEntry(user.username, `entry:${this.state.roundId}:${user.userId}`);
+    if (!consumed || !this.physics.hasUser(user.userId)) return;
+    this.physics.setEntryHealth(user.userId, 3);
+    this.pushCombat({ type:'announce', kind:'pickup', message:`❤️‍🔥 @${user.username} entrou com VIDA TRIPLA (${DEFAULT_BALL_HP * 3} HP)! Consumido nesta entrada; respawn volta ao HP normal.`, userId:user.userId, username:user.username, timestamp:Date.now() });
+    this.emitSnapshot();
   }
 
   private respawnPlayer(user: ArenaUser): CombatEvent[] {
@@ -865,6 +905,8 @@ export class GameLoop {
     if (this.state.phase !== 'running') return;
 
     const bossSpawned = this.boss.tick(this.state.phase, this.dt);
+    this.processBossLightning();
+    this.processAutoWeapons();
     if (bossSpawned) {
       const rec = this.ensurePlayerRecord(
         CHATGPT_BOSS_USER_ID,
@@ -891,6 +933,7 @@ export class GameLoop {
 
     const pickupResult = this.pickups.tick(this.physics);
     void this.processShopDrops();
+    this.processLandMines();
     for (const a of pickupResult.announces) this.pushCombat(a);
     for (const f of pickupResult.fx) this.pushCombat(f);
 
@@ -924,6 +967,51 @@ export class GameLoop {
       if (inv) this.equipped.set(collector.userId, inv);
       this.pushCombat({ type:'announce', kind:'pickup', message:`${drop.icon} @${collector.username} pegou ${drop.name}!`, userId:collector.userId, username:collector.username, timestamp:Date.now() });
       this.emitSnapshot();
+    }
+  }
+
+  private processLandMines(): void {
+    for (const [id, mine] of [...this.landMines]) {
+      const trigger = this.physics.getAll().find(b => b.userId !== mine.ownerId && Math.hypot(b.x-mine.x,b.y-mine.y) <= 34);
+      if (!trigger) continue;
+      this.landMines.delete(id);
+      const damages = this.physics.applyAreaAt(mine.ownerId, mine.x, mine.y, mine.damage, mine.area);
+      if (damages.length) this.processDamages(damages);
+      this.pushCombat({ type:'announce', kind:'pickup', message:`💣 Mina de @${mine.ownerId} detonou perto de @${trigger.username}!`, userId:mine.ownerId, username:mine.ownerId, value:mine.damage, timestamp:Date.now() });
+    }
+  }
+
+  private processBossLightning(): void {
+    const now = Date.now();
+    if (now < this.bossNextZapAt || !this.physics.getBall(CHATGPT_BOSS_USER_ID)) return;
+    const zap = this.physics.applyLightningZap(CHATGPT_BOSS_USER_ID);
+    this.bossNextZapAt = now + 3200;
+    if (!zap.targetId) return;
+    if (zap.application) this.processDamages([zap.application]);
+    this.pushCombat({ type:'ability_fx', ability:'lightning_zap', userId:CHATGPT_BOSS_USER_ID, x:zap.x, y:zap.y, targetId:zap.targetId, targetX:zap.targetX, targetY:zap.targetY, value:zap.damage, timestamp:now });
+    this.pushCombat({ type:'announce', kind:'pickup', message:`⚡ BOSS disparou um raio! ${zap.damage} dano e lentidão por 0,9s.`, userId:CHATGPT_BOSS_USER_ID, username:'BOSS', targetId:zap.targetId, value:zap.damage, timestamp:now });
+  }
+
+  private processAutoWeapons(): void {
+    const now = Date.now();
+    for (const [userId, item] of this.equipped) {
+      const catalog = this.catalogCache.get(item.slug); if (!catalog || catalog.category !== 'weapon') continue;
+      const body = this.physics.getBall(userId); if (!body) continue;
+      const state = this.weaponStates.get(item.id) || { ammo: catalog.ammo, reloadAt: 0, lastUseAt: 0 };
+      if (state.ammo <= 0) { if (state.reloadAt > now) continue; state.ammo = catalog.ammo; state.reloadAt = 0; }
+      if (now - state.lastUseAt < catalog.cooldownMs) continue;
+      if (catalog.slug === 'mina-terrestre') {
+        const mine: LandMineState = { id: randomUUID(), ownerId: userId, x: body.x, y: body.y, damage: catalog.damage, area: catalog.area };
+        this.landMines.set(mine.id, mine); state.ammo -= 1; state.lastUseAt = now; state.reloadAt = state.ammo === 0 ? now + catalog.reloadMs : 0; this.weaponStates.set(item.id, state);
+        this.pushCombat({ type:'ability_fx', ability:'mine_trigger', userId, x:body.x, y:body.y, value:catalog.area, timestamp:now });
+        continue;
+      }
+      const damages = catalog.area > 0 ? this.physics.applyAreaDamage(userId, catalog.damage, catalog.range, catalog.area) : (() => { const d = this.physics.applyRangedDamage(userId, catalog.damage, catalog.range); return d ? [d] : []; })();
+      if (!damages.length) continue;
+      this.processDamages(damages);
+      state.ammo -= 1; state.lastUseAt = now; state.reloadAt = state.ammo === 0 ? now + catalog.reloadMs : 0; this.weaponStates.set(item.id, state);
+      const first = damages[0];
+      this.pushCombat({ type:'ability_fx', ability:catalog.area > 0 ? 'weapon_explosion' : 'weapon_shot', userId, x:body.x, y:body.y, targetId:first.victimId, targetX:first.x, targetY:first.y, value:catalog.area || catalog.damage, timestamp:now });
     }
   }
 

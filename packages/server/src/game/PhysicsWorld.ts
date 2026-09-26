@@ -655,6 +655,24 @@ export class PhysicsWorld {
     if (!target) return null;
     return this.dealDamage(target, Math.round(damage), attacker, Date.now());
   }
+  applyAreaDamage(attackerId: string, damage: number, range: number, area: number): DamageApplication[] {
+    const attacker = this.balls.get(attackerId); if (!attacker || isProtected(attacker)) return [];
+    let center: BallBody | null = null; let best = range;
+    for (const b of this.balls.values()) { if (b.userId === attackerId || isProtected(b)) continue; const d = Math.hypot(b.x-attacker.x,b.y-attacker.y); if (d <= best) { best=d; center=b; } }
+    if (!center) return [];
+    const out: DamageApplication[] = [];
+    for (const b of this.balls.values()) { if (b.userId===attackerId || isProtected(b)) continue; if (Math.hypot(b.x-center.x,b.y-center.y) <= area+b.radius) out.push(this.dealDamage(b, Math.round(damage), attacker, Date.now())); }
+    return out;
+  }
+  applyAreaAt(attackerId: string, x: number, y: number, damage: number, area: number): DamageApplication[] {
+    const attacker = this.balls.get(attackerId); if (!attacker) return [];
+    return [...this.balls.values()].filter(b => b.userId !== attackerId && !isProtected(b) && Math.hypot(b.x-x,b.y-y) <= area+b.radius).map(b => this.dealDamage(b, Math.round(damage), attacker, Date.now()));
+  }
+  setEntryHealth(userId: string, multiplier: number): void {
+    const b = this.balls.get(userId); if (!b) return;
+    const m = Math.max(1, Math.min(3, Math.floor(multiplier)));
+    b.maxHp = DEFAULT_BALL_HP * m; b.hp = b.maxHp;
+  }
 
   spawnOrNudge(user: ArenaUser, radius = DEFAULT_BALL_RADIUS, withProtection = false): BallBody {
     const existing = this.balls.get(user.userId);
@@ -913,6 +931,7 @@ export class PhysicsWorld {
     y: number;
     targetX?: number;
     targetY?: number;
+    application?: DamageApplication;
   } {
     const src = this.balls.get(casterId);
     if (!src) return { targetId: null, damage: 0, x: 0, y: 0 };
@@ -933,7 +952,7 @@ export class PhysicsWorld {
     best.vy *= LIGHTNING_SLOW_FACTOR;
     best.slowUntil = Math.max(best.slowUntil, now + LIGHTNING_SLOW_MS);
     best.hitFlashTicks = 10;
-    this.dealDamage(best, LIGHTNING_DAMAGE, src, now);
+    const application = this.dealDamage(best, LIGHTNING_DAMAGE, src, now);
     return {
       targetId: best.userId,
       damage: LIGHTNING_DAMAGE,
@@ -941,6 +960,7 @@ export class PhysicsWorld {
       y: src.y,
       targetX: best.x,
       targetY: best.y,
+      application,
     };
   }
 

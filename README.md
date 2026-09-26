@@ -113,7 +113,23 @@ Eventos do modo DEMO são **falsos / simulados**. Não há conexão TikTok até 
 ## Loja de kills
 - Loja pública: `/shop` (sem senha), com @ normalizado, saldo, catálogo, compra idempotente e ledger resumido.
 - O mesmo @ é a identidade canônica do saldo; o userId TikTok é mantido apenas para auditoria.
-- Catálogo inicial: Rifle de Precisão (120 kills, 5 dano, alcance 720), Guarda de Ferro (80) e Carga Foguete (60).
-- Compre, entre na arena e comente `!usar marksman-rifle` (ou `!usar rifle`). O item fica vinculado por 3 minutos fixos; após expirar, ao morrer, cai e pode ser recolhido por outra bola.
+- Catálogo inicial: consulte a tabela de balanceamento abaixo; itens legados foram desativados por migração idempotente.
+- Compre, entre na arena e comente `!usar <slug>` para equipar. Armas passam a auto-targetar; o vínculo é de 3 minutos fixos e, após expirar, ao morrer, cai e pode ser recolhido por outra bola.
 - Produção exige `DATABASE_URL` Postgres. Sem ela, o servidor usa fallback local apenas para desenvolvimento e registra aviso; no Render free esse arquivo é efêmero.
 - Admin protegido: `/admin/economy/summary`, `/admin/economy/player` e `/admin/economy/adjust` (motivo e operationKey obrigatórios).
+
+## Economia e combate 2026-09
+- A loja `/shop` recebe o **username do TikTok** (com ou sem `@`), não o nome de exibição; a normalização é a mesma do participante.
+- **Vida Tripla** custa 180 kills e fica `pending_entry`: na primeira entrada do comprador em uma nova rodada consome o item e aplica 3x HP base. Não cai, não passa para outro jogador e não altera respawn/multiplicadores posteriores.
+- Armas são vinculadas por 3 minutos; após expirar, a morte do portador cria drop coletável. O coletor torna-se o novo portador e a regra de 3 minutos reinicia conforme o fluxo existente. Após equipar com `!usar <slug>`, o servidor faz auto-target no inimigo mais próximo; munição, recarga, cooldown, dano, explosões e minas são autoritativos.
+- O Boss dispara raio automático a cada 3,2s em alvo próximo dentro do alcance existente: 18 dano, slow de 0,9s com fator 0,45; sem stun-lock.
+
+| Item | Preço | Dano | Alcance | Cooldown | Munição / recarga | Área | Função |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Vida Tripla | 180 | — | — | — | 1 consumível | — | 3x HP na próxima entrada; não dropável |
+| Pistola | 45 | 8 | 480px | 1,8s | 6 / 5,5s | — | precisão e baixo custo |
+| Metralhadora | 95 | 4 | 600px | 0,5s | 20 / 6,5s | — | supressão |
+| 12 / Escopeta | 110 | 16 | 260px | 3,5s | 2 / 7s | 80px | burst curto |
+| Sniper | 180 | 35 | 1000px | 5s | 3 / 9s | — | pickoff |
+| Bazuca | 220 | 28 | 620px | 7s | 1 / 10s | 110px | zona/explosão |
+| Mina Terrestre | 140 | 30 | — | 2s | 2 / 8s | 90px | armadilha |

@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "selftest": "node dist/selftest.js"
+    "selftest": "node dist/selftest.js && node dist/weaponSelftest.js",
+    "weapon-selftest": "node dist/weaponSelftest.js"
   },
   "dependencies": {
     "@arena/shared": "*",
@@ -20,7 +21,6 @@
     "@types/express": "^5.0.0",
     "@types/cors": "^2.8.17",
     "@types/node": "^22.10.5",
-    "@types/pg": "^8.11.10",
     "@types/pg": "^8.11.10",
     "typescript": "^5.7.3",
     "tiktok-live-connector-v1": "npm:tiktok-live-connector@1.2.3",

@@ -25,8 +25,17 @@ CREATE TABLE IF NOT EXISTS economy_catalog (
   id TEXT PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL,
   price INTEGER NOT NULL CHECK (price >= 0), damage INTEGER NOT NULL DEFAULT 0,
   range_px INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL, cooldown_ms INTEGER NOT NULL DEFAULT 0,
-  icon TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  icon TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, category TEXT NOT NULL DEFAULT 'weapon', ammo INTEGER NOT NULL DEFAULT 1,
+  reload_ms INTEGER NOT NULL DEFAULT 0, projectile_speed INTEGER NOT NULL DEFAULT 0, area_px INTEGER NOT NULL DEFAULT 0,
+  tactical TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE economy_catalog ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'weapon';
+ALTER TABLE economy_catalog ADD COLUMN IF NOT EXISTS ammo INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE economy_catalog ADD COLUMN IF NOT EXISTS reload_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE economy_catalog ADD COLUMN IF NOT EXISTS projectile_speed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE economy_catalog ADD COLUMN IF NOT EXISTS area_px INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE economy_catalog ADD COLUMN IF NOT EXISTS tactical TEXT NOT NULL DEFAULT '';
+UPDATE economy_catalog SET active=false, updated_at=now() WHERE slug IN ('iron-guard','marksman-rifle');
 CREATE TABLE IF NOT EXISTS economy_inventory (
   id UUID PRIMARY KEY, user_key TEXT NOT NULL REFERENCES economy_players(user_key), item_id TEXT NOT NULL REFERENCES economy_catalog(id),
   status TEXT NOT NULL, purchased_at TIMESTAMPTZ NOT NULL DEFAULT now(), bound_until TIMESTAMPTZ NOT NULL,

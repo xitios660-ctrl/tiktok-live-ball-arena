@@ -102,6 +102,7 @@ interface BallView {
   strengthHud: Phaser.GameObjects.Container;
   strengthPill: Phaser.GameObjects.Graphics;
   strengthMark: Phaser.GameObjects.Text;
+  itemMark: Phaser.GameObjects.Text;
   lastHp: number;
   lastHealFlash: boolean;
   lastStrengthTier: number;
@@ -1012,6 +1013,7 @@ export class ArenaScene extends Phaser.Scene {
       .setOrigin(0.5);
     const strengthHud = this.add.container(0, -b.radius - 36, [strengthPill, strengthMark]);
     this.drawStrengthPill(strengthPill, strengthMark, 0);
+    const itemMark = this.add.text(0, -b.radius - 76, '', { fontFamily: FONT_ACCENT, fontSize: '11px', color: THEME_HEX.electricCyan, stroke: '#0B0B0F', strokeThickness: 3 }).setOrigin(0.5).setVisible(false);
 
     // Order: shadow → aura/shield/ring → circle → gloss → avatar chrome → initials → HUD → crown
     container.add([
@@ -1030,6 +1032,7 @@ export class ArenaScene extends Phaser.Scene {
       revengeMark,
       buffIcon,
       strengthHud,
+      itemMark,
       glossParts.crownGfx,
     ]);
     this.drawNamePlate(namePlate, label, b.radius);
@@ -1056,6 +1059,7 @@ export class ArenaScene extends Phaser.Scene {
       strengthHud,
       strengthPill,
       strengthMark,
+      itemMark,
       lastHp: b.hp,
       lastHealFlash: false,
       lastStrengthTier: 0,
@@ -1247,6 +1251,10 @@ export class ArenaScene extends Phaser.Scene {
       b.isBoss ? `👑 BOSS +${b.bossRewardKills ?? 10}☠` : `💪${score}`
     );
     view.strengthMark.setColor(b.isBoss ? THEME_HEX.gold : accentHex);
+    const eq = b.equippedItem;
+    view.itemMark.setVisible(!!eq);
+    if (eq) view.itemMark.setText(eq.category === 'weapon' ? `${eq.icon} ${eq.name} ${eq.ammo ?? '—'}${eq.reloadAt && eq.reloadAt > Date.now() ? ' 🔄' : ''}` : `${eq.icon} ${eq.name}`);
+    view.itemMark.setY(-b.radius - (b.isKing ? 92 : 76));
     if (needsPillRedraw) {
       this.drawStrengthPill(view.strengthPill, view.strengthMark, tier);
       view.lastStrengthRadius = b.radius;
