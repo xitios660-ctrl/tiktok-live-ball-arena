@@ -508,7 +508,7 @@ try {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Personal LIKE combo: 50/100/200/500/1000 + reset/repeat                    */
+/* Personal LIKE combo: exact 50/100/200/500...1000 tiers + reset/repeat       */
 /* -------------------------------------------------------------------------- */
 
 const likeGame = new GameLoop('production', 300);
@@ -540,27 +540,43 @@ try {
   likeGame.handleLikes(user, 50);
   b = getBall(likeGame, user.userId);
   assert(b.hp === 50, '100 likes must add 20 HP');
-  assert((b.hitPower ?? 0) === 1, '100 likes must add +1 power');
+  assert((b.hitPower ?? 0) === 0, '100 likes must not add strength');
 
   likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === 100, '150 likes heal 10 and 200 likes heal 40, capped at max HP');
-  assert((b.hitPower ?? 0) === 3, '200 likes must add +2 additional power');
+  assert(b.hp === 90, '200 likes must add 40 HP');
+  assert((b.hitPower ?? 0) === 0, '200 likes must not add strength');
 
   likeGame.handleLikes(user, 300);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === b.maxHp, '500 likes must restore 100% HP');
-  assert((b.hitPower ?? 0) === 13, '500 likes must add +10 power');
-  assert((b.titanStacks ?? 0) === 1, '500 likes must grant one Capybara stack');
+  assert(b.hp === b.maxHp, '500 likes must add 40 HP, capped at normal max HP');
+  assert((b.hitPower ?? 0) === 2, '500 likes must add +2 strength');
+  assert((b.titanStacks ?? 0) === 0, '500 likes must not grant Capybara');
+
+  likeGame.handleLikes(user, 100);
+  b = getBall(likeGame, user.userId);
+  assert(b.hp === b.maxHp, '600 likes must add 50 HP, capped at max');
+  assert((b.hitPower ?? 0) === 5, '600 likes must add +3 strength');
+
+  likeGame.handleLikes(user, 100);
+  b = getBall(likeGame, user.userId);
+  assert(b.hp === b.maxHp, '700 likes must add 50 HP, capped at max');
+  assert((b.hitPower ?? 0) === 9, '700 likes must add +4 additional strength');
+
+  likeGame.handleLikes(user, 100);
+  b = getBall(likeGame, user.userId);
+  assert((b.titanStacks ?? 0) === 1, '800 likes must grant one Capybara');
   assert(
     b.buffs?.includes('capybara_titan'),
-    '500 likes did not activate Capybara/Titan'
+    '800 likes did not activate Capybara/Titan'
   );
 
-  likeGame.handleLikes(user, 500);
+  likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === b.maxHp, '1000 likes must restore 100% HP');
-  assert((b.hitPower ?? 0) === 28, '1000 likes must add +15 additional power');
+  assert((b.titanStacks ?? 0) === 2, '900 likes must grant Capybara x2');
+
+  likeGame.handleLikes(user, 100);
+  b = getBall(likeGame, user.userId);
   assert((b.titanStacks ?? 0) === 3, '1000 likes must grant Capybara x3');
   assert(
     b.buffs?.includes('capybara_titan'),
@@ -586,7 +602,7 @@ try {
   assert(combo.count === 1000, 'previous combo object unexpectedly mutated');
   assert(internals.personalLikeCombos.get(user.userId)?.count === 50,
     'idle pause did not start a fresh like combo');
-  assert((getBall(likeGame, user.userId).hitPower ?? 0) === 28,
+  assert((getBall(likeGame, user.userId).hitPower ?? 0) === 9,
     'fresh 50-like combo should heal only, not add strength');
   const other = { userId: 'other-viewer', username: 'other_viewer' };
   likeGame.handleLiveEvent(commentEvent(other));

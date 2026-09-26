@@ -123,7 +123,7 @@ export class GameLoop {
   private hitPowerCooldown = new Map<string, number>();
   /**
    * Per-viewer like streaks. A short inactivity window starts a fresh combo,
-   * so the same viewer can earn the 50/100/150... rewards again in one round.
+   * so the same viewer can earn the announced milestones again in one round.
    */
   private personalLikeCombos = new Map<
     string,
@@ -509,7 +509,7 @@ export class GameLoop {
       if (milestone.capybaraStacks > 0) {
         const until = milestone.capybaraUntilRoundEnd
           ? now + Math.max(2_000, (this.state.remainingSec + 2) * 1_000)
-          : now + TITAN_DURATION_MS;
+          : now + (milestone.capybaraDurationMs || TITAN_DURATION_MS);
 
         let stacks = ball.titanStacks;
         // Always call at least once so an existing x3 stack gets its timer refreshed.

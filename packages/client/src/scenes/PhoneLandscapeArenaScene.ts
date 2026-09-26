@@ -230,7 +230,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .text(
         0,
         0,
-        '💬 COMENTE PARA ENTRAR OU RENASCER  •  ❤️ COMBO REINICIA APÓS 10s SEM LIKE\n50: +10 vida  •  100: +20 vida / +1 força  •  150: +10 vida  •  200: +40 vida / +2 força\n500: vida cheia / +10 força / 🦫  •  1000: vida cheia / +15 força / 🦫×3 até o fim',
+        '💬 COMENTE PARA ENTRAR OU RENASCER  •  ❤️ COMBO REINICIA APÓS 10s SEM LIKE\n50: +10 vida  •  100: +20 vida  •  200: +40 vida\n500: +40 vida / +2 força  •  600: +50 vida / +3 força  •  700: +50 vida / +4 força\n800: +40 vida / 🦫×1 por 30s  •  900: 🦫×2 por 30s  •  1000: 🦫×3 por 1 min',
         {
           fontFamily: FONT_ACCENT,
           fontSize: '16px',

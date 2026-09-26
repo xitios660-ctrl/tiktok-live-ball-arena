@@ -571,24 +571,23 @@ export const LIKE_PERSONAL_HEAL = 20;
 export const LIKE_PERSONAL_STRENGTH = 1;
 /** A new personal like combo starts after this much inactivity. */
 export const LIKE_COMBO_RESET_MS = 10_000;
+export const LIKE_CAPYBARA_DURATION_MS = 30_000;
 
 /** Personal rewards repeat on each combo; a combo resets after inactivity. */
 const SPECIAL_LIKE_MILESTONES = [
-  { likes: 50, heal: 10, strength: 0, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
-  { likes: 100, heal: 20, strength: 1, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
-  { likes: 200, heal: 40, strength: 2, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false },
-  { likes: 500, heal: 0, strength: 10, fullHeal: true, capybaraStacks: 1, capybaraUntilRoundEnd: false },
-  { likes: 1000, heal: 0, strength: 15, fullHeal: true, capybaraStacks: 3, capybaraUntilRoundEnd: true },
+  { likes: 50, heal: 10, strength: 0, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false, capybaraDurationMs: 0 },
+  { likes: 100, heal: 20, strength: 0, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false, capybaraDurationMs: 0 },
+  { likes: 200, heal: 40, strength: 0, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false, capybaraDurationMs: 0 },
+  { likes: 500, heal: 40, strength: 2, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false, capybaraDurationMs: 0 },
+  { likes: 600, heal: 50, strength: 3, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false, capybaraDurationMs: 0 },
+  { likes: 700, heal: 50, strength: 4, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false, capybaraDurationMs: 0 },
+  { likes: 800, heal: 40, strength: 0, fullHeal: false, capybaraStacks: 1, capybaraUntilRoundEnd: false, capybaraDurationMs: LIKE_CAPYBARA_DURATION_MS },
+  { likes: 900, heal: 0, strength: 0, fullHeal: false, capybaraStacks: 2, capybaraUntilRoundEnd: false, capybaraDurationMs: LIKE_CAPYBARA_DURATION_MS },
+  { likes: 1000, heal: 0, strength: 0, fullHeal: false, capybaraStacks: 3, capybaraUntilRoundEnd: true, capybaraDurationMs: 0 },
 ] as const;
 
-/** Every intermediate 50 likes heals 10 HP; special tiers retain their rewards. */
-export const LIKE_PERSONAL_MILESTONES = Array.from({ length: 20 }, (_, i) => {
-  const likes = (i + 1) * 50;
-  return SPECIAL_LIKE_MILESTONES.find((tier) => tier.likes === likes) ?? {
-    likes, heal: 10, strength: 0, fullHeal: false,
-    capybaraStacks: 0, capybaraUntilRoundEnd: false,
-  };
-});
+/** Only the announced thresholds pay; unlisted combo totals do not grant a reward. */
+export const LIKE_PERSONAL_MILESTONES = SPECIAL_LIKE_MILESTONES;
 
 /** Random/admin heal-rain amount. Live likes no longer trigger a global reward. */
 export const HEAL_RAIN_HP = 10;
