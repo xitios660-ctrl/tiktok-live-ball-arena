@@ -40,10 +40,18 @@ let pirateRuntimePatched = false;
 
 /** Resolve o pacote ESM sem depender do campo exports em require.resolve(). */
 function resolvePirateDist(): string {
-  const candidates = [
-    path.resolve(process.cwd(), 'node_modules/piratetok-live-js/dist'),
+  const candidates: string[] = [];
+  let cursor = process.cwd();
+  while (true) {
+    candidates.push(path.join(cursor, 'node_modules/piratetok-live-js/dist'));
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  candidates.push(
     path.resolve(process.cwd(), 'packages/server/node_modules/piratetok-live-js/dist'),
-  ];
+    path.resolve(process.cwd(), '../../node_modules/piratetok-live-js/dist'),
+  );
   for (const candidate of candidates) {
     if (fs.existsSync(path.join(candidate, 'index.js'))) return candidate;
   }
