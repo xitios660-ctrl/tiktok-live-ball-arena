@@ -129,14 +129,14 @@ Eventos do modo DEMO são **falsos / simulados**. Não há conexão TikTok até 
 - Loja pública: `/shop` (sem senha), com @ normalizado, saldo, catálogo, compra idempotente e ledger resumido.
 - O mesmo @ é a identidade canônica do saldo; o userId TikTok é mantido apenas para auditoria.
 - Catálogo inicial: consulte a tabela de balanceamento abaixo; itens legados foram desativados por migração idempotente.
-- Compras ficam no inventário até o participante comentar `/compra` na partida; o comando ativa de uma vez todos os itens vinculados disponíveis. Armas ativas auto-miram; o vínculo é de 3 minutos fixos e, após esse prazo, ao morrer, cada item pode cair e ser recolhido por outro jogador, que deve comentar `/compra` para ativá-lo.
+- Compras ficam no inventário até o participante comentar `/compra` na partida; o comando ativa de uma vez todos os itens vinculados disponíveis. Armas ativas auto-miram; o vínculo é de 3 minutos fixos e, após esse prazo, ao morrer, cada item pode cair e ser recolhido por outro jogador — a arma recolhida fica ativa imediatamente, sem comentário.
 - Produção exige `DATABASE_URL` Postgres. Sem ela, o servidor usa fallback local apenas para desenvolvimento e registra aviso; no Render free esse arquivo é efêmero.
 - Admin protegido: `/admin/economy/summary`, `/admin/economy/player` e `/admin/economy/adjust` (motivo e operationKey obrigatórios).
 
 ## Economia e combate 2026-09
 - A loja `/shop` recebe o **username do TikTok** (com ou sem `@`), não o nome de exibição; a normalização é a mesma do participante.
 - **Vida Tripla** custa 180 kills e fica `pending_entry`: na primeira entrada do comprador em uma nova rodada consome o item e aplica 3x HP base. Não cai, não passa para outro jogador e não altera respawn/multiplicadores posteriores.
-- Armas são vinculadas por 3 minutos; após expirar, a morte do portador cria drops coletáveis. O coletor torna-se o novo portador e deve comentar `/compra`; o comando ativa em conjunto todas as compras disponíveis. Munição, recarga, cooldown, dano, explosões e minas são autoritativos.
+- Armas são vinculadas por 3 minutos; após expirar, a morte do portador cria drops coletáveis. A arma recolhida passa imediatamente ao novo portador e fica pronta para uso. `/compra` ativa em conjunto as compras do próprio participante que ainda não foram ativadas. Munição, recarga, cooldown, dano, explosões e minas são autoritativos.
 - O Boss gigante e evasivo não causa dano de colisão. A cada 3,2s ele dispara um raio global de 10 dano em todos os jogadores vivos, sem lentidão; derrotá-lo concede +15 de força.
 
 | Item | Preço | Dano | Alcance | Cooldown | Munição / recarga | Área | Função |

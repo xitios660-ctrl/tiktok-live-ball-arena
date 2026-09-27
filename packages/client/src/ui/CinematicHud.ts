@@ -153,7 +153,7 @@ export function createBottomCtaStrip(
     '💬 200 HP base · +1 HP por like, sem limite · likes individuais',
     '🎁 Presentes mantêm os poderes e disparam armas proporcionais',
     '500–700 likes: força · Capivara por likes (x1–3) dura 20s',
-    '🛒 Itens da loja: comente /compra para ativar todas as compras',
+    '🛒 Compras próprias: /compra · arma recolhida ativa na hora',
     'BOSS gigante foge: raio global de 10 dano, sem lentidão · +15 força',
   ].join('\n'), {
     fontFamily: FONT, fontSize: '20px', color: THEME_HEX.light,

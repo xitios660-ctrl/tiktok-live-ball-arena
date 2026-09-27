@@ -1054,11 +1054,28 @@ export class GameLoop {
   private async processShopDrops(): Promise<void> {
     if (!this.economy || !this.shopDrops.size) return;
     for (const drop of [...this.shopDrops.values()]) {
-      const collector = this.physics.getAll().find(b => Math.hypot(b.x-drop.x,b.y-drop.y) <= b.radius + 32);
+      const collector = this.physics.getAll().find(b =>
+        !isBotUser({ userId:b.userId, username:b.username }) && Math.hypot(b.x-drop.x,b.y-drop.y) <= b.radius + 32
+      );
       if (!collector) continue;
       this.shopDrops.delete(drop.id);
       await this.economy.markPickedUp(drop.id, collector.username);
-      this.pushCombat({ type:'announce', kind:'pickup', message:`${drop.icon} @${collector.username} pegou ${drop.name}! Comente /compra para ativar seus itens da loja.`, userId:collector.userId, username:collector.username, timestamp:Date.now() });
+      const item = (await this.economy.inventory(collector.username)).find((candidate) =>
+        candidate.id === drop.id && candidate.status === 'bound' && normalizeTikTokHandle(candidate.holderKey) === normalizeTikTokHandle(collector.username)
+      );
+      if (item) {
+        const catalog = await this.economy.getCatalogItem(item.slug);
+        if (catalog?.category === 'weapon') {
+          this.catalogCache.set(item.slug, catalog);
+          const activeItems = this.equipped.get(collector.userId) || [];
+          if (!activeItems.some((active) => active.id === item.id)) {
+            this.equipped.set(collector.userId, [...activeItems, item]);
+            // A collected weapon becomes usable immediately with a fresh ready magazine.
+            this.weaponStates.set(item.id, { ammo: catalog.ammo, reloadAt: 0, lastUseAt: 0 });
+          }
+        }
+      }
+      this.pushCombat({ type:'announce', kind:'pickup', message:`${drop.icon} @${collector.username} pegou ${drop.name}! Item ativo imediatamente.`, userId:collector.userId, username:collector.username, timestamp:Date.now() });
       this.emitSnapshot();
     }
   }
