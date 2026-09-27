@@ -98,8 +98,8 @@ docs/             OBS.md + integração TikTok
 ## Likes individuais e Boss
 
 - Cada jogador começa com 200 HP; a cada like pessoal ganha +1 no HP atual e no máximo, sem limite. O total de likes aparece sobre sua bola e o bônus permanece durante a rodada, inclusive após renascer.
-- O combo de poderes continua individual: os marcos de cura/força/Capivara são preservados e o combo recomeça após 10s sem likes. O reset do combo não apaga likes nem HP conquistados.
-- O Boss surge uma vez por rodada como uma bola gigante, com 5.000 HP, fuga ativa e sem dano de colisão. Ele apenas dispara um raio global periódico: 10 dano em cada jogador vivo e lentidão breve.
+- O combo de poderes continua individual: os marcos de cura/força/Capivara são preservados e o combo recomeça após 10s sem likes. O reset do combo não apaga likes nem HP conquistados. A Capivara concedida por likes dura 20s, inclusive no marco de 1000 likes.
+- O Boss surge uma vez por rodada como uma bola gigante, com 5.000 HP, fuga ativa e sem dano de colisão. Ele apenas dispara um raio global periódico: 10 dano em cada jogador vivo, sem lentidão.
 - Quem derrota o Boss recebe +15 de força; a recompensa não vira kills pagos na economia.
 
 ## Presentes (hierarquia — beneficia o SENDER)
@@ -129,15 +129,15 @@ Eventos do modo DEMO são **falsos / simulados**. Não há conexão TikTok até 
 - Loja pública: `/shop` (sem senha), com @ normalizado, saldo, catálogo, compra idempotente e ledger resumido.
 - O mesmo @ é a identidade canônica do saldo; o userId TikTok é mantido apenas para auditoria.
 - Catálogo inicial: consulte a tabela de balanceamento abaixo; itens legados foram desativados por migração idempotente.
-- Se o comprador já estiver na arena, a arma é equipada automaticamente; caso contrário, entre e comente `!usar <slug>`. Armas passam a auto-targetar; o vínculo é de 3 minutos fixos e, após expirar, ao morrer, cai e pode ser recolhido por outra bola.
+- Compras ficam no inventário até o participante comentar `/compra` na partida; o comando ativa de uma vez todos os itens vinculados disponíveis. Armas ativas auto-miram; o vínculo é de 3 minutos fixos e, após esse prazo, ao morrer, cada item pode cair e ser recolhido por outro jogador, que deve comentar `/compra` para ativá-lo.
 - Produção exige `DATABASE_URL` Postgres. Sem ela, o servidor usa fallback local apenas para desenvolvimento e registra aviso; no Render free esse arquivo é efêmero.
 - Admin protegido: `/admin/economy/summary`, `/admin/economy/player` e `/admin/economy/adjust` (motivo e operationKey obrigatórios).
 
 ## Economia e combate 2026-09
 - A loja `/shop` recebe o **username do TikTok** (com ou sem `@`), não o nome de exibição; a normalização é a mesma do participante.
 - **Vida Tripla** custa 180 kills e fica `pending_entry`: na primeira entrada do comprador em uma nova rodada consome o item e aplica 3x HP base. Não cai, não passa para outro jogador e não altera respawn/multiplicadores posteriores.
-- Armas são vinculadas por 3 minutos; após expirar, a morte do portador cria drop coletável. O coletor torna-se o novo portador e a regra de 3 minutos reinicia conforme o fluxo existente. Após equipar com `!usar <slug>`, o servidor faz auto-target no inimigo mais próximo; munição, recarga, cooldown, dano, explosões e minas são autoritativos.
-- O Boss gigante e evasivo não causa dano de colisão. A cada 3,2s ele dispara um raio global de 10 dano em todos os jogadores vivos, com lentidão breve; derrotá-lo concede +15 de força.
+- Armas são vinculadas por 3 minutos; após expirar, a morte do portador cria drops coletáveis. O coletor torna-se o novo portador e deve comentar `/compra`; o comando ativa em conjunto todas as compras disponíveis. Munição, recarga, cooldown, dano, explosões e minas são autoritativos.
+- O Boss gigante e evasivo não causa dano de colisão. A cada 3,2s ele dispara um raio global de 10 dano em todos os jogadores vivos, sem lentidão; derrotá-lo concede +15 de força.
 
 | Item | Preço | Dano | Alcance | Cooldown | Munição / recarga | Área | Função |
 |---|---:|---:|---:|---:|---:|---:|---|

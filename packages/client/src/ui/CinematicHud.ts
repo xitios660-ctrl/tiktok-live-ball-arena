@@ -150,14 +150,14 @@ export function createBottomCtaStrip(
   bg.lineStyle(2, THEME.gold, 0.65);
   bg.strokeRoundedRect(-495, -90, 990, 124, 16);
   const label = scene.add.text(0, -28, [
-    '💬 200 HP BASE · +1 HP atual/máximo por like (sem limite)',
-    '❤️ Likes individuais aparecem na bola · combo reinicia após 10s',
-    '🎁 Cada presente mantém o poder e dispara uma arma proporcional',
-    '500–700 likes: força • 800–1000: 🦫 até x3 · Boss vale +15 força',
-    'Likes são individuais • BOSS gigante foge, solta raios globais e vale +15 força',
+    '💬 200 HP base · +1 HP por like, sem limite · likes individuais',
+    '🎁 Presentes mantêm os poderes e disparam armas proporcionais',
+    '500–700 likes: força · Capivara por likes (x1–3) dura 20s',
+    '🛒 Itens da loja: comente /compra para ativar todas as compras',
+    'BOSS gigante foge: raio global de 10 dano, sem lentidão · +15 força',
   ].join('\n'), {
-    fontFamily: FONT, fontSize: '23px', color: THEME_HEX.light,
-    align: 'center', lineSpacing: 5, wordWrap: { width: 950 },
+    fontFamily: FONT, fontSize: '20px', color: THEME_HEX.light,
+    align: 'center', lineSpacing: 4, wordWrap: { width: 950 },
   }).setOrigin(0.5);
   root.add([glow, bg, label]);
   return {

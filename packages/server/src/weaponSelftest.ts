@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import express from 'express';
 import { EconomyStore, STORE_CATALOG } from './economy/EconomyStore';
 import { GameLoop } from './game/GameLoop';
 import { PhysicsWorld } from './game/PhysicsWorld';
+import { shopApiRouter } from './routes/shopApi';
 import { CHATGPT_BOSS_REWARD_STRENGTH, CHATGPT_BOSS_USER_ID } from './game/ChatGPTBoss';
 import type { ArenaUser } from '@arena/shared';
 
@@ -33,45 +35,90 @@ async function main() {
   await wait(40);
   const physics = (game as any).physics as PhysicsWorld;
   const a = physics.getBall('attacker')!; const t = physics.getBall('target')!;
-  const autoBuy = await store.purchase('test.user', 'pistola', 'live-auto-buy');
-  assert(autoBuy.ok && autoBuy.item, 'live purchase fixture failed');
-  await game.syncPurchasedItem('test.user', autoBuy.item!);
-  assert(game.getSnapshot().balls.find((b) => b.userId === 'attacker')?.equippedItem?.slug === 'pistola', 'live purchase was not equipped immediately');
   a.x=300; a.y=300; t.x=350; t.y=300;
   const weaponSlugs = ['pistola','metralhadora','12-escopeta','sniper','bazuca','mina-terrestre'];
-  for (const slug of weaponSlugs) {
-    const item = slug === 'pistola' ? autoBuy : await store.purchase('test.user', slug, `buy-${slug}`);
-    assert(item.ok && item.item, `purchase failed ${slug}`);
-    if (slug !== 'pistola') {
-      game.handleLiveEvent({ type:'comment', user:attacker, comment:`!usar ${slug}`, timestamp:Date.now() });
+  const purchased = [] as Array<{slug:string;item:NonNullable<Awaited<ReturnType<typeof store.purchase>>['item']>}>;
+  const app = express(); app.use(express.json()); app.use(shopApiRouter(store));
+  const apiServer = app.listen(0);
+  await new Promise<void>((resolve) => apiServer.once('listening', resolve));
+  const address = apiServer.address();
+  assert(address && typeof address === 'object', 'shop API did not bind a local test port');
+  const buyThroughApi = async (slug:string, operationKey:string) => {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/shop/purchase`, {
+      method:'POST', headers:{'content-type':'application/json'},
+      body:JSON.stringify({username:'test.user',slug,operationKey}),
+    });
+    return await response.json() as {ok:boolean;item?:NonNullable<Awaited<ReturnType<typeof store.purchase>>['item']>};
+  };
+  for (const slug of [...weaponSlugs, 'dash-charge']) {
+    const result = await buyThroughApi(slug, `buy-${slug}`);
+    assert(result.ok && result.item, `purchase failed ${slug}`);
+    purchased.push({slug,item:result.item});
+  }
+  const lifeBuy = await buyThroughApi('vida-tripla', 'buy-life-for-next-entry');
+  assert(lifeBuy.ok && lifeBuy.item?.status === 'pending_entry', 'shop API did not retain Vida Tripla for the next entry');
+  const transferBuy = await buyThroughApi('pistola', 'buy-transfer-pistol');
+  assert(transferBuy.ok && transferBuy.item, 'shop API failed to create a transferable item');
+  await store.markDropped(transferBuy.item.id, 350, 300);
+  await store.markPickedUp(transferBuy.item.id, 'target_user');
+  assert((await store.inventory('target_user')).some((item) => item.id === transferBuy.item!.id && item.status === 'bound'), 'picked-up item was not bound to its new owner');
+  assert((game as any).equipped.get('attacker') === undefined, 'purchase activated equipment without /compra');
+  game.handleLiveEvent({ type:'comment', user:attacker, comment:'!usar pistola', timestamp:Date.now() });
+  assert((game as any).equipped.get('attacker') === undefined, 'legacy !usar bypassed the required /compra command');
+  game.handleLiveEvent({ type:'comment', user:target, comment:'/compra', timestamp:Date.now() });
+  assert((game as any).equipped.get('target') === undefined, 'a player activated another user\'s store inventory');
+  game.handleLiveEvent({ type:'comment', user:target, comment:'/compra', timestamp:Date.now() });
+  await wait(20);
+  const targetEquipment = game.getSnapshot().balls.find((b) => b.userId === 'target')?.equippedItems || [];
+  assert(targetEquipment.length === 1 && targetEquipment[0].slug === 'pistola', 'new holder could not activate a collected item with /compra');
+  game.handleLiveEvent({ type:'comment', user:attacker, comment:'/compra', timestamp:Date.now() });
+  await wait(50);
+  const activated = game.getSnapshot().balls.find((b) => b.userId === 'attacker')?.equippedItems || [];
+  assert(activated.length === weaponSlugs.length, `/compra did not activate every purchased weapon (${activated.length}/${weaponSlugs.length})`);
+  assert(physics.getBall('attacker')!.dashUntil > Date.now(), '/compra did not activate the purchased dash consumable');
+  assert((await store.inventory('test.user')).some((item) => item.id === lifeBuy.item!.id && item.status === 'pending_entry'), '/compra consumed Vida Tripla before the next entry');
+  game.handleLiveEvent({ type:'comment', user:attacker, comment:'/compra', timestamp:Date.now() });
+  await wait(20);
+  assert(game.getSnapshot().balls.find((b) => b.userId === 'attacker')?.equippedItems?.length === weaponSlugs.length, 'repeating /compra duplicated already active weapons');
+  const states = (game as any).weaponStates as Map<string, {lastUseAt:number; ammo:number; reloadAt:number}>;
+  for (const {slug,item} of purchased.filter((row) => weaponSlugs.includes(row.slug))) {
+    const catalogItem = catalog.find(i => i.slug === slug)!;
+    for (const other of purchased.filter((row) => weaponSlugs.includes(row.slug))) {
+      const st = states.get(other.item.id)!;
+      st.lastUseAt = Date.now() + catalogItem.cooldownMs + 1;
+      st.reloadAt = 0;
+      st.ammo = catalog.find(i => i.slug === other.slug)!.ammo;
     }
-    await wait(35);
+    const state = states.get(item.id)!;
+    state.lastUseAt = 0; state.reloadAt = 0; state.ammo = catalogItem.ammo;
+    t.hp = t.maxHp;
     const before = t.hp;
-    const cache = (game as any).catalogCache as Map<string, unknown>;
-    assert(cache.has(slug), `equip cache missing ${slug}`);
-    const states = (game as any).weaponStates as Map<string, {lastUseAt:number; ammo:number; reloadAt:number}>;
-    const st = states.get(item.item!.id); if (st) { st.lastUseAt = 0; st.reloadAt = 0; st.ammo = catalog.find(i => i.slug === slug)!.ammo; }
+    state.lastUseAt = 0;
     if (slug === 'mina-terrestre') {
       (game as any).processAutoWeapons();
       (game as any).processLandMines();
       t.x = a.x; t.y = a.y;
       (game as any).processLandMines();
+      t.x = a.x + 50; t.y = a.y;
     } else {
       (game as any).processAutoWeapons();
     }
-    assert(t.hp < before, `${slug} auto-fire/area did not damage target`);
-    t.hp = t.maxHp;
+    assert(t.hp < before, `${slug} activated weapon did not damage target`);
   }
   game.destroy();
+  await new Promise<void>((resolve, reject) => apiServer.close((error) => error ? reject(error) : resolve()));
 
   const pw = new PhysicsWorld();
   pw.spawnOrNudge(user(CHATGPT_BOSS_USER_ID, 'boss')); pw.spawnOrNudge(user('foe', 'foe')); pw.spawnOrNudge(user('foe-2', 'foe_2'));
   const boss = pw.getBall(CHATGPT_BOSS_USER_ID)!; const foe = pw.getBall('foe')!; const foe2 = pw.getBall('foe-2')!;
   boss.x=100;boss.y=100;foe.x=140;foe.y=100;foe2.x=180;foe2.y=100;
   boss.spawnProtectedUntil = 0; foe.spawnProtectedUntil = 0; foe2.spawnProtectedUntil = 0;
+  foe.vx=120;foe.vy=40;foe2.vx=-80;foe2.vy=60;
+  const foeVelocity = [foe.vx, foe.vy]; const foe2Velocity = [foe2.vx, foe2.vy];
   const hp = foe.hp; const hp2 = foe2.hp; const zaps = pw.applyBossLightning(CHATGPT_BOSS_USER_ID);
   assert(zaps.length === 2 && foe.hp === hp - 10 && foe2.hp === hp2 - 10, 'boss global lightning did not deal 10 damage to every player');
-  assert(foe.slowUntil > Date.now() && foe2.slowUntil > Date.now(), 'boss lightning slow missing');
+  assert(foe.slowUntil === 0 && foe2.slowUntil === 0, 'boss lightning applied a slow effect');
+  assert(foe.vx === foeVelocity[0] && foe.vy === foeVelocity[1] && foe2.vx === foe2Velocity[0] && foe2.vy === foe2Velocity[1], 'boss lightning changed player velocity');
 
   const forceWorld = new PhysicsWorld();
   forceWorld.spawnOrNudge(user('force-a', 'force_a')); forceWorld.spawnOrNudge(user('force-b', 'force_b'));
@@ -104,6 +151,6 @@ async function main() {
   rewardGame.destroy();
 
   fs.rmSync(file, { force:true });
-  console.log('[WEAPON SELFTEST] PASS username normalization + Vida Tripla one-shot + live auto-equip purchase + all weapons auto-target/area/mine + Boss spawn/reward/global lightning + direct force damage');
+  console.log('[WEAPON SELFTEST] PASS username normalization + Vida Tripla one-shot + no auto-use on purchase + /compra multi-item activation + all weapons auto-target/area/mine + Boss spawn/reward/damage-only lightning + direct force damage');
 }
 main().catch(e => { console.error(e); process.exit(1); });

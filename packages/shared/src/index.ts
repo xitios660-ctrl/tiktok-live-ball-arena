@@ -181,6 +181,8 @@ export interface BallState {
   /** @deprecated kept for older overlay payloads; Boss reward is now strength. */
   bossRewardKills?: number;
   equippedItem?: { slug: string; icon: string; name: string; boundUntil: number; ammo?: number; reloadAt?: number; category?: 'weapon' | 'consumable' };
+  /** All currently activated store items; equippedItem remains as the first-item compatibility field. */
+  equippedItems?: Array<{ slug: string; icon: string; name: string; boundUntil: number; ammo?: number; reloadAt?: number; category?: 'weapon' | 'consumable' }>;
 }
 
 export interface PlayerStats {
@@ -581,7 +583,7 @@ export const LIKE_PERSONAL_HEAL = 20;
 export const LIKE_PERSONAL_STRENGTH = 1;
 /** A new personal like combo starts after this much inactivity. */
 export const LIKE_COMBO_RESET_MS = 10_000;
-export const LIKE_CAPYBARA_DURATION_MS = 30_000;
+export const LIKE_CAPYBARA_DURATION_MS = 20_000;
 
 /** Personal rewards repeat on each combo; a combo resets after inactivity. */
 const SPECIAL_LIKE_MILESTONES = [
@@ -593,7 +595,7 @@ const SPECIAL_LIKE_MILESTONES = [
   { likes: 700, heal: 50, strength: 4, fullHeal: false, capybaraStacks: 0, capybaraUntilRoundEnd: false, capybaraDurationMs: 0 },
   { likes: 800, heal: 40, strength: 0, fullHeal: false, capybaraStacks: 1, capybaraUntilRoundEnd: false, capybaraDurationMs: LIKE_CAPYBARA_DURATION_MS },
   { likes: 900, heal: 0, strength: 0, fullHeal: false, capybaraStacks: 2, capybaraUntilRoundEnd: false, capybaraDurationMs: LIKE_CAPYBARA_DURATION_MS },
-  { likes: 1000, heal: 0, strength: 0, fullHeal: false, capybaraStacks: 3, capybaraUntilRoundEnd: true, capybaraDurationMs: 0 },
+  { likes: 1000, heal: 0, strength: 0, fullHeal: false, capybaraStacks: 3, capybaraUntilRoundEnd: false, capybaraDurationMs: LIKE_CAPYBARA_DURATION_MS },
 ] as const;
 
 /** Only the announced thresholds pay; unlisted combo totals do not grant a reward. */

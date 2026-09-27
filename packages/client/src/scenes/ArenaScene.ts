@@ -1262,9 +1262,14 @@ export class ArenaScene extends Phaser.Scene {
       b.isBoss ? `👑 BOSS +${b.bossRewardStrength ?? 15} FORÇA` : `💪${score}`
     );
     view.strengthMark.setColor(b.isBoss ? THEME_HEX.gold : accentHex);
-    const eq = b.equippedItem;
-    view.itemMark.setVisible(!!eq);
-    if (eq) view.itemMark.setText(eq.category === 'weapon' ? `${eq.icon} ${eq.name} ${eq.ammo ?? '—'}${eq.reloadAt && eq.reloadAt > Date.now() ? ' 🔄' : ''}` : `${eq.icon} ${eq.name}`);
+    const equipped = b.equippedItems?.length ? b.equippedItems : b.equippedItem ? [b.equippedItem] : [];
+    view.itemMark.setVisible(equipped.length > 0);
+    if (equipped.length) {
+      const compact = equipped.slice(0, 3).map((item) => `${item.icon}${item.ammo == null ? '' : item.ammo}`).join(' ');
+      const more = equipped.length > 3 ? ` +${equipped.length - 3}` : '';
+      view.itemMark.setText(`🛒 ${equipped.length} ${compact}${more}`);
+      view.itemMark.setFontSize(equipped.length > 3 ? 9 : 11);
+    }
     view.itemMark.setY(-b.radius - (b.isKing ? 92 : 76));
     if (needsPillRedraw) {
       this.drawStrengthPill(view.strengthPill, view.strengthMark, tier);

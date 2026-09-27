@@ -43,6 +43,7 @@ interface LandscapeBallView {
   likesMark: Phaser.GameObjects.Text;
   strength: Phaser.GameObjects.Text;
   buffs: Phaser.GameObjects.Text;
+  items: Phaser.GameObjects.Text;
   lastHp: number;
 }
 
@@ -659,7 +660,12 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .text(0, b.radius + 43, '', { fontSize: '18px' })
       .setOrigin(0.5, 0);
 
-    root.add([aura, ring, body, cinematicSkin, shine, initials, crown, hpBg, hpFg, name, likesMark, strength, buffs]);
+    const items = this.add
+      .text(0, b.radius + 65, '', { fontFamily: FONT_ACCENT, fontSize: '11px', color: THEME_HEX.electricCyan, stroke: '#000000', strokeThickness: 3 })
+      .setOrigin(0.5, 0)
+      .setVisible(false);
+
+    root.add([aura, ring, body, cinematicSkin, shine, initials, crown, hpBg, hpFg, name, likesMark, strength, buffs, items]);
     root.setScale(0.15);
     this.tweens.add({ targets: root, scale: 1, duration: 260, ease: 'Back.Out' });
 
@@ -678,6 +684,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       likesMark,
       strength,
       buffs,
+      items,
       lastHp: b.hp,
     };
     if (b.avatarUrl && !b.isBoss) this.tryLoadAvatar(b, view);
@@ -751,6 +758,9 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     if (buffs.includes('magnet_pulse')) icons.push('🧲');
     if (buffs.includes('dash_burst')) icons.push('🚀');
     view.buffs.setPosition(0, r + 53).setText(icons.join(''));
+    const equipped = b.equippedItems?.length ? b.equippedItems : b.equippedItem ? [b.equippedItem] : [];
+    const weaponIcons = equipped.slice(0, 3).map((item) => item.icon).join('');
+    view.items.setPosition(0, r + 70).setText(`🛒${equipped.length} ${weaponIcons}${equipped.length > 3 ? `+${equipped.length - 3}` : ''}`).setVisible(equipped.length > 0);
 
     const stroke = b.isBoss
       ? THEME.gold

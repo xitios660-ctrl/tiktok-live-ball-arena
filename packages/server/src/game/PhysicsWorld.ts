@@ -1011,9 +1011,6 @@ export class PhysicsWorld {
     const out: DamageApplication[] = [];
     for (const target of this.balls.values()) {
       if (target.userId === casterId || isProtected(target, now)) continue;
-      target.vx *= LIGHTNING_SLOW_FACTOR;
-      target.vy *= LIGHTNING_SLOW_FACTOR;
-      target.slowUntil = Math.max(target.slowUntil, now + LIGHTNING_SLOW_MS);
       target.hitFlashTicks = 10;
       out.push(this.dealDamage(target, damage, src, now));
     }

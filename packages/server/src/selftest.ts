@@ -1,7 +1,7 @@
 process.env.AUTO_BOT_ENABLED = 'false';
 process.env.CHATGPT_BOSS_ENABLED = 'false';
 
-import { DEFAULT_BALL_HP, LIKE_COMBO_RESET_MS, type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
+import { DEFAULT_BALL_HP, LIKE_CAPYBARA_DURATION_MS, LIKE_COMBO_RESET_MS, type ArenaLiveEvent, type ArenaUser } from '@arena/shared';
 import { EventDedupe } from './tiktok/eventDedupe';
 import { GameLoop } from './game/GameLoop';
 import {
@@ -601,8 +601,8 @@ try {
   const internal = physics.getBall(user.userId);
   assert(internal, 'could not inspect Titan timer');
   assert(
-    internal.titanUntil > Date.now() + 60_000,
-    '1000-like Capybara x3 is not lasting toward the end of the round'
+    internal.titanUntil > Date.now() && internal.titanUntil <= Date.now() + LIKE_CAPYBARA_DURATION_MS,
+    '1000-like Capybara x3 should expire after the 20-second like reward duration'
   );
 
   const highLikeUser: ArenaUser = { userId: 'uncapped-likes', username: 'uncapped_likes' };

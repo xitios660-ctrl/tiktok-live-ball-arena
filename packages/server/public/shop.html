@@ -53,7 +53,7 @@
     </div>
 
     <h1>Loja de Kills</h1>
-    <p class="sub">Compre Vida Tripla e armas usando os kills acumulados. A Vida Tripla entra somente na próxima entrada da rodada e começa com 3x a vida base. Se você já estiver na partida, a arma comprada é equipada automaticamente; caso contrário, entre e use <b>!usar &lt;slug&gt;</b>. O vínculo dura 3 minutos; depois a arma pode cair quando o portador morrer e ser coletada por outro jogador.</p>
+    <p class="sub">Compre Vida Tripla e armas usando os kills acumulados. A Vida Tripla entra somente na próxima entrada da rodada e começa com 3x a vida base. As compras ficam guardadas: durante a partida, comente <b>/compra</b> para ativar de uma vez todos os seus itens vinculados. O vínculo dura 3 minutos; depois a arma pode cair quando o portador morrer e ser coletada por outro jogador, que também deve comentar <b>/compra</b>.</p>
 
     <section class="card">
       <label class="field-label" for="user">@username do TikTok</label>
@@ -91,7 +91,7 @@
       <div id="ledger" class="ledger muted">—</div>
     </section>
 
-    <p class="foot">A loja usa o username do TikTok apenas como identificador e não comprova titularidade. Não compartilhe links de operação. As armas automáticas disparam em alvos próximos durante a rodada; a cadência mostrada é o intervalo entre tiros e não há tempo extra de recarga.</p>
+    <p class="foot">A loja usa o username do TikTok apenas como identificador e não comprova titularidade. Não compartilhe links de operação. Depois de ativadas com <b>/compra</b>, as armas auto-miram alvos próximos durante a rodada; a cadência mostrada é o intervalo entre tiros e não há tempo extra de recarga.</p>
   </main>
 
   <script>
@@ -161,7 +161,7 @@
       try {
         const data = await api('/api/shop/purchase', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ username, slug, operationKey:operationKey() }) });
         render(data);
-        msg(slug === 'vida-tripla' ? 'Compra confirmada: será consumida na próxima entrada.' : 'Compra confirmada. Se você já está na arena, foi equipada automaticamente; caso contrário, use: !usar ' + slug);
+        msg(slug === 'vida-tripla' ? 'Compra confirmada: será consumida na próxima entrada.' : 'Compra confirmada. Durante a partida, comente /compra para ativar todas as suas compras disponíveis.');
       } catch (error) { msg(error.message, true); }
     }
     loadCatalog().catch((error) => msg(error.message, true));
