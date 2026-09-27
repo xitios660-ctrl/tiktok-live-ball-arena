@@ -32,6 +32,7 @@ import {
   type HistoricalStats,
   type PickupAbilityKey,
   type ShopDropState,
+  type LandMineState,
 } from '@arena/shared';
 import { randomUUID } from 'crypto';
 import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
@@ -80,7 +81,7 @@ interface PlayerRecord {
   killsAgainst: Map<string, number>;
 }
 interface WeaponState { ammo: number; reloadAt: number; lastUseAt: number; }
-interface LandMineState { id: string; ownerId: string; x: number; y: number; damage: number; area: number; }
+const MAX_LAND_MINES_PER_PLAYER = 5;
 
 /**
  * Authoritative game loop — physics, HP, death, respawn-by-comment, revenge.
@@ -219,6 +220,7 @@ export class GameLoop {
       playerCount: this.physics.count,
       balls,
       pickups: this.pickups.toPublicStates(),
+      landMines: [...this.landMines.values()],
       shopDrops: [...this.shopDrops.values()],
       stats,
       top5,
@@ -721,6 +723,7 @@ export class GameLoop {
           type: 'ability_fx' as const,
           ability: profile.area > 0 ? 'weapon_explosion' as const : 'weapon_shot' as const,
           userId: event.user.userId,
+          weaponSlug: profile.id,
           x: sender.x,
           y: sender.y,
           targetId: target.victimId,
@@ -1088,12 +1091,12 @@ export class GameLoop {
 
   private processLandMines(): void {
     for (const [id, mine] of [...this.landMines]) {
-      const trigger = this.physics.getAll().find(b => b.userId !== mine.ownerId && Math.hypot(b.x-mine.x,b.y-mine.y) <= 34);
+      const trigger = this.physics.getAll().find(b => b.userId !== mine.ownerId && Math.hypot(b.x-mine.x,b.y-mine.y) <= b.radius + 14);
       if (!trigger) continue;
       this.landMines.delete(id);
       const damages = this.physics.applyAreaAt(mine.ownerId, mine.x, mine.y, mine.damage, mine.area);
       if (damages.length) this.processDamages(damages);
-      this.pushCombat({ type:'ability_fx', ability:'mine_trigger', userId:mine.ownerId, x:mine.x, y:mine.y, value:mine.area, targetId:trigger.userId, targetX:trigger.x, targetY:trigger.y, timestamp:Date.now() });
+      this.pushCombat({ type:'ability_fx', ability:'mine_trigger', weaponSlug:'mina-terrestre', userId:mine.ownerId, x:mine.x, y:mine.y, value:mine.area, targetId:trigger.userId, targetX:trigger.x, targetY:trigger.y, timestamp:Date.now() });
       this.pushCombat({ type:'announce', kind:'pickup', message:`💣 Mina de @${mine.ownerId} detonou perto de @${trigger.username}!`, userId:mine.ownerId, username:mine.ownerId, value:mine.damage, timestamp:Date.now() });
     }
   }
@@ -1141,9 +1144,14 @@ export class GameLoop {
         if (state.ammo <= 0) { if (state.reloadAt > now) continue; state.ammo = catalog.ammo; state.reloadAt = 0; }
         if (now - state.lastUseAt < catalog.cooldownMs) continue;
         if (catalog.slug === 'mina-terrestre') {
-          const mine: LandMineState = { id: randomUUID(), ownerId: userId, x: body.x, y: body.y, damage: catalog.damage, area: catalog.area };
+          const ownedMines = [...this.landMines.values()].filter((mine) => mine.ownerId === userId).sort((a, b) => a.plantedAt - b.plantedAt);
+          while (ownedMines.length >= MAX_LAND_MINES_PER_PLAYER) {
+            const oldest = ownedMines.shift();
+            if (oldest) this.landMines.delete(oldest.id);
+          }
+          const mine: LandMineState = { id: randomUUID(), ownerId: userId, x: body.x, y: body.y, damage: catalog.damage, area: catalog.area, plantedAt: now };
           this.landMines.set(mine.id, mine); state.ammo -= 1; state.lastUseAt = now; state.reloadAt = state.ammo === 0 ? now + catalog.reloadMs : 0; this.weaponStates.set(item.id, state);
-          this.pushCombat({ type:'ability_fx', ability:'mine_trigger', userId, x:body.x, y:body.y, value:catalog.area, timestamp:now });
+          this.pushCombat({ type:'ability_fx', ability:'mine_plant', weaponSlug:catalog.slug, userId, x:body.x, y:body.y, value:catalog.area, timestamp:now });
           continue;
         }
         const damages = catalog.area > 0 ? this.physics.applyAreaDamage(userId, catalog.damage, catalog.range, catalog.area) : (() => { const d = this.physics.applyRangedDamage(userId, catalog.damage, catalog.range); return d ? [d] : []; })();
@@ -1151,7 +1159,7 @@ export class GameLoop {
         this.processDamages(damages);
         state.ammo -= 1; state.lastUseAt = now; state.reloadAt = state.ammo === 0 ? now + catalog.reloadMs : 0; this.weaponStates.set(item.id, state);
         const first = damages[0];
-        this.pushCombat({ type:'ability_fx', ability:catalog.area > 0 ? 'weapon_explosion' : 'weapon_shot', userId, x:body.x, y:body.y, targetId:first.victimId, targetX:first.x, targetY:first.y, value:catalog.area || catalog.damage, timestamp:now });
+        this.pushCombat({ type:'ability_fx', ability:catalog.area > 0 ? 'weapon_explosion' : 'weapon_shot', weaponSlug:catalog.slug, userId, x:body.x, y:body.y, targetId:first.victimId, targetX:first.x, targetY:first.y, value:catalog.area || catalog.damage, timestamp:now });
       }
     }
   }

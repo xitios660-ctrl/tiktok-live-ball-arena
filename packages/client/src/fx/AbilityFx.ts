@@ -43,6 +43,9 @@ export function playAbilityFx(
     case 'weapon_shot':
       spawnWeaponShot(scene, event.x, event.y, event.targetX ?? event.x, event.targetY ?? event.y, budget);
       break;
+    case 'mine_plant':
+      spawnMinePlant(scene, event.x, event.y, budget);
+      break;
     case 'weapon_explosion':
     case 'mine_trigger':
       spawnWeaponExplosion(scene, event.x, event.y, event.value ?? 60, budget);
@@ -57,6 +60,30 @@ export function playAbilityFx(
       if (budget > 0.4) spawnSparks(scene, event.x, event.y, THEME.electricCyan, 6, budget);
       break;
   }
+}
+
+/** Small placement pulse; the loud blast is reserved for mine_trigger. */
+function spawnMinePlant(scene: Phaser.Scene, x: number, y: number, budget: FxBudget): void {
+  const ring = scene.add.circle(x, y, 15, THEME.electricCyan, 0)
+    .setStrokeStyle(2, THEME.electricCyan, 0.9)
+    .setDepth(68);
+  scene.tweens.add({
+    targets: ring,
+    scale: 1.65,
+    alpha: 0,
+    duration: 260,
+    ease: 'Cubic.easeOut',
+    onComplete: () => ring.destroy(),
+  });
+  const flash = scene.add.circle(x, y, 8, THEME.gold, 0.65).setDepth(69);
+  scene.tweens.add({
+    targets: flash,
+    scale: 1.7,
+    alpha: 0,
+    duration: 180,
+    onComplete: () => flash.destroy(),
+  });
+  if (budget >= 0.25) spawnSparks(scene, x, y, THEME.electricCyan, 4, budget);
 }
 
 function spawnWeaponShot(scene: Phaser.Scene, x: number, y: number, tx: number, ty: number, budget: FxBudget): void {

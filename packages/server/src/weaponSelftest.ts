@@ -119,10 +119,23 @@ async function main() {
     const before = t.hp;
     state.lastUseAt = 0;
     if (slug === 'mina-terrestre') {
+      const priorMineIds = new Set(game.getSnapshot().landMines.map((mine) => mine.id));
       (game as any).processAutoWeapons();
+      const planted = game.getSnapshot().landMines.find((mine) => mine.ownerId === 'attacker' && !priorMineIds.has(mine.id));
+      assert(planted, 'the newly armed mine was missing from the public arena snapshot');
+      const plantFx = ((game as any).recentCombat as Array<{type:string;ability?:string;weaponSlug?:string}>).some(
+        (event) => event.type === 'ability_fx' && event.ability === 'mine_plant' && event.weaponSlug === 'mina-terrestre',
+      );
+      assert(plantFx, 'the mine plant sound/animation event did not identify the weapon type');
       (game as any).processLandMines();
-      t.x = a.x; t.y = a.y;
+      assert(game.getSnapshot().landMines.some((mine) => mine.id === planted.id), 'a mine detonated before an enemy entered its trigger radius');
+      t.x = planted.x; t.y = planted.y;
       (game as any).processLandMines();
+      assert(!game.getSnapshot().landMines.some((mine) => mine.id === planted.id), 'the triggered mine remained visible after detonation');
+      const triggerFx = ((game as any).recentCombat as Array<{type:string;ability?:string;weaponSlug?:string}>).some(
+        (event) => event.type === 'ability_fx' && event.ability === 'mine_trigger' && event.weaponSlug === 'mina-terrestre',
+      );
+      assert(triggerFx, 'the mine did not emit a detonation event with its dedicated sound identifier');
       t.x = a.x + 50; t.y = a.y;
     } else {
       (game as any).processAutoWeapons();

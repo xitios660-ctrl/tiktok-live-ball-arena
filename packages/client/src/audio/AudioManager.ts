@@ -16,6 +16,8 @@ export type SfxKind =
   | 'speed_storm'
   | 'share';
 
+export type WeaponSfxPhase = 'shot' | 'mine_plant' | 'mine_trigger';
+
 type VolKey = 'master' | 'sfx' | 'music';
 
 /** Soft drone under BGM — not the main "música de fundo". */
@@ -605,6 +607,90 @@ export class AudioManager {
       }
     }
     this.beep(kind, opts?.intensity ?? 0.5);
+  }
+
+  /** Distinct synthesized sound per weapon; throttled per weapon on crowded streams. */
+  playWeaponSfx(weaponSlug: string | undefined, phase: WeaponSfxPhase): void {
+    if (this.muted) return;
+    this.ensure();
+    this.resumeCtx();
+    if (!this.ctx) return;
+
+    const slug = (weaponSlug || '').toLowerCase();
+    const type = slug.includes('mina') || slug.includes('mine')
+      ? 'mine'
+      : slug.includes('metralhadora') || slug.includes('machine')
+        ? 'machine'
+        : slug.includes('escopeta') || slug.includes('shotgun')
+          ? 'shotgun'
+          : slug.includes('sniper')
+            ? 'sniper'
+            : slug.includes('bazuca') || slug.includes('bazooka')
+              ? 'bazooka'
+              : 'pistol';
+    const key = `weapon:${type}:${phase}`;
+    const now = performance.now();
+    const minGap = type === 'machine' && phase === 'shot' ? 95 : 65;
+    if (now - (this.lastPlay.get(key) || 0) < minGap) return;
+    this.lastPlay.set(key, now);
+
+    const t0 = this.ctx.currentTime;
+    const vol = this.volumes.master * this.volumes.sfx * 0.48 * BEEP_SCALE;
+    if (type === 'mine' && phase === 'mine_plant') {
+      this.playSimpleTone(t0, 'triangle', 760, 1080, vol * 0.72, 0.11);
+      this.playSimpleTone(t0 + 0.09, 'sine', 1080, 1320, vol * 0.5, 0.1);
+      return;
+    }
+    if (type === 'mine' && phase === 'mine_trigger') {
+      this.playDeathBoom(t0, 0.7, vol * 0.62);
+      return;
+    }
+
+    switch (type) {
+      case 'machine':
+        this.playWeaponNoise(t0, vol * 0.88, 'bandpass', 2400, 1050, 0.045);
+        this.playSimpleTone(t0, 'square', 235, 130, vol * 0.78, 0.065);
+        this.playSimpleTone(t0 + 0.04, 'triangle', 940, 440, vol * 0.42, 0.045);
+        break;
+      case 'shotgun':
+        this.playWeaponNoise(t0, vol * 1.15, 'lowpass', 1700, 220, 0.2);
+        this.playSimpleTone(t0, 'sine', 128, 42, vol * 1.35, 0.23);
+        break;
+      case 'sniper':
+        this.playWeaponNoise(t0, vol * 0.42, 'bandpass', 4200, 1700, 0.1);
+        this.playSimpleTone(t0, 'triangle', 1740, 290, vol * 0.72, 0.31);
+        this.playSimpleTone(t0 + 0.015, 'sine', 2300, 760, vol * 0.24, 0.12);
+        break;
+      case 'bazooka':
+        this.playWeaponNoise(t0, vol * 0.78, 'lowpass', 1250, 120, 0.32);
+        this.playSimpleTone(t0, 'sawtooth', 170, 48, vol * 0.78, 0.34);
+        break;
+      case 'pistol':
+      default:
+        this.playWeaponNoise(t0, vol * 0.82, 'bandpass', 3200, 1350, 0.075);
+        this.playSimpleTone(t0, 'triangle', 440, 125, vol * 0.74, 0.085);
+        this.playSimpleTone(t0 + 0.015, 'sine', 1450, 980, vol * 0.28, 0.07);
+        break;
+    }
+  }
+
+  private playWeaponNoise(t0: number, vol: number, type: BiquadFilterType, f0: number, f1: number, duration: number): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.makeNoiseBuffer(ctx, duration + 0.02);
+    const filter = ctx.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.setValueAtTime(f0, t0);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(80, f1), t0 + duration);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(Math.max(0.0001, vol), t0);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(t0);
+    src.stop(t0 + duration + 0.02);
   }
 
   private beep(kind: SfxKind, intensity: number): void {

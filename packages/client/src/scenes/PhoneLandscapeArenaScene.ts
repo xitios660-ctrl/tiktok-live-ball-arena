@@ -18,6 +18,8 @@ import { LANDSCAPE_HEIGHT, makeLandscapeMapper } from '../phoneLandscape';
 import { THEME, THEME_HEX, FONT, FONT_BLACK, FONT_ACCENT } from '../theme';
 import { ensureGlossTexture, skinFromBall } from '../fx/GlossBall';
 import { playAbilityFx } from '../fx/AbilityFx';
+import { LandMineLayer } from '../fx/LandMineLayer';
+import { WEAPON_ART, MINE_TEXTURE, MINE_URL, getWeaponArt, primaryVisibleWeapon } from '../weaponPresentation';
 import {
   createPremiumTop5,
   updatePremiumTop5,
@@ -44,6 +46,8 @@ interface LandscapeBallView {
   strength: Phaser.GameObjects.Text;
   buffs: Phaser.GameObjects.Text;
   items: Phaser.GameObjects.Text;
+  weaponMount: Phaser.GameObjects.Container;
+  mineMount: Phaser.GameObjects.Container;
   lastHp: number;
 }
 
@@ -82,6 +86,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
   private ballViews = new Map<string, LandscapeBallView>();
   private pendingAvatars = new Set<string>();
   private pickupViews = new Map<string, LandscapePickupView>();
+  private landMineLayer!: LandMineLayer;
   private lastTop5: PlayerStats[] = [];
   private lastRemaining = 300;
   private lastPhase = 'waiting';
@@ -91,6 +96,11 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
   constructor() {
     super('ArenaScene');
+  }
+
+  preload(): void {
+    for (const art of Object.values(WEAPON_ART)) this.load.image(art.texture, art.url);
+    this.load.image(MINE_TEXTURE, MINE_URL);
   }
 
   create(data?: { round?: RoundState }): void {
@@ -103,6 +113,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
     this.bg = this.add.graphics().setDepth(0);
     this.field = this.add.graphics().setDepth(1);
+    this.landMineLayer = new LandMineLayer(this, 9);
     this.hud = this.add.graphics().setDepth(80);
     this.giftPanel = this.add.graphics().setDepth(80);
 
@@ -289,6 +300,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       this.toastTween?.stop();
       this.ballViews.clear();
       this.pickupViews.clear();
+      this.landMineLayer?.clear();
     });
 
     if (opts.debug) {
@@ -312,6 +324,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       view.emoji.y = bob;
       view.ring.rotation += 0.008;
     }
+    this.landMineLayer?.tick(time);
     for (const view of this.ballViews.values()) {
       view.aura.alpha = 0.16 + (Math.sin(time / 220 + view.root.x * 0.003) + 1) * 0.06;
     }
@@ -353,6 +366,11 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
 
     this.syncBalls(snap.balls);
     this.syncPickups(snap.pickups || []);
+    const mapper = makeLandscapeMapper(this.cameras.main.width);
+    this.landMineLayer?.sync(snap.landMines, (mine) => {
+      const point = mapper.map(mine.x, mine.y);
+      return { x: point.x, y: point.y, scale: mapper.scale };
+    });
     this.lastTop5 = snap.top5 || snap.stats.slice(0, 5);
     this.renderTop5();
 
@@ -378,6 +396,9 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     }
 
     if (event.type === 'ability_fx') {
+      if (event.ability === 'mine_plant') audio.playWeaponSfx(event.weaponSlug, 'mine_plant');
+      else if (event.ability === 'mine_trigger') audio.playWeaponSfx(event.weaponSlug, 'mine_trigger');
+      else if (event.ability === 'weapon_shot' || event.ability === 'weapon_explosion') audio.playWeaponSfx(event.weaponSlug, 'shot');
       const mapper = makeLandscapeMapper(this.cameras.main.width);
       const origin = mapper.map(event.x, event.y);
       const target = event.targetX == null || event.targetY == null
@@ -386,6 +407,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       if (
         event.ability === 'weapon_shot' ||
         event.ability === 'weapon_explosion' ||
+        event.ability === 'mine_plant' ||
         event.ability === 'mine_trigger' ||
         event.ability === 'lightning_zap'
       ) {
@@ -575,7 +597,19 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         this.ballViews.set(b.id, view);
       }
       view.root.setData('source', { ...b });
-      this.positionBall(b.id, view, b);
+      let nearest: BallState | undefined;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (const candidate of balls) {
+        if (candidate.id === b.id) continue;
+        const dx = candidate.x - b.x;
+        const dy = candidate.y - b.y;
+        const distance = dx * dx + dy * dy;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = candidate;
+        }
+      }
+      this.positionBall(b.id, view, b, nearest ? Math.atan2(nearest.y - b.y, nearest.x - b.x) : 0);
     }
 
     for (const [id, view] of this.ballViews) {
@@ -595,6 +629,14 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     body.setStrokeStyle(3, THEME.light, 0.9);
     const skinKey = ensureGlossTexture(this, b.color, skinFromBall(b));
     const cinematicSkin = this.add.image(0, 0, skinKey).setDisplaySize(b.radius * 2, b.radius * 2);
+    const weaponMount = this.add.container(0, 0).setVisible(false);
+    const weaponSprite = this.add.image(0, 0, 'weapon-pistola').setDisplaySize(40, 32);
+    const weaponFallback = this.add.text(0, 0, '🔫', { fontSize: '22px' }).setOrigin(0.5).setVisible(false);
+    weaponMount.add([weaponSprite, weaponFallback]);
+    const mineMount = this.add.container(-b.radius * 0.55, -b.radius * 0.48).setVisible(false);
+    const mineSprite = this.add.image(0, 0, MINE_TEXTURE).setDisplaySize(20, 20);
+    const mineFallback = this.add.text(0, 0, '💣', { fontSize: '16px' }).setOrigin(0.5).setVisible(false);
+    mineMount.add([mineSprite, mineFallback]);
 
     const shine = this.add.ellipse(-b.radius * 0.28, -b.radius * 0.3, b.radius * 0.7, b.radius * 0.38, 0xffffff, 0.2);
     const initials = this.add
@@ -665,7 +707,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setVisible(false);
 
-    root.add([aura, ring, body, cinematicSkin, shine, initials, crown, hpBg, hpFg, name, likesMark, strength, buffs, items]);
+    root.add([aura, ring, body, cinematicSkin, shine, weaponMount, mineMount, initials, crown, hpBg, hpFg, name, likesMark, strength, buffs, items]);
     root.setScale(0.15);
     this.tweens.add({ targets: root, scale: 1, duration: 260, ease: 'Back.Out' });
 
@@ -685,13 +727,15 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       strength,
       buffs,
       items,
+      weaponMount,
+      mineMount,
       lastHp: b.hp,
     };
     if (b.avatarUrl && !b.isBoss) this.tryLoadAvatar(b, view);
     return view;
   }
 
-  private positionBall(_id: string, view: LandscapeBallView, b: BallState): void {
+  private positionBall(_id: string, view: LandscapeBallView, b: BallState, aimAngle = 0): void {
     if (b.avatarUrl && !b.isBoss && !view.avatar) {
       this.tryLoadAvatar(b, view);
     }
@@ -759,6 +803,31 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     if (buffs.includes('dash_burst')) icons.push('🚀');
     view.buffs.setPosition(0, r + 53).setText(icons.join(''));
     const equipped = b.equippedItems?.length ? b.equippedItems : b.equippedItem ? [b.equippedItem] : [];
+    const weapon = primaryVisibleWeapon(equipped);
+    const weaponArt = weapon ? getWeaponArt(weapon.slug) : null;
+    view.weaponMount.setVisible(!!weapon && !b.isBoss);
+    if (weapon && !b.isBoss) {
+      const sprite = view.weaponMount.list[0] as Phaser.GameObjects.Image;
+      const fallback = view.weaponMount.list[1] as Phaser.GameObjects.Text;
+      const hasTexture = !!weaponArt && this.textures.exists(weaponArt.texture);
+      sprite.setVisible(hasTexture);
+      fallback.setVisible(!hasTexture).setText(weaponArt?.fallback ?? weapon.icon);
+      if (hasTexture && weaponArt && sprite.texture.key !== weaponArt.texture) sprite.setTexture(weaponArt.texture);
+      const width = Math.max(23, (weaponArt?.width ?? 50) * mapper.scale * 0.9);
+      sprite.setDisplaySize(width, hasTexture ? width * sprite.height / sprite.width : width * 0.8);
+      view.weaponMount.setPosition(Math.cos(aimAngle) * r * 0.64, Math.sin(aimAngle) * r * 0.64);
+      view.weaponMount.setRotation(aimAngle);
+    }
+    const hasMine = !b.isBoss && equipped.some((item) => item.category !== 'consumable' && item.slug === 'mina-terrestre');
+    view.mineMount.setVisible(hasMine);
+    view.mineMount.setPosition(-r * 0.55, -r * 0.48);
+    if (hasMine) {
+      const mineSprite = view.mineMount.list[0] as Phaser.GameObjects.Image;
+      const mineFallback = view.mineMount.list[1] as Phaser.GameObjects.Text;
+      const hasTexture = this.textures.exists(MINE_TEXTURE);
+      mineSprite.setVisible(hasTexture).setDisplaySize(Math.max(15, 27 * mapper.scale), Math.max(15, 27 * mapper.scale));
+      mineFallback.setVisible(!hasTexture);
+    }
     const weaponIcons = equipped.slice(0, 3).map((item) => item.icon).join('');
     view.items.setPosition(0, r + 70).setText(`🛒${equipped.length} ${weaponIcons}${equipped.length > 3 ? `+${equipped.length - 3}` : ''}`).setVisible(equipped.length > 0);
 

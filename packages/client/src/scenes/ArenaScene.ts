@@ -62,6 +62,8 @@ import {
   type PremiumTop5Handles,
 } from '../ui/PremiumTop5';
 import { PickupsLayer } from '../ui/PickupsLayer';
+import { LandMineLayer } from '../fx/LandMineLayer';
+import { WEAPON_ART, MINE_TEXTURE, MINE_URL, getWeaponArt, primaryVisibleWeapon } from '../weaponPresentation';
 import {
   pushNeonKillFeed,
   tickNeonKillFeed,
@@ -104,6 +106,8 @@ interface BallView {
   strengthPill: Phaser.GameObjects.Graphics;
   strengthMark: Phaser.GameObjects.Text;
   itemMark: Phaser.GameObjects.Text;
+  weaponMount: Phaser.GameObjects.Container;
+  mineMount: Phaser.GameObjects.Container;
   lastHp: number;
   lastHealFlash: boolean;
   lastStrengthTier: number;
@@ -144,6 +148,7 @@ export class ArenaScene extends Phaser.Scene {
   private giftLegendBaseY = 0;
   private top5BaseY = 0;
   private pickupsLayer!: PickupsLayer;
+  private landMineLayer!: LandMineLayer;
   private ambientTwinkles: { tick: (t: number) => void; destroy: () => void } | null = null;
   private energyRings: ArenaEnergyRingsHandles | null = null;
   private feedText!: Phaser.GameObjects.Text;
@@ -195,6 +200,8 @@ export class ArenaScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image('arena-cover-backdrop', '/assets/ball-arena/backgrounds/access-arena.jpg');
+    for (const art of Object.values(WEAPON_ART)) this.load.image(art.texture, art.url);
+    this.load.image(MINE_TEXTURE, MINE_URL);
   }
 
   create(data?: { round?: RoundState }): void {
@@ -299,6 +306,7 @@ export class ArenaScene extends Phaser.Scene {
 
     // Floor pickups layer (under balls)
     this.pickupsLayer = new PickupsLayer(this, 8);
+    this.landMineLayer = new LandMineLayer(this, 9);
 
     this.toastText = this.add
       .text(CANVAS_WIDTH / 2, top + 250, '', {
@@ -466,6 +474,7 @@ export class ArenaScene extends Phaser.Scene {
       for (const v of this.shopDropViews.values()) v.destroy(true);
       this.shopDropViews.clear();
       this.pickupsLayer?.clear();
+      this.landMineLayer?.clear();
       this.ambientTwinkles?.destroy();
       this.ambientTwinkles = null;
       this.energyRings?.destroy();
@@ -496,6 +505,7 @@ export class ArenaScene extends Phaser.Scene {
       });
     }
     this.pickupsLayer?.tick(t);
+    this.landMineLayer?.tick(t);
     if (this.giftLegend) {
       tickGiftLegend(this.giftLegend, t);
       this.giftLegend.root.y = this.giftLegendBaseY;
@@ -558,6 +568,7 @@ export class ArenaScene extends Phaser.Scene {
     void audio.startBgm(false);
     this.syncBalls(snap.balls);
     this.pickupsLayer?.sync(snap.pickups);
+    this.landMineLayer?.sync(snap.landMines);
     this.syncShopDrops(snap.shopDrops || []);
     if (this.likesText) {
       this.likesText.setText('❤️ LIKES = EVOLUÇÃO PESSOAL');
@@ -590,6 +601,9 @@ export class ArenaScene extends Phaser.Scene {
 
   private onCombat = (event: CombatEvent) => {
     if (event.type === 'ability_fx') {
+      if (event.ability === 'mine_plant') audio.playWeaponSfx(event.weaponSlug, 'mine_plant');
+      else if (event.ability === 'mine_trigger') audio.playWeaponSfx(event.weaponSlug, 'mine_trigger');
+      else if (event.ability === 'weapon_shot' || event.ability === 'weapon_explosion') audio.playWeaponSfx(event.weaponSlug, 'shot');
       playAbilityFx(this, event, this.particleBudget ?? 1);
       return;
     }
@@ -937,7 +951,19 @@ export class ArenaScene extends Phaser.Scene {
           });
         }
       }
-      this.updateBallView(view, b);
+      let nearest: BallState | undefined;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (const candidate of balls) {
+        if (candidate.id === b.id) continue;
+        const dx = candidate.x - b.x;
+        const dy = candidate.y - b.y;
+        const distance = dx * dx + dy * dy;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = candidate;
+        }
+      }
+      this.updateBallView(view, b, nearest ? Math.atan2(nearest.y - b.y, nearest.x - b.x) : 0);
     }
     for (const [id, view] of this.views) {
       if (!seen.has(id)) {
@@ -1023,8 +1049,16 @@ export class ArenaScene extends Phaser.Scene {
     const strengthHud = this.add.container(0, -b.radius - 36, [strengthPill, strengthMark]);
     this.drawStrengthPill(strengthPill, strengthMark, 0);
     const itemMark = this.add.text(0, -b.radius - 76, '', { fontFamily: FONT_ACCENT, fontSize: '11px', color: THEME_HEX.electricCyan, stroke: '#0B0B0F', strokeThickness: 3 }).setOrigin(0.5).setVisible(false);
+    const weaponMount = this.add.container(0, 0).setVisible(false);
+    const weaponSprite = this.add.image(0, 0, 'weapon-pistola').setDisplaySize(54, 46);
+    const weaponFallback = this.add.text(0, 0, '🔫', { fontSize: '26px' }).setOrigin(0.5).setVisible(false);
+    weaponMount.add([weaponSprite, weaponFallback]);
+    const mineMount = this.add.container(-b.radius * 0.55, -b.radius * 0.48).setVisible(false);
+    const mineSprite = this.add.image(0, 0, MINE_TEXTURE).setDisplaySize(27, 27);
+    const mineFallback = this.add.text(0, 0, '💣', { fontSize: '20px' }).setOrigin(0.5).setVisible(false);
+    mineMount.add([mineSprite, mineFallback]);
 
-    // Order: shadow → aura/shield/ring → circle → gloss → avatar chrome → initials → HUD → crown
+    // Order: floor effects → ball/gloss → held weapon/mine → initials → HUD → crown
     container.add([
       glossParts.shadow,
       aura,
@@ -1032,6 +1066,8 @@ export class ArenaScene extends Phaser.Scene {
       ring,
       circle,
       glossParts.gloss,
+      weaponMount,
+      mineMount,
       initials,
       hpBg,
       hpFg,
@@ -1071,6 +1107,8 @@ export class ArenaScene extends Phaser.Scene {
       strengthPill,
       strengthMark,
       itemMark,
+      weaponMount,
+      mineMount,
       lastHp: b.hp,
       lastHealFlash: false,
       lastStrengthTier: 0,
@@ -1087,7 +1125,7 @@ export class ArenaScene extends Phaser.Scene {
     return view;
   }
 
-  private updateBallView(view: BallView, b: BallState): void {
+  private updateBallView(view: BallView, b: BallState, aimAngle = 0): void {
     // Avatar can arrive/refresh with the comment event even if the ball existed
     // before the profile image URL was available.
     if (b.avatarUrl && !b.isBoss && !view.avatar) {
@@ -1263,6 +1301,24 @@ export class ArenaScene extends Phaser.Scene {
     );
     view.strengthMark.setColor(b.isBoss ? THEME_HEX.gold : accentHex);
     const equipped = b.equippedItems?.length ? b.equippedItems : b.equippedItem ? [b.equippedItem] : [];
+    const weapon = primaryVisibleWeapon(equipped);
+    const weaponArt = weapon ? getWeaponArt(weapon.slug) : null;
+    view.weaponMount.setVisible(!!weapon && !b.isBoss);
+    if (weapon && !b.isBoss) {
+      const sprite = view.weaponMount.list[0] as Phaser.GameObjects.Image;
+      const fallback = view.weaponMount.list[1] as Phaser.GameObjects.Text;
+      const hasTexture = !!weaponArt && this.textures.exists(weaponArt.texture);
+      sprite.setVisible(hasTexture);
+      fallback.setVisible(!hasTexture).setText(weaponArt?.fallback ?? weapon.icon);
+      if (hasTexture && weaponArt && sprite.texture.key !== weaponArt.texture) sprite.setTexture(weaponArt.texture);
+      const width = weaponArt?.width ?? 52;
+      sprite.setDisplaySize(width, hasTexture ? width * sprite.height / sprite.width : width * 0.82);
+      view.weaponMount.setPosition(Math.cos(aimAngle) * b.radius * 0.66, Math.sin(aimAngle) * b.radius * 0.66);
+      view.weaponMount.setRotation(aimAngle);
+    }
+    const hasMine = !b.isBoss && equipped.some((item) => item.category !== 'consumable' && item.slug === 'mina-terrestre');
+    view.mineMount.setVisible(hasMine);
+    view.mineMount.setPosition(-b.radius * 0.55, -b.radius * 0.48);
     view.itemMark.setVisible(equipped.length > 0);
     if (equipped.length) {
       const compact = equipped.slice(0, 3).map((item) => `${item.icon}${item.ammo == null ? '' : item.ammo}`).join(' ');

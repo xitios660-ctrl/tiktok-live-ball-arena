@@ -274,6 +274,17 @@ export interface ShopDropState {
   y: number;
 }
 
+/** Active player-planted mines, synchronized for every arena renderer. */
+export interface LandMineState {
+  id: string;
+  ownerId: string;
+  x: number;
+  y: number;
+  damage: number;
+  area: number;
+  plantedAt: number;
+}
+
 export interface GameSnapshot {
   tick: number;
   tickHz: number;
@@ -284,6 +295,8 @@ export interface GameSnapshot {
   balls: BallState[];
   /** Arena floor power-ups (non-gift abilities) */
   pickups: PickupState[];
+  /** Armed land mines visible on the arena floor. */
+  landMines: LandMineState[];
   /** Store items dropped after their fixed three-minute binding expires. */
   shopDrops?: ShopDropState[];
   /** Full sorted ranking */
@@ -364,6 +377,7 @@ export type AbilityFxKind =
   | 'reflect_hit'
   | 'weapon_shot'
   | 'weapon_explosion'
+  | 'mine_plant'
   | 'mine_trigger'
   | 'heal_orb';
 
@@ -375,6 +389,8 @@ export interface AbilityFxEvent {
   y: number;
   /** Optional target (e.g. lightning zap victim) */
   targetId?: string;
+  /** Store catalog slug or gift profile id used to select a distinct firing sound. */
+  weaponSlug?: string;
   targetX?: number;
   targetY?: number;
   value?: number;
