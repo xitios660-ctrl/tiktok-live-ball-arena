@@ -445,7 +445,12 @@ export class GameLoop {
         this.pushCombat({ type:'announce', kind:'pickup', message:`@${user.username}, entre na arena antes de ativar suas compras com /compra.`, userId:user.userId, username:user.username, timestamp:Date.now() });
         return;
       }
-      const inventory = await this.economy.inventory(user.username);
+      const [handleInventory, identityInventory] = await Promise.all([
+        this.economy.inventory(user.username),
+        this.economy.inventoryByTikTokUserId(user.userId),
+      ]);
+      const identityItemIds = new Set(identityInventory.map((item) => item.id));
+      const inventory = [...new Map([...handleInventory, ...identityInventory].map((item) => [item.id, item])).values()];
       const now = Date.now();
       const alreadyActive = new Set((this.equipped.get(user.userId) || []).map((item) => item.id));
       const activated: string[] = [];
@@ -453,7 +458,8 @@ export class GameLoop {
       const holder = normalizeTikTokHandle(user.username);
       let items = this.equipped.get(user.userId) || [];
       for (const item of inventory) {
-        if (item.status !== 'bound' || normalizeTikTokHandle(item.holderKey) !== holder || alreadyActive.has(item.id)) continue;
+        const belongsToTikTokUser = normalizeTikTokHandle(item.holderKey) === holder || identityItemIds.has(item.id);
+        if (item.status !== 'bound' || !belongsToTikTokUser || alreadyActive.has(item.id)) continue;
         const catalog = await this.economy.getCatalogItem(item.slug);
         if (!catalog) continue;
         this.catalogCache.set(item.slug, catalog);

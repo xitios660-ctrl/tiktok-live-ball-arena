@@ -23,6 +23,8 @@ async function main() {
   await store.recordKill('@Test.User', 'tt-1', 'k1'); await store.recordKill('test.user', 'tt-1', 'k2');
   assert((await store.getPlayer('test.user')).kills === 2, 'username normalization/dedupe failed');
   await store.adminAdjust('test.user', 2000, 'weapon test seed', 'weapon-seed');
+  await store.recordKill('Iamara C.O.M', 'shared-tiktok-id', 'alias-kill');
+  await store.adminAdjust('iamara c.o.m', 200, 'stable identity test seed', 'stable-id-seed');
   const life = await store.purchase('@test.user', 'vida-tripla', 'life-op');
   assert(life.item?.status === 'pending_entry', 'Vida Tripla not pending entry');
   assert(await store.consumeNextEntry('TEST.USER', 'entry-test'), 'Vida Tripla did not consume');
@@ -44,10 +46,10 @@ async function main() {
   await new Promise<void>((resolve) => apiServer.once('listening', resolve));
   const address = apiServer.address();
   assert(address && typeof address === 'object', 'shop API did not bind a local test port');
-  const buyThroughApi = async (slug:string, operationKey:string) => {
+  const buyThroughApi = async (slug:string, operationKey:string, username='test.user') => {
     const response = await fetch(`http://127.0.0.1:${address.port}/api/shop/purchase`, {
       method:'POST', headers:{'content-type':'application/json'},
-      body:JSON.stringify({username:'test.user',slug,operationKey}),
+      body:JSON.stringify({username,slug,operationKey}),
     });
     return await response.json() as {ok:boolean;item?:NonNullable<Awaited<ReturnType<typeof store.purchase>>['item']>};
   };
@@ -93,6 +95,15 @@ async function main() {
   game.handleLiveEvent({ type:'comment', user:attacker, comment:'/compra', timestamp:Date.now() });
   await wait(20);
   assert(game.getSnapshot().balls.find((b) => b.userId === 'attacker')?.equippedItems?.length === weaponSlugs.length, 'repeating /compra duplicated already active weapons');
+
+  const aliasPurchase = await buyThroughApi('pistola', 'buy-display-name-alias', 'iamara c.o.m');
+  assert(aliasPurchase.ok && aliasPurchase.item, 'shop API purchase under display-name account failed');
+  const currentIamaraUser = user('shared-tiktok-id', 'iamaracardoso991475');
+  game.handleLiveEvent({ type:'comment', user:currentIamaraUser, comment:'/compra', timestamp:Date.now() });
+  await wait(40);
+  const aliasEquipment = game.getSnapshot().balls.find((b) => b.userId === 'shared-tiktok-id')?.equippedItems || [];
+  const aliasActiveItems = (game as any).equipped.get('shared-tiktok-id') || [];
+  assert(aliasEquipment.length === 1 && aliasEquipment[0].slug === 'pistola' && aliasActiveItems.some((item: {id:string}) => item.id === aliasPurchase.item!.id), '/compra did not find the purchase saved under another username with the same TikTok ID');
   const states = (game as any).weaponStates as Map<string, {lastUseAt:number; ammo:number; reloadAt:number}>;
   for (const {slug,item} of purchased.filter((row) => weaponSlugs.includes(row.slug))) {
     const catalogItem = catalog.find(i => i.slug === slug)!;

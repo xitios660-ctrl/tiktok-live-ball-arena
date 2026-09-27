@@ -84,6 +84,17 @@ export class EconomyStore {
   }
   async inventory(username: string): Promise<InventoryItem[]> { const userKey=this.key(username); if(this.pool){const r=await this.pool.query(`SELECT i.id,i.item_id AS "itemId",c.slug,c.name,i.status,extract(epoch from i.purchased_at)*1000 AS "purchasedAt",extract(epoch from i.bound_until)*1000 AS "boundUntil",i.holder_key AS "holderKey",i.x,i.y FROM economy_inventory i JOIN economy_catalog c ON c.id=i.item_id WHERE i.user_key=$1 OR i.holder_key=$1 ORDER BY i.purchased_at DESC`,[userKey]);return r.rows;}return Object.values(this.local.inventory).filter(i=>i.holderKey===userKey || (i as any).userKey===userKey).map(clone);
   }
+  async inventoryByTikTokUserId(tiktokUserId: string): Promise<InventoryItem[]> {
+    this.assertReady();
+    const stableId = String(tiktokUserId || '').trim();
+    if (!stableId || ['unknown', 'undefined', 'null', '0', 'system'].includes(stableId.toLowerCase())) return [];
+    if (this.pool) {
+      const r = await this.pool.query(`SELECT i.id,i.item_id AS "itemId",c.slug,c.name,i.status,extract(epoch from i.purchased_at)*1000 AS "purchasedAt",extract(epoch from i.bound_until)*1000 AS "boundUntil",i.holder_key AS "holderKey",i.x,i.y FROM economy_inventory i JOIN economy_catalog c ON c.id=i.item_id JOIN economy_players holder ON holder.user_key=i.holder_key WHERE holder.tiktok_user_id=$1 AND i.status IN ('bound','pending_entry') ORDER BY i.purchased_at DESC`, [stableId]);
+      return r.rows;
+    }
+    const holders = new Set(Object.values(this.local.players).filter((player) => player.tiktokUserId === stableId).map((player) => player.userKey));
+    return Object.values(this.local.inventory).filter((item) => holders.has(item.holderKey) && (item.status === 'bound' || item.status === 'pending_entry')).map(clone);
+  }
   async consumeNextEntry(username: string, referenceId: string): Promise<boolean> { const userKey = this.key(username); if (this.pool) { const r = await this.pool.query(`UPDATE economy_inventory SET status='consumed',bound_until=now() WHERE id=(SELECT id FROM economy_inventory WHERE holder_key=$1 AND status='pending_entry' ORDER BY purchased_at ASC FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id`, [userKey]); return (r.rowCount ?? 0) > 0; } const item = Object.values(this.local.inventory).find(i => i.holderKey === userKey && i.status === 'pending_entry'); if (!item) return false; item.status = 'consumed'; item.boundUntil = now(); (item as any).consumedReferenceId = referenceId; this.flushLocal(); return true; }
   async markDropped(id: string, x: number, y: number): Promise<void> { if (this.pool) { await this.pool.query(`UPDATE economy_inventory SET status='dropped',x=$2,y=$3,dropped_at=now() WHERE id=$1 AND status='bound'`, [id,x,y]); return; } const i=this.local.inventory[id]; if(i){i.status='dropped';i.x=x;i.y=y;this.flushLocal();} }
   async markPickedUp(id: string, username: string): Promise<void> { const holder=await this.ensurePlayer(username); if(this.pool){await this.pool.query(`UPDATE economy_inventory SET status='bound',holder_key=$2,picked_up_at=now(),x=NULL,y=NULL,bound_until=GREATEST(bound_until,now()+interval '3 minutes') WHERE id=$1 AND status='dropped'`,[id,holder]);return;} const i=this.local.inventory[id];if(i&&i.status==='dropped'){i.status='bound';i.holderKey=holder;i.x=undefined;i.y=undefined;i.boundUntil=Math.max(i.boundUntil,now()+180000);this.flushLocal();} }
