@@ -36,6 +36,7 @@ import {
 import { randomUUID } from 'crypto';
 import { PhysicsWorld, type DamageApplication } from './PhysicsWorld';
 import { applyGiftAbility, sugarBurstAnnounce } from './GiftAbilities';
+import { giftWeaponShotCount, resolveGiftWeapon } from './GiftWeapons';
 import { GlobalArenaEvents } from './GlobalArenaEvents';
 import { PickupSystem, pickupAbilityFromGiftId } from './PickupSystem';
 import type { EconomyStore, InventoryItem, CatalogItem } from '../economy/EconomyStore';
@@ -60,6 +61,9 @@ interface PlayerRecord {
   kills: number;
   /** Round-permanent damaging hits landed */
   hitPower: number;
+  /** Likes and their personal HP bonus persist until the next round. */
+  likes: number;
+  bonusHp: number;
   deaths: number;
   alive: boolean;
   deadAt: number | null;
@@ -182,6 +186,7 @@ export class GameLoop {
     const balls = this.physics.toPublicStates().map((b) => ({
       ...b,
       isKing: !!kingUserId && b.userId === kingUserId,
+      likes: this.players.get(b.userId)?.likes ?? 0,
       isBoss: b.userId === CHATGPT_BOSS_USER_ID,
       bossRewardStrength:
         b.userId === CHATGPT_BOSS_USER_ID ? CHATGPT_BOSS_REWARD_STRENGTH : undefined,
@@ -513,6 +518,11 @@ export class GameLoop {
       !previous || now - previous.lastLikeAt >= LIKE_COMBO_RESET_MS;
     const before = comboReset ? 0 : previous.count;
     const total = before + n;
+    const acceptedLikes = Math.min(n, Number.MAX_SAFE_INTEGER - rec.likes);
+    if (acceptedLikes > 0) {
+      rec.likes += acceptedLikes;
+      this.physics.addLikeHealth(user.userId, acceptedLikes);
+    }
 
     if (comboReset && previous) {
       console.log(
@@ -533,6 +543,7 @@ export class GameLoop {
       console.log(
         `[LIKE COMBO] @${user.username} +${n} combo=${total} next=${LIKE_PERSONAL_MILESTONES.find((m) => total < m.likes)?.likes ?? 'MAX'}`
       );
+      this.emitSnapshot();
       return;
     }
 
@@ -564,7 +575,9 @@ export class GameLoop {
         healed = Math.max(0, ball.hp - previousHp);
       } else if (milestone.heal > 0) {
         const previousHp = ball.hp;
-        ball.hp = Math.min(ball.maxHp, ball.hp + milestone.heal);
+        rec.bonusHp += milestone.heal;
+        this.physics.addLikeHealth(user.userId, milestone.heal);
+        healed = ball.hp - previousHp;
         healed = ball.hp - previousHp;
         if (healed > 0) ball.healFlashTicks = 6;
       }
@@ -580,7 +593,7 @@ export class GameLoop {
           : '';
       const hpText = milestone.fullHeal
         ? 'VIDA 100%'
-        : `+${milestone.heal} HP`;
+        : `+${milestone.heal} HP EXTRA`;
       const strengthText =
         milestone.strength > 0 ? ` +${milestone.strength} FORÇA` : '';
 
@@ -647,26 +660,6 @@ export class GameLoop {
       return [];
     }
 
-    // Non-gift powers → floor pickup only (never apply directly to a ball)
-    if (isPickupAbility(ability)) {
-      if (this.state.phase !== 'running') return [];
-      const spawned = this.pickups.forceSpawn(ability, { nearCenter: true });
-      const emitted: CombatEvent[] = [];
-      if (spawned) {
-        const ann: AnnounceEvent = {
-          type: 'announce',
-          kind: 'pickup',
-          message: `📦 Power no chão: ${event.giftName || ability}`,
-          timestamp: Date.now(),
-        };
-        emitted.push(ann);
-        this.pushCombat(ann);
-        this.emitSnapshot();
-        console.log(`[Pickup] giftId=${event.giftId} diverted → floor spawn ${ability}`);
-      }
-      return emitted;
-    }
-
     if (isBotUser(event.user)) {
       console.log(`[Gift] blocked paid gift for bot @${event.user.username}`);
       return [];
@@ -676,21 +669,84 @@ export class GameLoop {
     this.spawnNewOrNudge(event.user);
     this.lastSpawnedUserId = event.user.userId;
 
-    const result = applyGiftAbility(this.physics, event, ability);
-    if (!result) return [];
-
     const emitted: CombatEvent[] = [];
-    for (const a of result.announces) {
-      emitted.push(a);
-      this.pushCombat(a);
+    if (isPickupAbility(ability)) {
+      if (this.state.phase === 'running') {
+        const spawned = this.pickups.forceSpawn(ability, { nearCenter: true });
+        if (spawned) {
+          const ann: AnnounceEvent = {
+            type: 'announce',
+            kind: 'pickup',
+            message: `📦 Power no chão: ${event.giftName || ability}`,
+            timestamp: Date.now(),
+          };
+          emitted.push(ann);
+          this.pushCombat(ann);
+        }
+      }
+    } else {
+      const result = applyGiftAbility(this.physics, event, ability);
+      if (!result) return [];
+      for (const a of result.announces) {
+        emitted.push(a);
+        this.pushCombat(a);
+      }
+      for (const f of result.fx) {
+        emitted.push(f);
+        this.pushCombat(f);
+      }
     }
-    for (const f of result.fx) {
-      emitted.push(f);
-      this.pushCombat(f);
+
+    const profile = resolveGiftWeapon(event.giftId);
+    const sender = this.physics.getBall(event.user.userId);
+    if (profile && sender) {
+      const shots = giftWeaponShotCount(event);
+      let landed = 0;
+      let firedShots = 0;
+      for (let i = 0; i < shots; i++) {
+        const damages = profile.area > 0
+          ? this.physics.applyAreaDamage(event.user.userId, profile.damage, profile.range, profile.area)
+          : (() => {
+              const damage = this.physics.applyRangedDamage(event.user.userId, profile.damage, profile.range);
+              return damage ? [damage] : [];
+            })();
+        if (!damages.length) break;
+        firedShots += 1;
+        landed += damages.reduce((sum, hit) => sum + hit.damage, 0);
+        this.processDamages(damages);
+        const target = damages[0];
+        const fx = {
+          type: 'ability_fx' as const,
+          ability: profile.area > 0 ? 'weapon_explosion' as const : 'weapon_shot' as const,
+          userId: event.user.userId,
+          x: sender.x,
+          y: sender.y,
+          targetId: target.victimId,
+          targetX: target.x,
+          targetY: target.y,
+          value: profile.area || profile.damage,
+          timestamp: Date.now(),
+        };
+        emitted.push(fx);
+        this.pushCombat(fx);
+      }
+      const weaponAnnounce: AnnounceEvent = {
+        type: 'announce',
+        kind: 'gift',
+        message: landed > 0
+          ? `${profile.icon} ${event.user.username} ganhou ${profile.name} · ${landed} dano total (${firedShots} tiro${firedShots === 1 ? '' : 's'})!`
+          : `${profile.icon} ${event.user.username} ganhou ${profile.name}, mas não havia adversário no alcance.`,
+        userId: event.user.userId,
+        username: event.user.username,
+        value: landed,
+        timestamp: Date.now(),
+      };
+      emitted.push(weaponAnnounce);
+      this.pushCombat(weaponAnnounce);
     }
     this.emitSnapshot();
     console.log(
-      `[Gift] ${event.giftName} x${result.times} → @${event.user.username} (${ability})`
+      `[Gift] ${event.giftName} x${Math.max(1, Math.floor(event.repeatCount || 1))} → @${event.user.username} (${ability}; weapon=${profile?.id || 'none'})`
     );
     return emitted;
   }
@@ -777,7 +833,10 @@ export class GameLoop {
 
     const firstEntry = !this.physics.hasUser(user.userId);
     this.physics.spawnOrNudge(user);
-    this.ensurePlayerRecord(user.userId, user.username, user.nickname);
+    const playerRecord = this.ensurePlayerRecord(user.userId, user.username, user.nickname);
+    if (firstEntry) {
+      this.physics.setRoundHealth(user.userId, DEFAULT_BALL_HP + playerRecord.likes + playerRecord.bonusHp);
+    }
     this.lastSpawnedUserId = user.userId;
     const rec = this.players.get(user.userId)!;
     void this.economy?.ensurePlayer(user.username, user.userId);
@@ -837,6 +896,7 @@ export class GameLoop {
     // Preserve round kills + hitPower → strength on the new body
     this.physics.setKills(user.userId, rec.kills);
     this.physics.setHitPower(user.userId, rec.hitPower);
+    this.physics.setRoundHealth(user.userId, DEFAULT_BALL_HP + rec.likes + rec.bonusHp);
 
     const emitted: CombatEvent[] = [];
 
@@ -891,6 +951,8 @@ export class GameLoop {
         nickname,
         kills: 0,
         hitPower: 0,
+        likes: 0,
+        bonusHp: 0,
         deaths: 0,
         alive: true,
         deadAt: null,

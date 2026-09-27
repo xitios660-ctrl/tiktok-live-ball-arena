@@ -27,16 +27,16 @@ const POWER_ICONS: PowerIcon[] = [
 
 /** Portuguese gabarito — gameplay meanings from GiftAbilities / PhysicsWorld */
 export const GIFT_GABARITO_LINES: readonly string[] = [
-  '🌹 Rosa — cura leve',
-  '🦖 Dino — força e velocidade',
-  '🍩 Rosquinha — cura + escudo, empilha ×3',
-  '🦫 Capivara — gigante, empilha ×3',
-  '🌌 Galáxia — God Mode até o fim da rodada',
-  '⚡ Raio — dano + lentidão no alvo próximo',
-  '🧲 Ímã — puxa bolas próximas',
-  '❄️ Gelo — desacelera inimigos próximos',
-  '🚀 Foguete — dash e velocidade temporária',
-  '🪞 Espelho — devolve parte do dano',
+  '🌹 Rosa — cura + Espinho leve (1 dano)',
+  '🦖 Dino — força/speed + Mordida Dino (5)',
+  '🍩 Rosquinha — escudo + Donut Explosivo (12)',
+  '🦫 Capivara — gigante + Canhão Capivara (20)',
+  '🌌 Galáxia — God Mode + Canhão Galáctico (35)',
+  '⚡ Raio — choque + Raio de Choque (7)',
+  '🧲 Ímã — puxa bolas + Pulso (9)',
+  '❄️ Gelo — lentidão + Estilhaço (10)',
+  '🚀 Foguete — dash + Mini Foguete (8)',
+  '🪞 Espelho — reflete + Lâmina Refletida (14)',
   '💚 Cura — recupera vida',
   '💬 Comente — entre ou renasça',
 ];

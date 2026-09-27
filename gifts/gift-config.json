@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "description": "Hierarquia Rosa→Galaxy. Beneficia apenas o SENDER. abilityKey dispara a habilidade no servidor.",
+  "version": 4,
+  "description": "Presentes beneficiam apenas o SENDER: mantêm a abilityKey e também dão um disparo bônus de arma, proporcional ao valor do presente.",
   "gifts": [
     {
       "id": "rosa",
@@ -12,7 +12,8 @@
       "coinValue": 1,
       "tier": 1,
       "abilityKey": "heal_pulse",
-      "description": "HEAL PULSE: +2 HP (soft max 150), particles, stack OK; repeatCount = N heals"
+      "weaponBonus": { "name": "Espinho", "icon": "🌹", "damage": 1, "range": 280, "area": 0 },
+      "description": "HEAL PULSE: +2 HP por unidade. Também dispara Espinho leve (1 dano por tiro)."
     },
     {
       "id": "mini_dino",
@@ -24,7 +25,8 @@
       "coinValue": 10,
       "tier": 2,
       "abilityKey": "dino_rage",
-      "description": "DINO RAGE 10s: +25% strength, +15% speed, +20% collision dmg; stack extends duration"
+      "weaponBonus": { "name": "Mordida Dino", "icon": "🦖", "damage": 5, "range": 380, "area": 0 },
+      "description": "DINO RAGE 10s: +25% força, +15% speed, +20% dano de colisão. Também dispara Mordida Dino (5 dano)."
     },
     {
       "id": "rosquinha",
@@ -37,7 +39,8 @@
       "coinValue": 30,
       "tier": 3,
       "abilityKey": "donut_overdrive",
-      "description": "DONUT: +20 HP, shield 100 (cap 300), 12s +20% speed +25% resist; shield break → SUGAR BURST"
+      "weaponBonus": { "name": "Donut Explosivo", "icon": "🍩", "damage": 12, "range": 540, "area": 65 },
+      "description": "DONUT: +20 HP, escudo 100, speed/resist por 12s. Também dispara Donut Explosivo (12 dano em área)."
     },
     {
       "id": "capivara",
@@ -49,7 +52,8 @@
       "coinValue": 100,
       "tier": 4,
       "abilityKey": "capybara_titan",
-      "description": "TITAN 20s: size/mass/strength/resist/speed; +50 HP; regen +2/s; stomp; Ultra Calma; restack +20s +25 HP"
+      "weaponBonus": { "name": "Canhão Capivara", "icon": "🦫", "damage": 20, "range": 720, "area": 0 },
+      "description": "TITAN 20s: tamanho/força/resistência, +50 HP e regeneração. Também dispara Canhão Capivara (20 dano)."
     },
     {
       "id": "galaxia",
@@ -63,7 +67,8 @@
       "coinValue": 1000,
       "tier": 5,
       "abilityKey": "galaxy_god",
-      "description": "GALAXY GOD até o fim da rodada atual: imortal, +300% strength, +100% speed, +50% size; limpa no reset"
+      "weaponBonus": { "name": "Canhão Galáctico", "icon": "🌌", "damage": 35, "range": 900, "area": 100 },
+      "description": "GALAXY GOD até o fim da rodada: imortal. Também dispara Canhão Galáctico (35 dano em área)."
     },
     {
       "id": "raio",
@@ -77,7 +82,8 @@
       "coinValue": 15,
       "tier": 2,
       "abilityKey": "lightning_zap",
-      "description": "LIGHTNING ZAP: slow + small dmg to nearest foe (~2.2s)"
+      "weaponBonus": { "name": "Raio de Choque", "icon": "⚡", "damage": 7, "range": 520, "area": 0 },
+      "description": "LIGHTNING ZAP: dano + lentidão no alvo próximo. Também dispara Raio de Choque (7 dano)."
     },
     {
       "id": "ima",
@@ -91,7 +97,8 @@
       "coinValue": 20,
       "tier": 2,
       "abilityKey": "magnet_pulse",
-      "description": "MAGNET PULSE: strong short pull of nearby balls toward sender"
+      "weaponBonus": { "name": "Pulso Magnético", "icon": "🧲", "damage": 9, "range": 440, "area": 70 },
+      "description": "MAGNET PULSE: puxa bolas próximas. Também dispara Pulso Magnético (9 dano em área)."
     },
     {
       "id": "gelo",
@@ -105,7 +112,8 @@
       "coinValue": 25,
       "tier": 3,
       "abilityKey": "freeze_aura",
-      "description": "FREEZE AURA 8s: nearby enemies stay slowed"
+      "weaponBonus": { "name": "Estilhaço de Gelo", "icon": "❄️", "damage": 10, "range": 500, "area": 60 },
+      "description": "FREEZE AURA 8s: desacelera inimigos próximos. Também dispara Estilhaço (10 dano em área)."
     },
     {
       "id": "foguete",
@@ -118,7 +126,8 @@
       "coinValue": 15,
       "tier": 2,
       "abilityKey": "dash_burst",
-      "description": "DASH BURST: instant boost + 2.5s speed"
+      "weaponBonus": { "name": "Mini Foguete", "icon": "🚀", "damage": 8, "range": 500, "area": 0 },
+      "description": "DASH BURST: impulso + speed por 2,5s. Também dispara Mini Foguete (8 dano)."
     },
     {
       "id": "espelho",
@@ -131,7 +140,8 @@
       "coinValue": 35,
       "tier": 3,
       "abilityKey": "reflect_shield",
-      "description": "REFLECT SHIELD 5s: ~55% incoming damage bounced to attacker"
+      "weaponBonus": { "name": "Lâmina Refletida", "icon": "🪞", "damage": 14, "range": 640, "area": 0 },
+      "description": "REFLECT SHIELD 5s: rebate parte do dano. Também dispara Lâmina Refletida (14 dano)."
     }
   ]
 }

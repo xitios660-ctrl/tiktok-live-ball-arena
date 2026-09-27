@@ -97,19 +97,27 @@ docs/             OBS.md + integração TikTok
 
 ## Likes individuais e Boss
 
-- Cada evento de like é indexado pelo `userId`/`username` do viewer e acumula apenas na própria bola; likes de viewers diferentes nunca são somados em um único combo.
+- Cada jogador começa com 200 HP; a cada like pessoal ganha +1 no HP atual e no máximo, sem limite. O total de likes aparece sobre sua bola e o bônus permanece durante a rodada, inclusive após renascer.
+- O combo de poderes continua individual: os marcos de cura/força/Capivara são preservados e o combo recomeça após 10s sem likes. O reset do combo não apaga likes nem HP conquistados.
 - O Boss surge uma vez por rodada como uma bola gigante, com 5.000 HP, fuga ativa e sem dano de colisão. Ele apenas dispara um raio global periódico: 10 dano em cada jogador vivo e lentidão breve.
 - Quem derrota o Boss recebe +15 de força; a recompensa não vira kills pagos na economia.
 
 ## Presentes (hierarquia — beneficia o SENDER)
 
-| Gift | Coins | Ability | Efeito |
-|------|-------|---------|--------|
-| Rosa | 1 | heal_pulse | +2 HP (soft max 300), stack |
-| Mini Dino | 10 | dino_rage | 10s +25% força / +15% speed / +20% colisão |
-| Rosquinha | 30 | donut_overdrive | +20 HP, escudo 100 (cap 300), 12s buff; break→SUGAR BURST |
-| Capivara | 100 | capybara_titan | 20s titan; restack +20s +25 HP; stomp; Ultra Calma |
-| Galaxia | 1000 | galaxy_god | Imortal até fim da rodada atual; limpa no reset |
+| Gift | Coins | Power existente | Arma bônus por unidade |
+|------|------:|----------------|--------------------|
+| Rosa | 1 | Cura +2 HP | Espinho · 1 dano |
+| Mini Dino | 10 | 10s: força/speed/dano de colisão | Mordida Dino · 5 dano |
+| Raio | 15 | Choque + lentidão | Raio de Choque · 7 dano |
+| Foguete | 15 | Dash + velocidade | Mini Foguete · 8 dano |
+| Ímã | 20 | Puxa bolas próximas | Pulso Magnético · 9 dano em área |
+| Gelo | 25 | Lentidão em área | Estilhaço de Gelo · 10 dano em área |
+| Rosquinha | 30 | Cura + escudo + buff | Donut Explosivo · 12 dano em área |
+| Espelho | 35 | Reflete parte do dano | Lâmina Refletida · 14 dano |
+| Capivara | 100 | Titan + HP/regen | Canhão Capivara · 20 dano |
+| Galáxia | 1000 | God Mode até fim da rodada | Canhão Galáctico · 35 dano em área |
+
+Cada presente preserva seu poder atual e também dispara uma arma no adversário mais próximo dentro do alcance; no gift de área, inimigos próximos também são atingidos. Presentes repetidos podem disparar até 3 tiros por evento. Bots não recebem presentes pagos.
 
 Admin: escolha o **alvo** e clique o gift. Detalhes em `gifts/gift-config.json`.
 

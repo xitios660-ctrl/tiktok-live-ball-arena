@@ -40,6 +40,7 @@ interface LandscapeBallView {
   hpBg: Phaser.GameObjects.Rectangle;
   hpFg: Phaser.GameObjects.Rectangle;
   name: Phaser.GameObjects.Text;
+  likesMark: Phaser.GameObjects.Text;
   strength: Phaser.GameObjects.Text;
   buffs: Phaser.GameObjects.Text;
   lastHp: number;
@@ -230,7 +231,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .text(
         0,
         0,
-        '💬 COMENTE PARA ENTRAR OU RENASCER  •  ❤️ COMBO REINICIA APÓS 10s SEM LIKE\n50: +10 vida  •  100: +20 vida  •  200: +40 vida\n500: +40 vida / +2 força  •  600: +50 vida / +3 força  •  700: +50 vida / +4 força\n800: +40 vida / 🦫×1 por 30s  •  900: 🦫×2 por 30s  •  1000: 🦫×3 por 1 min',
+        '💬 COMENTE PARA ENTRAR  •  200 HP +1 HP ATUAL/MÁXIMO POR LIKE (SEM LIMITE)\n❤️ Likes individuais aparecem acima de cada personagem; combo reinicia após 10s\n500: +2 força  •  600: +3  •  700: +4\n800: 🦫×1  •  900: 🦫×2  •  1000: 🦫×3\n🎁 Cada presente mantém seu poder e também dispara uma arma proporcional ao valor',
         {
           fontFamily: FONT_ACCENT,
           fontSize: '16px',
@@ -643,12 +644,22 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
         strokeThickness: 3,
       })
       .setOrigin(0.5);
+    const likesMark = this.add
+      .text(0, b.radius + 32, `❤️ ${(b.likes ?? 0).toLocaleString('pt-BR')}`, {
+        fontFamily: FONT_ACCENT,
+        fontSize: '13px',
+        color: '#ff8fa3',
+        stroke: '#000000',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5, 0)
+      .setVisible((b.likes ?? 0) > 0);
 
     const buffs = this.add
       .text(0, b.radius + 43, '', { fontSize: '18px' })
       .setOrigin(0.5, 0);
 
-    root.add([aura, ring, body, cinematicSkin, shine, initials, crown, hpBg, hpFg, name, strength, buffs]);
+    root.add([aura, ring, body, cinematicSkin, shine, initials, crown, hpBg, hpFg, name, likesMark, strength, buffs]);
     root.setScale(0.15);
     this.tweens.add({ targets: root, scale: 1, duration: 260, ease: 'Back.Out' });
 
@@ -664,6 +675,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       hpBg,
       hpFg,
       name,
+      likesMark,
       strength,
       buffs,
       lastHp: b.hp,
@@ -711,6 +723,10 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
       .setPosition(0, r + 14)
       .setText(b.isBoss ? `👑 BOSS · +${b.bossRewardStrength ?? 15} FORÇA` : this.truncate(b.label, 14))
       .setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
+    view.likesMark
+      .setPosition(0, r + 33)
+      .setText(`❤️ ${(b.likes ?? 0).toLocaleString('pt-BR')}`)
+      .setVisible((b.likes ?? 0) > 0);
     view.initials
       .setFontSize(Math.max(14, Math.floor(r * 0.68)))
       .setText(b.isBoss ? 'AI' : this.initials(b.label));
@@ -734,7 +750,7 @@ export class PhoneLandscapeArenaScene extends Phaser.Scene {
     if (buffs.includes('reflect_shield')) icons.push('🪞');
     if (buffs.includes('magnet_pulse')) icons.push('🧲');
     if (buffs.includes('dash_burst')) icons.push('🚀');
-    view.buffs.setPosition(0, r + 43).setText(icons.join(''));
+    view.buffs.setPosition(0, r + 53).setText(icons.join(''));
 
     const stroke = b.isBoss
       ? THEME.gold

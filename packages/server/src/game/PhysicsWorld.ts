@@ -48,7 +48,6 @@ import {
   DASH_BURST_SPEED_MULT,
   REFLECT_SHIELD_MS,
   REFLECT_RATIO,
-  GIFT_SOFT_MAX_HP,
   DONUT_SPEED_MULT,
   DONUT_RESIST,
   SUGAR_BURST_SPEED_MULT,
@@ -94,6 +93,8 @@ export interface BallBody {
   color: number;
   hp: number;
   maxHp: number;
+  /** HP pool without temporary Galaxy mode, retained across gift-mode cleanup. */
+  nonGalaxyMaxHp: number;
   strength: number;
   /** Round kill count — drives combatStrengthMult in activeStrength */
   kills: number;
@@ -366,7 +367,7 @@ export class PhysicsWorld {
     if (b) b.revengeMarkedUntil = 0;
   }
 
-  /** Soft heal — soft max GIFT_SOFT_MAX_HP unless galaxy */
+  /** Heal up to the player's current HP maximum; like-derived health has no cap. */
   heal(userId: string, amount: number): number {
     const b = this.balls.get(userId);
     if (!b) return 0;
@@ -374,8 +375,7 @@ export class PhysicsWorld {
     if (b.galaxy) {
       b.hp += amount;
     } else {
-      b.hp = Math.min(GIFT_SOFT_MAX_HP, b.hp + amount);
-      b.maxHp = Math.min(GIFT_SOFT_MAX_HP, Math.max(b.maxHp, b.hp, DEFAULT_BALL_HP));
+      b.hp = Math.min(b.maxHp, b.hp + amount);
     }
     b.healFlashTicks = 10;
     return b.hp - before;
@@ -573,8 +573,8 @@ export class PhysicsWorld {
     b.cosmicHp = 0;
     b.cosmicMaxHp = 0;
     // Fair mortal restore: full HP, not dead
-    b.maxHp = DEFAULT_BALL_HP;
-    b.hp = DEFAULT_BALL_HP;
+    b.maxHp = b.nonGalaxyMaxHp;
+    b.hp = b.maxHp;
     recomputeGeometry(b, Date.now());
   }
 
@@ -602,8 +602,8 @@ export class PhysicsWorld {
       b.shieldUntil = 0;
       b.cosmicHp = 0;
       b.cosmicMaxHp = 0;
-      b.hp = Math.min(b.hp, DEFAULT_BALL_HP);
-      b.maxHp = DEFAULT_BALL_HP;
+      b.hp = Math.min(b.hp, b.nonGalaxyMaxHp);
+      b.maxHp = b.nonGalaxyMaxHp;
       recomputeGeometry(b, now);
     }
   }
@@ -677,7 +677,40 @@ export class PhysicsWorld {
   setEntryHealth(userId: string, multiplier: number): void {
     const b = this.balls.get(userId); if (!b) return;
     const m = Math.max(1, Math.min(3, Math.floor(multiplier)));
-    b.maxHp = DEFAULT_BALL_HP * m; b.hp = b.maxHp;
+    b.nonGalaxyMaxHp *= m;
+    if (!b.galaxy) b.maxHp = b.nonGalaxyMaxHp;
+    b.hp = b.galaxy ? b.hp : b.maxHp;
+  }
+
+  /** Likes permanently add to both current and maximum HP for this round. */
+  addLikeHealth(userId: string, amount: number): void {
+    const b = this.balls.get(userId);
+    const add = Math.max(0, Math.floor(amount));
+    if (!b || !add) return;
+    b.nonGalaxyMaxHp = Math.min(Number.MAX_SAFE_INTEGER, b.nonGalaxyMaxHp + add);
+    if (b.galaxy) {
+      if (b.cosmicMaxHp > 0) {
+        b.cosmicMaxHp += add;
+        b.cosmicHp += add;
+      } else {
+        b.hp += add;
+      }
+    } else {
+      b.maxHp = b.nonGalaxyMaxHp;
+      b.hp += add;
+    }
+    b.healFlashTicks = 6;
+  }
+
+  /** Restore the round-persistent like HP pool when a player respawns. */
+  setRoundHealth(userId: string, maxHp: number): void {
+    const b = this.balls.get(userId);
+    if (!b) return;
+    b.nonGalaxyMaxHp = Math.max(DEFAULT_BALL_HP, Math.floor(maxHp));
+    if (!b.galaxy) {
+      b.maxHp = b.nonGalaxyMaxHp;
+      b.hp = b.maxHp;
+    }
   }
 
   spawnOrNudge(user: ArenaUser, radius = DEFAULT_BALL_RADIUS, withProtection = false): BallBody {
@@ -724,6 +757,7 @@ export class PhysicsWorld {
       color: hashColor(user.userId),
       hp: DEFAULT_BALL_HP,
       maxHp: DEFAULT_BALL_HP,
+      nonGalaxyMaxHp: DEFAULT_BALL_HP,
       strength: 1,
       kills: 0,
       hitPower: 0,
@@ -828,8 +862,7 @@ export class PhysicsWorld {
           const add = Math.floor(b.regenAcc);
           b.regenAcc -= add;
           if (!b.galaxy) {
-            b.hp = Math.min(GIFT_SOFT_MAX_HP, b.hp + add);
-            b.maxHp = Math.max(b.maxHp, Math.min(GIFT_SOFT_MAX_HP, b.hp));
+            b.hp = Math.min(b.maxHp, b.hp + add);
           } else {
             b.hp += add;
           }

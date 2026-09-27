@@ -150,9 +150,10 @@ export function createBottomCtaStrip(
   bg.lineStyle(2, THEME.gold, 0.65);
   bg.strokeRoundedRect(-495, -90, 990, 124, 16);
   const label = scene.add.text(0, -28, [
-    '💬 COMENTE PARA ENTRAR OU RENASCER · 200 HP BASE',
-    '❤️ 50: +10 vida • 100: +20 vida • 200: +40 vida',
-    '500: +2 força • 600: +3 • 700: +4 • 800–1000: 🦫 até x3',
+    '💬 200 HP BASE · +1 HP atual/máximo por like (sem limite)',
+    '❤️ Likes individuais aparecem na bola · combo reinicia após 10s',
+    '🎁 Cada presente mantém o poder e dispara uma arma proporcional',
+    '500–700 likes: força • 800–1000: 🦫 até x3 · Boss vale +15 força',
     'Likes são individuais • BOSS gigante foge, solta raios globais e vale +15 força',
   ].join('\n'), {
     fontFamily: FONT, fontSize: '23px', color: THEME_HEX.light,

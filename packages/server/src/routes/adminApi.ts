@@ -3,7 +3,6 @@ import type { GameLoop } from '../game/GameLoop';
 import type { DemoEventSimulator } from '../demo/DemoEventSimulator';
 import { DEMO_GIFT_PRESETS, DEMO_PICKUP_PRESETS } from '../demo/DemoEventSimulator';
 import { PICKUP_META, isBotUser } from '@arena/shared';
-import { pickupAbilityFromGiftId } from '../game/PickupSystem';
 import type { EconomyStore } from '../economy/EconomyStore';
 
 export function adminApiRouter(deps: {
@@ -230,23 +229,7 @@ export function adminApiRouter(deps: {
 
   router.post('/admin/sim/gift', (req, res) => {
     const giftId = (req.body?.giftId as string) || 'rosa';
-    // Floor powers: redirect to pickup spawn (do not apply to a selected ball)
-    const pickupAbility = pickupAbilityFromGiftId(giftId);
-    if (pickupAbility) {
-      const result = deps.game.adminSpawnPickup(pickupAbility);
-      if (!result.ok) {
-        res.status(400).json(result);
-        return;
-      }
-      res.json({
-        ok: true,
-        diverted: 'pickup',
-        ability: pickupAbility,
-        pickup: result.pickup,
-        pickups: deps.game.getSnapshot().pickups,
-      });
-      return;
-    }
+    // Simulate the actual paid TikTok gift path: preserve its power and fire its bonus weapon.
     const repeatCount = Number(req.body?.repeatCount) || 1;
     const user = req.body?.user as { userId?: string; username?: string; nickname?: string } | undefined;
     const userId = (req.body?.userId as string) || user?.userId;

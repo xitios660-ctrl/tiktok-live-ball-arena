@@ -11,6 +11,7 @@ import {
 import { mapTikTokGiftToArenaId } from './tiktok/mapTikTokGift';
 import { HybridTikTokConnector } from './tiktok/HybridTikTokConnector';
 import { applyPickupAbility } from './game/GiftAbilities';
+import { GIFT_WEAPON_IDS, giftWeaponShotCount, resolveGiftWeapon } from './game/GiftWeapons';
 import { AutoBotSpawner } from './game/AutoBotSpawner';
 import {
   mapPirateChatEvent,
@@ -520,8 +521,11 @@ try {
   // Likes must create/credit each viewer's own character, never the last actor.
   likeGame.handleLikes(independentA, 50);
   likeGame.handleLikes(independentB, 50);
-  assert(getBall(likeGame, independentA.userId).hp === DEFAULT_BALL_HP, 'viewer A did not receive personal like reward');
-  assert(getBall(likeGame, independentB.userId).hp === DEFAULT_BALL_HP, 'viewer B did not receive personal like reward');
+  assert(getBall(likeGame, independentA.userId).hp === DEFAULT_BALL_HP + 60, 'viewer A did not receive 1 HP per like plus the 50-like bonus');
+  assert(getBall(likeGame, independentB.userId).hp === DEFAULT_BALL_HP + 60, 'viewer B did not receive personal likes/HP');
+  assert(getBall(likeGame, independentA.userId).maxHp === DEFAULT_BALL_HP + 60, 'viewer A max HP did not grow with likes');
+  assert(getBall(likeGame, independentA.userId).likes === 50, 'viewer A like counter missing from character snapshot');
+  assert(getBall(likeGame, independentB.userId).likes === 50, 'viewer B like counter was merged with viewer A');
   const user: ArenaUser = {
     userId: 'likes-user',
     username: 'likes_user',
@@ -535,38 +539,39 @@ try {
 
   likeGame.handleLikes(user, 49);
   let b = getBall(likeGame, user.userId);
-  assert(b.hp === 20, '49 likes should not trigger the 50-like reward');
+  assert(b.hp === 69 && b.maxHp === 249, '49 likes must add 49 HP without crossing the 50-like milestone');
   assert((b.hitPower ?? 0) === 0, '49 likes changed strength');
 
   likeGame.handleLikes(user, 1);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === 30, '50 likes must recover exactly 10 HP');
+  assert(b.hp === 80 && b.maxHp === 260, '50 likes must add 1 HP per like and preserve the +10 milestone bonus');
+  assert(b.likes === 50, '50 personal likes missing from the character snapshot');
   assert((b.hitPower ?? 0) === 0, '50 likes must not add strength');
 
   likeGame.handleLikes(user, 50);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === 50, '100 likes must add 20 HP');
+  assert(b.hp === 150 && b.maxHp === 330, '100 likes must add 50 HP and retain the +20 milestone bonus');
   assert((b.hitPower ?? 0) === 0, '100 likes must not add strength');
 
   likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === 90, '200 likes must add 40 HP');
+  assert(b.hp === 290 && b.maxHp === 470, '200 likes must add 100 HP and retain the +40 milestone bonus');
   assert((b.hitPower ?? 0) === 0, '200 likes must not add strength');
 
   likeGame.handleLikes(user, 300);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === 130, '500 likes must add 40 HP from a 200 HP base');
+  assert(b.hp === 630 && b.maxHp === 810, '500 likes must scale HP one-for-one without a cap');
   assert((b.hitPower ?? 0) === 2, '500 likes must add +2 strength');
   assert((b.titanStacks ?? 0) === 0, '500 likes must not grant Capybara');
 
   likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === 180, '600 likes must add 50 HP');
+  assert(b.hp === 780 && b.maxHp === 960, '600 likes did not add unbounded HP');
   assert((b.hitPower ?? 0) === 5, '600 likes must add +3 strength');
 
   likeGame.handleLikes(user, 100);
   b = getBall(likeGame, user.userId);
-  assert(b.hp === b.maxHp, '700 likes must cap at 200 HP');
+  assert(b.hp === 930 && b.maxHp === 1110, '700 likes did not grow current and maximum HP');
   assert((b.hitPower ?? 0) === 9, '700 likes must add +4 additional strength');
 
   likeGame.handleLikes(user, 100);
@@ -588,6 +593,7 @@ try {
     b.buffs?.includes('capybara_titan'),
     '1000 likes lost the Capybara/Titan buff'
   );
+  assert(b.hp === 1270 && b.maxHp === 1450 && b.likes === 1000, 'likes or threshold HP became capped before 1000 likes');
 
   const physics = (likeGame as unknown as {
     physics: { getBall: (userId: string) => { titanUntil: number } | undefined };
@@ -598,6 +604,21 @@ try {
     internal.titanUntil > Date.now() + 60_000,
     '1000-like Capybara x3 is not lasting toward the end of the round'
   );
+
+  const highLikeUser: ArenaUser = { userId: 'uncapped-likes', username: 'uncapped_likes' };
+  likeGame.handleLikes(highLikeUser, 10_000);
+  const highLikeBall = getBall(likeGame, highLikeUser.userId);
+  assert(highLikeBall.likes === 10_000, '10,000 likes were not shown on the character');
+  assert(highLikeBall.maxHp > 10_000 && highLikeBall.hp === highLikeBall.maxHp, 'HP did not grow beyond 10,000 with no upper limit');
+  const preservedHighHp = highLikeBall.maxHp;
+  const likePhysics = (likeGame as unknown as { physics: PhysicsWorld }).physics;
+  likePhysics.clearAllBuffs();
+  likePhysics.getBall(highLikeUser.userId)!.spawnProtectedUntil = 0;
+  likeGame.adminKill(highLikeUser.userId, 'admin');
+  assert(likeGame.adminRespawnComment(highLikeUser.userId).length > 0, 'high-like viewer did not respawn');
+  const respawnedHighLikeBall = getBall(likeGame, highLikeUser.userId);
+  assert(respawnedHighLikeBall.maxHp === preservedHighHp && respawnedHighLikeBall.hp === preservedHighHp,
+    'unbounded like HP did not survive respawn within the round');
 
   const internals = likeGame as unknown as {
     personalLikeCombos: Map<string, { count: number; lastLikeAt: number }>;
@@ -761,8 +782,47 @@ try {
   giftGame.destroy();
 }
 
+/* -------------------------------------------------------------------------- */
+/* Every paid present also fires a tier-balanced, capped bonus weapon           */
+/* -------------------------------------------------------------------------- */
+const giftWeaponGame = new GameLoop('production', 300);
+try {
+  giftWeaponGame.startRound();
+  const sender: ArenaUser = { userId: 'gift-weapon-sender', username: 'gift_weapon_sender' };
+  const target: ArenaUser = { userId: 'gift-weapon-target', username: 'gift_weapon_target' };
+  giftWeaponGame.handleLiveEvent(commentEvent(sender));
+  giftWeaponGame.handleLiveEvent(commentEvent(target));
+  const world = (giftWeaponGame as unknown as { physics: PhysicsWorld }).physics;
+  const sourceBall = world.getBall(sender.userId)!;
+  const targetBall = world.getBall(target.userId)!;
+  sourceBall.x = 500; sourceBall.y = 960; sourceBall.spawnProtectedUntil = 0;
+  targetBall.x = 650; targetBall.y = 960; targetBall.spawnProtectedUntil = 0;
+
+  const ids = [...GIFT_WEAPON_IDS];
+  const damages: number[] = [];
+  for (const giftId of ids) {
+    const profile = resolveGiftWeapon(giftId);
+    assert(profile, `gift ${giftId} has no weapon bonus configured`);
+    const before = targetBall.hp;
+    giftWeaponGame.handleLiveEvent(giftEvent(sender, giftId, giftId, 1, 1));
+    damages.push(before - targetBall.hp);
+  }
+  assert(ids.length === 10, 'gift weapon catalog does not cover every configured paid present');
+  const ordered = ids.map((id) => resolveGiftWeapon(id)!.damage);
+  assert(damages.every((d, i) => d === ordered[i]), 'a paid gift did not deal its configured weapon damage');
+  assert(ordered.every((d, i) => i === 0 || d >= ordered[i - 1]), 'weapon strength does not rise with the present tier');
+  assert(giftWeaponShotCount({ repeatCount: 100 }) === 3, 'a large repeatCount exceeded the 3-shot safety cap');
+
+  const bot: ArenaUser = { userId: 'autobot-gift-test', username: 'bot_auto_test' };
+  const beforeBotGift = targetBall.hp;
+  giftWeaponGame.handleLiveEvent(giftEvent(bot, 'galaxia', 'Galaxia', 1, 1000));
+  assert(targetBall.hp === beforeBotGift && !world.hasUser(bot.userId), 'bot received a paid gift weapon or power');
+} finally {
+  giftWeaponGame.destroy();
+}
+
 console.log(
   '[SELFTEST] PASS PirateTok direct CHAT/LIKE/GIFT + legacy normalization + real gift-name mapping; ' +
-    'comment spawn+respawn; repeatable LIKE combos every 50 through 1000 with idle reset; ' +
-    'Rosa/Dino/Donut/Capybara/Galaxy + Lightning/Magnet/Freeze/Dash/Reflect/Heal powers'
+    'comment spawn+respawn; uncapped per-viewer HP and repeatable LIKE milestones; ' +
+    'each paid gift grants a capped, balanced weapon and preserves its power; all floor abilities'
 );

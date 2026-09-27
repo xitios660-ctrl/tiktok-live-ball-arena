@@ -34,6 +34,7 @@ export interface GiftConfigEntry {
   coinValue: number;
   tier: number;
   abilityKey: AbilityKey;
+  weaponBonus?: { name: string; icon: string; damage: number; range: number; area: number };
   description: string;
 }
 
@@ -144,6 +145,8 @@ export interface BallState {
   color: number;
   hp: number;
   maxHp: number;
+  /** Total individual de likes recebidos nesta rodada; cada like aumenta o HP máximo em 1. */
+  likes?: number;
   label: string;
   hitFlash?: boolean;
   spawnProtected?: boolean;
@@ -389,6 +392,7 @@ export const SPEED_BOOST_ON_COLLISION = 1.015;
 
 export const DEFAULT_BALL_RADIUS = 36;
 export const DEFAULT_BALL_HP = 200;
+/** Legacy compatibility only; HP now grows one-for-one with a viewer's likes. */
 export const MAX_BALL_HP = 300;
 export const MAX_BALL_SPEED = 900;
 export const MIN_SPAWN_SPEED = 80;
@@ -406,6 +410,7 @@ export const REVENGE_MARK_MS = 10000;
 export const KING_ANNOUNCE_COOLDOWN_MS = 8000;
 
 /** —— Gift ability formulas / caps (server + docs) —— */
+/** Legacy compatibility only; player HP has no soft cap. */
 export const GIFT_SOFT_MAX_HP = 300;
 export const ROSA_HEAL = 2;
 

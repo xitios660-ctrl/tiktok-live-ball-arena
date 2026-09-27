@@ -6,6 +6,7 @@ type GiftRow = {
   tiktokGiftNames?: string[];
   name: string;
   coinValue: number;
+  weaponBonus?: { name: string; icon: string; damage: number; range: number; area: number };
 };
 
 let cache: GiftRow[] | null = null;
@@ -30,11 +31,16 @@ function loadGifts(): GiftRow[] {
     }
   }
   cache = [
-    { id: 'rosa', tiktokGiftNames: ['Rose', 'Rosa'], name: 'Rosa', coinValue: 1 },
-    { id: 'mini_dino', tiktokGiftNames: ['Mini Dino', 'Dinosaur'], name: 'Mini Dino', coinValue: 10 },
-    { id: 'rosquinha', tiktokGiftNames: ['Doughnut', 'Donut', 'Rosquinha'], name: 'Rosquinha', coinValue: 30 },
-    { id: 'capivara', tiktokGiftNames: ['Capybara', 'Capivara'], name: 'Capivara', coinValue: 100 },
-    { id: 'galaxia', tiktokGiftNames: ['Galaxy', 'Galaxy Gift', 'Galáxia', 'Galaxia'], name: 'Galaxia', coinValue: 1000 },
+    { id: 'rosa', tiktokGiftNames: ['Rose', 'Rosa'], name: 'Rosa', coinValue: 1, weaponBonus: { name: 'Espinho', icon: '🌹', damage: 1, range: 280, area: 0 } },
+    { id: 'mini_dino', tiktokGiftNames: ['Mini Dino', 'Dinosaur'], name: 'Mini Dino', coinValue: 10, weaponBonus: { name: 'Mordida Dino', icon: '🦖', damage: 5, range: 380, area: 0 } },
+    { id: 'raio', tiktokGiftNames: ['GG', 'Lightning', 'Raio', 'Thunder'], name: 'Raio', coinValue: 15, weaponBonus: { name: 'Raio de Choque', icon: '⚡', damage: 7, range: 520, area: 0 } },
+    { id: 'foguete', tiktokGiftNames: ['Rocket', 'Foguete', 'Perfume'], name: 'Foguete', coinValue: 15, weaponBonus: { name: 'Mini Foguete', icon: '🚀', damage: 8, range: 500, area: 0 } },
+    { id: 'ima', tiktokGiftNames: ['Finger Heart', 'Magnet', 'Ímã', 'Ima'], name: 'Ímã', coinValue: 20, weaponBonus: { name: 'Pulso Magnético', icon: '🧲', damage: 9, range: 440, area: 70 } },
+    { id: 'gelo', tiktokGiftNames: ['Ice Cream Cone', 'Freeze', 'Gelo', 'Snow'], name: 'Gelo', coinValue: 25, weaponBonus: { name: 'Estilhaço de Gelo', icon: '❄️', damage: 10, range: 500, area: 60 } },
+    { id: 'rosquinha', tiktokGiftNames: ['Doughnut', 'Donut', 'Rosquinha'], name: 'Rosquinha', coinValue: 30, weaponBonus: { name: 'Donut Explosivo', icon: '🍩', damage: 12, range: 540, area: 65 } },
+    { id: 'espelho', tiktokGiftNames: ['Mirror', 'Espelho', 'Hand Hearts'], name: 'Espelho', coinValue: 35, weaponBonus: { name: 'Lâmina Refletida', icon: '🪞', damage: 14, range: 640, area: 0 } },
+    { id: 'capivara', tiktokGiftNames: ['Capybara', 'Capivara'], name: 'Capivara', coinValue: 100, weaponBonus: { name: 'Canhão Capivara', icon: '🦫', damage: 20, range: 720, area: 0 } },
+    { id: 'galaxia', tiktokGiftNames: ['Galaxy', 'Galaxy Gift', 'Galáxia', 'Galaxia'], name: 'Galaxia', coinValue: 1000, weaponBonus: { name: 'Canhão Galáctico', icon: '🌌', damage: 35, range: 900, area: 100 } },
   ];
   console.warn('[TIKTOK] gift-config.json not found — using built-in gift map');
   return cache;
@@ -71,4 +77,9 @@ export function mapTikTokGiftToArenaId(
     giftName: name || String(giftId ?? 'unknown'),
     coinValue: coinValue ?? 0,
   };
+}
+
+/** Return the configured weapon bonus for a canonical arena gift id. */
+export function getGiftWeaponBonusById(id: string): GiftRow['weaponBonus'] | null {
+  return loadGifts().find((gift) => gift.id === id)?.weaponBonus ?? null;
 }

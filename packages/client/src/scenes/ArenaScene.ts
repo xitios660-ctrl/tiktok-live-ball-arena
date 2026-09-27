@@ -91,6 +91,7 @@ interface BallView {
   avatarSrcKey?: string;
   initials: Phaser.GameObjects.Text;
   label: Phaser.GameObjects.Text;
+  likesMark: Phaser.GameObjects.Text;
   /** Glass pill behind name */
   namePlate: Phaser.GameObjects.Graphics;
   hpBg: Phaser.GameObjects.Rectangle;
@@ -980,6 +981,14 @@ export class ArenaScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0);
 
+    const likesMark = this.add.text(0, b.radius + 39, `❤️ ${(b.likes ?? 0).toLocaleString('pt-BR')}`, {
+      fontFamily: FONT_ACCENT,
+      fontSize: '13px',
+      color: '#ff8fa3',
+      stroke: '#0B0B0F',
+      strokeThickness: 3,
+    }).setOrigin(0.5, 0).setVisible((b.likes ?? 0) > 0);
+
     const barW = Math.max(48, b.radius * 2.25);
     const hpY = -b.radius - 18;
     const hpBg = this.add
@@ -1029,6 +1038,7 @@ export class ArenaScene extends Phaser.Scene {
       shieldFg,
       namePlate,
       label,
+      likesMark,
       revengeMark,
       buffIcon,
       strengthHud,
@@ -1050,6 +1060,7 @@ export class ArenaScene extends Phaser.Scene {
       skin: glossParts.skin,
       initials,
       label,
+      likesMark,
       namePlate,
       hpBg,
       hpFg,
@@ -1328,6 +1339,10 @@ export class ArenaScene extends Phaser.Scene {
     );
     view.label.setColor(b.isBoss ? THEME_HEX.gold : THEME_HEX.light);
     view.label.setY(b.radius + 18);
+    view.likesMark
+      .setPosition(0, b.radius + 39)
+      .setText(`❤️ ${(b.likes ?? 0).toLocaleString('pt-BR')}`)
+      .setVisible((b.likes ?? 0) > 0);
     this.drawNamePlate(view.namePlate, view.label, b.radius);
     const barW = Math.max(48, b.radius * 2.25);
     const hpY = -b.radius - 18;
